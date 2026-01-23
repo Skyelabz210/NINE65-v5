@@ -3,16 +3,118 @@
 //! SECURITY CRITICAL: This module provides cryptographically secure
 //! random number generation using the operating system's CSPRNG.
 //!
+//! ## Usage
+//!
+//! ```ignore
+//! use nine65::entropy::SecureRng;
+//!
+//! // Create a CSPRNG instance
+//! let mut rng = SecureRng::new();
+//!
+//! // Generate random values
+//! let key_bytes = rng.random_bytes(32);
+//! let random_value = rng.random_u64();
+//! let bounded = rng.random_u64_bounded(998244353);
+//! ```
+//!
 //! Use this for:
 //! - Secret key generation
 //! - Public key randomness (the 'a' polynomial)
 //! - Any security-critical random values
 //!
-//! Do NOT use Shadow Entropy for these operations.
-//!
-//! Added: December 2024 Cryptographic Audit
+//! Do NOT use Shadow Entropy for security-critical operations.
 
 use getrandom::getrandom;
+
+/// Cryptographically Secure Pseudo-Random Number Generator
+///
+/// Wraps the operating system's CSPRNG (via `getrandom` crate).
+/// This is the correct entropy source for all cryptographic operations.
+///
+/// # Security
+///
+/// - Backed by `/dev/urandom` on Linux, `CryptGenRandom` on Windows
+/// - Suitable for key generation and all security-critical uses
+/// - NIST SP 800-90B compliant entropy source
+#[derive(Debug, Default)]
+pub struct SecureRng {
+    _private: (), // Prevent construction except via new()
+}
+
+impl SecureRng {
+    /// Create a new CSPRNG instance
+    #[inline]
+    pub fn new() -> Self {
+        Self { _private: () }
+    }
+
+    /// Fill a buffer with cryptographically secure random bytes
+    ///
+    /// # Panics
+    /// Panics if the OS CSPRNG fails (should never happen on supported platforms)
+    #[inline]
+    pub fn fill_bytes(&mut self, buf: &mut [u8]) {
+        secure_bytes(buf);
+    }
+
+    /// Generate a vector of cryptographically secure random bytes
+    #[inline]
+    pub fn random_bytes(&mut self, len: usize) -> Vec<u8> {
+        let mut buf = vec![0u8; len];
+        self.fill_bytes(&mut buf);
+        buf
+    }
+
+    /// Generate a cryptographically secure random u64
+    #[inline]
+    pub fn random_u64(&mut self) -> u64 {
+        secure_u64()
+    }
+
+    /// Generate a cryptographically secure random u128
+    #[inline]
+    pub fn random_u128(&mut self) -> u128 {
+        secure_u128()
+    }
+
+    /// Generate a cryptographically secure random u64 in range [0, bound)
+    ///
+    /// Uses rejection sampling to avoid modulo bias.
+    #[inline]
+    pub fn random_u64_bounded(&mut self, bound: u64) -> u64 {
+        secure_u64_bounded(bound)
+    }
+
+    /// Generate a cryptographically secure ternary value {-1, 0, 1}
+    #[inline]
+    pub fn random_ternary(&mut self) -> i64 {
+        secure_ternary()
+    }
+
+    /// Generate a CBD(eta) sample using secure randomness
+    #[inline]
+    pub fn random_cbd(&mut self, eta: usize) -> i64 {
+        secure_cbd(eta)
+    }
+
+    /// Generate a ternary polynomial {-1, 0, 1}^n
+    #[inline]
+    pub fn ternary_polynomial(&mut self, n: usize) -> Vec<i64> {
+        secure_ternary_vector(n)
+    }
+
+    /// Generate a CBD(eta) polynomial of length n
+    #[inline]
+    pub fn cbd_polynomial(&mut self, n: usize, eta: usize) -> Vec<i64> {
+        secure_cbd_vector(n, eta)
+    }
+
+    /// Generate a uniform polynomial with coefficients in [0, bound)
+    #[inline]
+    pub fn uniform_polynomial(&mut self, n: usize, bound: u64) -> Vec<u64> {
+        secure_uniform_vector(n, bound)
+    }
+}
 
 /// Get cryptographically secure random bytes from OS
 ///

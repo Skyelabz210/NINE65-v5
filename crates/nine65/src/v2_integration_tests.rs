@@ -1,12 +1,12 @@
 //! V2 Integration Tests
-//! 
+//!
 //! Tests for NINE65 V2 innovations:
 //! - NTT FFT (O(N log N))
-//! - WASSAN Holographic Noise Field
+//! - WASSAN Holographic Noise Field (requires shadow-entropy feature)
 //!
-//! Run with: cargo test --features v2 v2_integration
+//! Run with: cargo test --features v2,shadow-entropy v2_integration
 
-#[cfg(test)]
+#[cfg(all(test, feature = "shadow-entropy"))]
 mod v2_integration_tests {
     use crate::arithmetic::ntt_fft::NTTEngineFFT;
     use crate::arithmetic::ntt::NTTEngine;

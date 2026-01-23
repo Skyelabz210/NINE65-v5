@@ -1,18 +1,18 @@
-//! Entropy Module - QMNF Entropy System
+//! Entropy Module - NINE65 Entropy System
 //!
-//! Two entropy sources for different purposes:
+//! Two core entropy sources:
 //!
 //! ## Shadow Entropy (`shadow` module)
 //! - Deterministic, reproducible randomness
 //! - Use for: Testing, benchmarks, noise sampling
 //! - Fast: <10ns per sample
 //!
-//! ## Secure Entropy (`secure` module) 
+//! ## Secure Entropy (`secure` module)
 //! - OS CSPRNG (non-deterministic)
 //! - Use for: Secret key generation, public key randomness
 //! - Required for production security
 //!
-//! # Security Guidance (December 2024 Audit)
+//! # Security Guidance
 //!
 //! | Operation | Use This |
 //! |-----------|----------|
@@ -24,13 +24,21 @@
 
 pub mod shadow;
 pub mod secure;
-pub mod wassan_noise;  // V2: 144 φ-harmonic holographic noise field
-pub mod crt_shadow;    // CRT+Shadow entropy harvesting from RNS operations
+
+#[cfg(feature = "shadow-entropy")]
+pub mod wassan_noise;
+#[cfg(feature = "shadow-entropy")]
+pub mod crt_shadow;
 
 pub use shadow::ShadowHarvester;
-pub use wassan_noise::WassanNoiseField;  // V2: O(1) noise retrieval
+
+#[cfg(feature = "shadow-entropy")]
+pub use wassan_noise::WassanNoiseField;
+#[cfg(feature = "shadow-entropy")]
 pub use crt_shadow::{CRTShadowContext, ShadowAccumulator, IntegratedShadowRNS, ShadowStats, QuotientSignature};
+
 pub use secure::{
+    SecureRng,
     secure_bytes,
     secure_u64,
     secure_u128,

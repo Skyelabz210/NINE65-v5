@@ -1,9 +1,9 @@
-//! # QMNF FHE - Quantum-Modular Numerical Framework
-//! 
-//! A complete BFV Fully Homomorphic Encryption implementation with
-//! AHOP-based zero-decoherence quantum simulation.
+//! # NINE65 FHE - Bootstrap-Free Fully Homomorphic Encryption
 //!
-//! ## Core Innovations (QMNF)
+//! A complete BFV Fully Homomorphic Encryption implementation with
+//! K-Elimination exact arithmetic and post-quantum security.
+//!
+//! ## Core Innovations
 //! 
 //! | Innovation | Benefit | Performance |
 //! |------------|---------|-------------|
@@ -15,8 +15,8 @@
 //! | **Persistent Montgomery** | Stay in Montgomery form | 70× fewer conversions |
 //! 
 //! ## Zero Floating-Point Guarantee
-//! 
-//! All cryptographic and quantum operations use exact integer arithmetic.
+//!
+//! All cryptographic operations use exact integer arithmetic.
 //! No f32, f64, or any floating-point types in critical paths.
 //! 
 //! ## Quick Start: Production FHE
@@ -86,8 +86,7 @@
 //! | [`noise`] | Noise budget tracking |
 //! | [`security`] | LWE security estimation |
 //! | [`kat`] | Known Answer Tests |
-//! | [`ahop`] | AHOP quantum simulation |
-//! 
+//!
 //! ## Compliance
 //! 
 //! - **HE Standard v1.1**: Compliant parameter sets available
@@ -100,11 +99,9 @@ pub mod params;
 pub mod ring;
 pub mod keys;
 pub mod ops;
-pub mod ahop;
 pub mod noise;     // CDHS-based noise tracking
 pub mod security;  // LWE security estimation
 pub mod kat;       // Known Answer Tests
-pub mod quantum;   // QMNF algebraic quantum operations
 pub mod errors;    // Standardized NINE65 error taxonomy
 pub mod compiler;  // Bootstrap-free FHE circuit compiler
 
@@ -153,7 +150,9 @@ pub mod prelude {
     
     // Entropy sources
     pub use crate::entropy::ShadowHarvester;
-    pub use crate::entropy::WassanNoiseField;  // V2: Holographic noise
+    pub use crate::entropy::SecureRng;  // OS CSPRNG for production use
+    #[cfg(feature = "shadow-entropy")]
+    pub use crate::entropy::WassanNoiseField;
     pub use crate::entropy::{secure_bytes, secure_u64, secure_ternary};
     
     // Parameters
@@ -177,20 +176,7 @@ pub mod prelude {
         DualRNSKeySet, DualRNSFullKeySet,
         AutoCiphertext, AutoKeys, MulRoute,
     };
-    
-    // Quantum operations
-    pub use crate::ahop::{Fp2Element, StateVector, GroverSearch, GroverStats};
-    pub use crate::quantum::{
-        QuantumAmplitude, QuantumState, GroverResult,          // SIGNED AMPLITUDES
-        grover_search,                                          // PROPER GROVER
-        // Sparse Grover (infinite coherence)
-        SparseGroverFp2, TEST_PRIME, PRODUCTION_PRIME,
-        // State taxonomy (F1)
-        SparseKMarkedFp2, GHZStateFp2, ProductStateFp2, StateFamily,
-        // Encrypted Quantum (F4) - FHE × GROVER
-        EncryptedFp2, EncryptedSparseGrover, EncryptedQuantumContext, DecryptedGroverState,
-    };
-    
+
     // Noise tracking
     pub use crate::noise::{
         NoiseBudgetTracker, NoiseSnapshot, EMACalculator,
@@ -267,21 +253,6 @@ mod integration_tests {
         println!("  -{} = {} (mod {})", a, neg, config.t);
         println!("  {} + 10 = {}", a, add_plain);
         println!("  {} * 3 = {}", a, mul_plain);
-    }
-    
-    /// Grover quantum search integration test
-    #[test]
-    fn test_grover_integration() {
-        // 4-qubit search (16 states)
-        let grover = GroverSearch::new(4, 11, 1000003);
-        
-        let optimal = grover.optimal_iterations();
-        let state = grover.run(optimal);
-        
-        let prob = state.probability(11);
-        println!("Grover search: target=11, optimal_iter={}, P(target)={:.4}", optimal, prob);
-        
-        assert!(prob > 0.5, "Target should be most probable");
     }
     
     /// Production-grade FHE test with 128-bit security parameters
