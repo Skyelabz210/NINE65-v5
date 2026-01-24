@@ -132,11 +132,15 @@ impl WassanNoiseField {
     }
     
     /// Create from OS entropy (one syscall, then infinite stream)
+    ///
+    /// # Panics
+    /// Panics if OS CSPRNG fails - this should never happen on supported platforms.
+    /// If it does, the system is compromised and cannot proceed safely.
     #[cfg(feature = "secure_seed")]
     pub fn from_os_seed() -> Self {
         use getrandom::getrandom;
         let mut seed_bytes = [0u8; 8];
-        getrandom(&mut seed_bytes).expect("OS entropy failure");
+        getrandom(&mut seed_bytes).expect("CRITICAL: OS entropy source failed - system CSPRNG unavailable");
         let seed = u64::from_le_bytes(seed_bytes);
         Self::from_shadow_seed(seed)
     }

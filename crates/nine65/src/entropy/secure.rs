@@ -119,10 +119,11 @@ impl SecureRng {
 /// Get cryptographically secure random bytes from OS
 ///
 /// # Panics
-/// Panics if the OS CSPRNG fails (should never happen on supported platforms)
+/// Panics if the OS CSPRNG fails (should never happen on supported platforms).
+/// If it does, the system is compromised and cannot proceed safely.
 #[inline]
 pub fn secure_bytes(buf: &mut [u8]) {
-    getrandom(buf).expect("OS CSPRNG failure - cannot proceed safely");
+    getrandom(buf).expect("CRITICAL: OS CSPRNG failure - system entropy unavailable, cannot proceed safely");
 }
 
 /// Generate a cryptographically secure random u64

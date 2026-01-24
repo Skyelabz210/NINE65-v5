@@ -22,6 +22,7 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 use crate::arithmetic::NTTEngine;
 
 use crate::arithmetic::KElimination;
+use crate::errors::{Nine65Error, Nine65Result};
 use crate::keys::EvaluationKey;
 use crate::noise::budget::{NoiseBudget, NoiseOpType, NoiseExhausted};
 use crate::ops::encrypt::{BFVEncoder, Ciphertext};
@@ -164,28 +165,39 @@ impl<'a> BFVEvaluator<'a> {
     }
     
     /// Relinearize 3-component ciphertext to 2-component
+    ///
+    /// # Panics
+    /// Panics if no evaluation key was provided. Use `try_relinearize()` for fallible variant.
     pub fn relinearize(&self, c0: &RingPolynomial, c1: &RingPolynomial, c2: &RingPolynomial) -> Ciphertext {
-        let eval_key = self.eval_key.expect("Evaluation key required for relinearization");
-        
+        self.try_relinearize(c0, c1, c2)
+            .expect("DESIGN ERROR: Evaluation key required for relinearization - use try_relinearize() or provide eval_key during construction")
+    }
+
+    /// Fallible relinearization that returns error if no evaluation key
+    pub fn try_relinearize(&self, c0: &RingPolynomial, c1: &RingPolynomial, c2: &RingPolynomial) -> Nine65Result<Ciphertext> {
+        let eval_key = self.eval_key.ok_or(Nine65Error::KeyRegimeMismatch {
+            message: "Evaluation key required for relinearization".to_string()
+        })?;
+
         // Decompose c2 into base-w digits
         let digits = self.decompose(c2, eval_key.decomp_base, eval_key.levels);
-        
+
         // Accumulate: c0' = c0 + sum(digits[i] * rlk[i].0)
         //             c1' = c1 + sum(digits[i] * rlk[i].1)
         let mut c0_new = c0.clone();
         let mut c1_new = c1.clone();
-        
+
         for (i, digit) in digits.iter().enumerate() {
             let (rlk_b, rlk_a) = &eval_key.rlk[i];
-            
+
             let term0 = digit.mul(rlk_b, self.ntt);
             let term1 = digit.mul(rlk_a, self.ntt);
-            
+
             c0_new = c0_new.add(&term0, self.ntt);
             c1_new = c1_new.add(&term1, self.ntt);
         }
-        
-        Ciphertext { c0: c0_new, c1: c1_new }
+
+        Ok(Ciphertext { c0: c0_new, c1: c1_new })
     }
     
     /// Decompose polynomial into base-w digits

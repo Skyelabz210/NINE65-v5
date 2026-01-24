@@ -222,17 +222,20 @@ impl<'a> PoolGuard<'a> {
 
     /// Access the polynomial
     pub fn as_ref(&self) -> &PooledPolynomial {
-        self.poly.as_ref().unwrap()
+        // SAFETY: PoolGuard always contains Some until Drop takes it
+        self.poly.as_ref().expect("PoolGuard invariant: poly is always Some until drop")
     }
 
     /// Access the polynomial mutably
     pub fn as_mut(&mut self) -> &mut PooledPolynomial {
-        self.poly.as_mut().unwrap()
+        // SAFETY: PoolGuard always contains Some until Drop takes it
+        self.poly.as_mut().expect("PoolGuard invariant: poly is always Some until drop")
     }
 
     /// Take ownership of the polynomial (prevents auto-release)
     pub fn take(mut self) -> PooledPolynomial {
-        self.poly.take().unwrap()
+        // SAFETY: PoolGuard always contains Some until Drop takes it
+        self.poly.take().expect("PoolGuard invariant: poly is always Some until drop")
     }
 }
 

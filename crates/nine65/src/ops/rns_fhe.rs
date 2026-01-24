@@ -353,7 +353,8 @@ impl DualRNSCiphertext {
     ///
     /// # Security Warning
     /// This does not validate the deserialized data. Use `from_json_validated`
-    /// when deserializing untrusted input.
+    /// when deserializing untrusted input to prevent DoS via malformed ciphertexts.
+    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
     }

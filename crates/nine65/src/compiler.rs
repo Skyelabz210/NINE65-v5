@@ -68,23 +68,25 @@ impl Circuit {
         let id = self.nodes.len();
         
         // Calculate depth
+        // Note: inputs.is_empty() checked above ensures max() succeeds
         let depth = if inputs.is_empty() {
             0
         } else {
-            inputs.iter().map(|&i| self.nodes[i].depth).max().unwrap() + 1
+            inputs.iter().map(|&i| self.nodes[i].depth).max().expect("inputs non-empty, max() must succeed") + 1
         };
-        
+
         // Calculate multiplicative depth
+        // Note: inputs.is_empty() checked above ensures max() succeeds
         let mult_depth = if op_type == OpType::Multiply {
             if inputs.is_empty() {
                 0
             } else {
-                inputs.iter().map(|&i| self.nodes[i].multiplicative_depth).max().unwrap() + 1
+                inputs.iter().map(|&i| self.nodes[i].multiplicative_depth).max().expect("inputs non-empty, max() must succeed") + 1
             }
         } else if inputs.is_empty() {
             0
         } else {
-            inputs.iter().map(|&i| self.nodes[i].multiplicative_depth).max().unwrap()
+            inputs.iter().map(|&i| self.nodes[i].multiplicative_depth).max().expect("inputs non-empty, max() must succeed")
         };
         
         self.nodes.push(CircuitNode {
@@ -185,10 +187,11 @@ impl NoiseAnalyzer {
                 3.2 // Initial encryption noise (std dev)
             } else {
                 // Max noise from inputs
+                // Note: inputs.is_empty() checked above ensures max_by() succeeds
                 node.inputs.iter()
                     .map(|&i| self.node_noise.get(&i).copied().unwrap_or(0.0))
-                    .max_by(|a, b| a.partial_cmp(b).unwrap())
-                    .unwrap()
+                    .max_by(|a, b| a.partial_cmp(b).expect("NaN not allowed in noise values"))
+                    .expect("inputs non-empty, max_by() must succeed")
             };
             
             // Add noise from this operation

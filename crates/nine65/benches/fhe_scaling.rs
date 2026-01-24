@@ -2,20 +2,23 @@
 //!
 //! Tests homo_mul performance across N=1024, 2048, 4096, 8192
 //! to demonstrate O(N log N) FFT scaling vs O(N²) baseline
+//!
+//! All benchmarks use production-safe SecureConfig with proper security levels.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
 use nine65::prelude::*;
+use nine65::params::SecureConfig;
 
 fn bench_homo_mul_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("homo_mul_scaling");
     group.sample_size(10);  // Fewer samples for large N
 
-    // Test configurations at different N values
+    // Test configurations at different N values - ALL use secure 128-bit+ configs
     let configs = [
-        ("N=1024", FHEConfig::light()),
-        ("N=2048", FHEConfig::he_standard_128()),
-        ("N=4096", FHEConfig::standard_128()),
-        ("N=8192", FHEConfig::high_192()),
+        ("N=2048/128-bit", SecureConfig::secure_128().into_config()),
+        ("N=4096/128-bit-deep", SecureConfig::secure_128_deep().into_config()),
+        ("N=4096/192-bit", SecureConfig::secure_192().into_config()),
+        ("N=8192/256-bit", SecureConfig::secure_256().into_config()),
     ];
 
     for (name, config) in configs.iter() {
@@ -76,11 +79,12 @@ fn bench_encrypt_decrypt_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("encrypt_decrypt_scaling");
     group.sample_size(20);
 
+    // All configs use production-safe 128-bit+ security
+    // Note: Each N must be unique to avoid benchmark ID conflicts
     let configs = [
-        (1024, FHEConfig::light()),
-        (2048, FHEConfig::he_standard_128()),
-        (4096, FHEConfig::standard_128()),
-        (8192, FHEConfig::high_192()),
+        (2048, SecureConfig::secure_128().into_config()),
+        (4096, SecureConfig::secure_192().into_config()),
+        (8192, SecureConfig::secure_256().into_config()),
     ];
 
     for (n, config) in configs.iter() {

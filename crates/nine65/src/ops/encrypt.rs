@@ -249,6 +249,12 @@ impl Ciphertext {
     }
 
     /// Deserialize from JSON string
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized ciphertext.
+    /// For untrusted input, use `from_json_validated()` instead to ensure
+    /// ciphertext integrity and prevent DoS attacks via malformed data.
+    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
     }
@@ -259,6 +265,12 @@ impl Ciphertext {
     }
 
     /// Deserialize from bincode bytes
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized ciphertext.
+    /// For untrusted input, use `from_bytes_validated()` instead to ensure
+    /// ciphertext integrity and prevent DoS attacks via malformed data.
+    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
