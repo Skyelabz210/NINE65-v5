@@ -1,15 +1,19 @@
 //! Exact Ciphertext Multiplication
 //!
 //! QMNF Innovation: ct×ct multiplication using dual-track exact arithmetic.
-//! 
+//!
 //! The key insight: coefficient-wise scaling doesn't commute with polynomial
 //! convolution mod q. Instead, we:
 //! 1. Maintain dual-track residues throughout tensor product
-//! 2. Reconstruct true integers via K-Elimination  
+//! 2. Reconstruct true integers via K-Elimination
 //! 3. Perform exact division Δ² → Δ on integers
 //! 4. Re-encode into dual-track representation
 //!
 //! No floating-point. No lossy rounding. Just exact integer arithmetic.
+
+// Allow explicit indexing in polynomial convolution - loop indices are used
+// in computing coefficient positions (i+j), not just array access.
+#![allow(clippy::needless_range_loop)]
 
 use super::exact_coeff::{ExactCoeff, ExactContext, ExactPoly, AnchorTrack, RnsInner};
 

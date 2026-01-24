@@ -178,7 +178,8 @@ impl EvaluationKey {
         harvester: &mut ShadowHarvester,
     ) -> Self {
         let decomp_base = 1u64 << 16;  // T = 2^16
-        let levels = (64 - config.q.leading_zeros() as usize + 15) / 16;
+        let q_bits = 64 - config.q.leading_zeros() as usize;
+        let levels = q_bits.div_ceil(16);
         
         let s_squared = sk.s.mul(&sk.s, ntt);
         

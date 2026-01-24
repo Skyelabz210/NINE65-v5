@@ -108,7 +108,40 @@ impl BarrettContext {
         let product = (a as u128) * (b as u128);
         self.reduce(product)
     }
-    
+
+    /// Modular multiplication using Barrett (constant-time)
+    #[inline(always)]
+    pub fn mul_ct(&self, a: u64, b: u64) -> u64 {
+        let product = (a as u128) * (b as u128);
+        self.reduce_ct(product)
+    }
+
+    /// Constant-time Barrett reduction: a mod q for a < q^2
+    ///
+    /// Uses bit manipulation instead of branches to prevent timing side-channels.
+    /// This is critical when reducing values derived from secret data.
+    #[inline(always)]
+    pub fn reduce_ct(&self, a: u128) -> u64 {
+        // q_hat = floor(a * mu / 2^128)
+        let q_hat = self.mul_high(a, self.mu);
+
+        // r = a - q_hat * q
+        let r = a.wrapping_sub(q_hat.wrapping_mul(self.q as u128));
+
+        // At most 2 corrections needed. Use constant-time conditional subtraction.
+        let mut result = r as u64;
+
+        // First correction: result = result - q if result >= q
+        let mask1 = ((result >= self.q) as u64).wrapping_neg(); // 0 or u64::MAX
+        result = result.wrapping_sub(self.q & mask1);
+
+        // Second correction (rare but possible)
+        let mask2 = ((result >= self.q) as u64).wrapping_neg();
+        result = result.wrapping_sub(self.q & mask2);
+
+        result
+    }
+
     /// Modular addition
     #[inline(always)]
     pub fn add(&self, a: u64, b: u64) -> u64 {
@@ -119,7 +152,18 @@ impl BarrettContext {
             sum as u64
         }
     }
-    
+
+    /// Constant-time modular addition
+    #[inline(always)]
+    pub fn add_ct(&self, a: u64, b: u64) -> u64 {
+        let sum = a.wrapping_add(b);
+        // If sum >= q or sum < a (overflow), subtract q
+        let overflow = (sum < a) as u64;
+        let geq = (sum >= self.q) as u64;
+        let mask = (overflow | geq).wrapping_neg();
+        sum.wrapping_sub(self.q & mask)
+    }
+
     /// Modular subtraction
     #[inline(always)]
     pub fn sub(&self, a: u64, b: u64) -> u64 {
@@ -128,6 +172,16 @@ impl BarrettContext {
         } else {
             self.q - b + a
         }
+    }
+
+    /// Constant-time modular subtraction
+    #[inline(always)]
+    pub fn sub_ct(&self, a: u64, b: u64) -> u64 {
+        let diff = a.wrapping_sub(b);
+        // If a < b (borrow occurred), add q
+        let borrow = (a < b) as u64;
+        let mask = borrow.wrapping_neg();
+        diff.wrapping_add(self.q & mask)
     }
     
     /// Modular exponentiation
@@ -277,14 +331,180 @@ mod tests {
     #[test]
     fn test_barrett_benchmark() {
         let ctx = BarrettContext::new(TEST_PRIME);
-        
+
         let start = std::time::Instant::now();
         let mut sum = 0u64;
         for i in 0..100_000u64 {
             sum = ctx.reduce((sum as u128 + i as u128) * 12345);
         }
         let elapsed = start.elapsed();
-        
+
         println!("Barrett 100k reductions: {:?} (sum={})", elapsed, sum);
+    }
+
+    #[test]
+    fn test_barrett_reduce_ct() {
+        let ctx = BarrettContext::new(TEST_PRIME);
+
+        // Test various values - CT variant should match regular reduce
+        for a in [0u128, 1, 100, 12345, TEST_PRIME as u128 - 1, TEST_PRIME as u128, TEST_PRIME as u128 + 1] {
+            let result_ct = ctx.reduce_ct(a);
+            let result_vt = ctx.reduce(a);
+            assert_eq!(result_ct, result_vt, "CT reduce mismatch for {}", a);
+        }
+
+        // Test large values near q^2
+        let large = (TEST_PRIME as u128 - 1) * (TEST_PRIME as u128 - 1);
+        let result_ct = ctx.reduce_ct(large);
+        let expected = (large % TEST_PRIME as u128) as u64;
+        assert_eq!(result_ct, expected);
+    }
+
+    #[test]
+    fn test_barrett_add_ct() {
+        let ctx = BarrettContext::new(TEST_PRIME);
+
+        // Test normal additions
+        for (a, b) in [(0, 0), (1, 1), (100, 200), (TEST_PRIME - 1, 1), (TEST_PRIME - 1, TEST_PRIME - 1)] {
+            let result_ct = ctx.add_ct(a, b);
+            let result_vt = ctx.add(a, b);
+            assert_eq!(result_ct, result_vt, "CT add mismatch for {} + {}", a, b);
+        }
+    }
+
+    #[test]
+    fn test_barrett_sub_ct() {
+        let ctx = BarrettContext::new(TEST_PRIME);
+
+        // Test normal subtractions
+        for (a, b) in [(0, 0), (100, 50), (50, 100), (TEST_PRIME - 1, 0), (0, TEST_PRIME - 1)] {
+            let result_ct = ctx.sub_ct(a, b);
+            let result_vt = ctx.sub(a, b);
+            assert_eq!(result_ct, result_vt, "CT sub mismatch for {} - {}", a, b);
+        }
+    }
+
+    #[test]
+    fn test_barrett_mul_ct() {
+        let ctx = BarrettContext::new(TEST_PRIME);
+
+        for i in 0..1000 {
+            let a = (i * 12345) % TEST_PRIME;
+            let b = (i * 67890) % TEST_PRIME;
+
+            let result_ct = ctx.mul_ct(a, b);
+            let result_vt = ctx.mul(a, b);
+
+            assert_eq!(result_ct, result_vt, "CT mul mismatch at i={}", i);
+        }
+    }
+
+    // =========================================================================
+    // TIMING REGRESSION TESTS
+    //
+    // These tests verify that CT variants don't have obvious timing variations
+    // based on input values. They use statistical analysis to detect leakage.
+    //
+    // NOTE: These tests can have false positives due to system noise.
+    // Run with --test-threads=1 and multiple times to confirm failures.
+    // =========================================================================
+
+    /// Helper: compute timing variance for a set of measurements
+    fn timing_variance(times: &[u128]) -> f64 {
+        let n = times.len() as f64;
+        let mean = times.iter().sum::<u128>() as f64 / n;
+        let variance = times.iter()
+            .map(|&t| {
+                let diff = t as f64 - mean;
+                diff * diff
+            })
+            .sum::<f64>() / n;
+        variance.sqrt() / mean  // Coefficient of variation
+    }
+
+    #[test]
+    #[ignore] // Run manually: cargo test --lib -- barrett::tests::test_reduce_ct_timing --ignored
+    fn test_reduce_ct_timing() {
+        let ctx = BarrettContext::new(TEST_PRIME);
+        let iterations = 10000;
+
+        // Test with small values (few corrections needed)
+        let mut times_small = Vec::with_capacity(iterations);
+        for i in 0..iterations {
+            let a = (i as u128) % (TEST_PRIME as u128 / 2);
+            let start = std::time::Instant::now();
+            std::hint::black_box(ctx.reduce_ct(a));
+            times_small.push(start.elapsed().as_nanos());
+        }
+
+        // Test with large values (more corrections likely)
+        let mut times_large = Vec::with_capacity(iterations);
+        for i in 0..iterations {
+            let a = ((TEST_PRIME as u128 - 1) * (TEST_PRIME as u128 - 1)) - (i as u128);
+            let start = std::time::Instant::now();
+            std::hint::black_box(ctx.reduce_ct(a));
+            times_large.push(start.elapsed().as_nanos());
+        }
+
+        let cv_small = timing_variance(&times_small);
+        let cv_large = timing_variance(&times_large);
+        let mean_small: f64 = times_small.iter().sum::<u128>() as f64 / iterations as f64;
+        let mean_large: f64 = times_large.iter().sum::<u128>() as f64 / iterations as f64;
+
+        println!("CT Reduce timing analysis:");
+        println!("  Small values: mean={:.1}ns, CV={:.3}", mean_small, cv_small);
+        println!("  Large values: mean={:.1}ns, CV={:.3}", mean_large, cv_large);
+
+        // Mean times should be similar (within 50% for CT)
+        let ratio = mean_large / mean_small;
+        println!("  Timing ratio (large/small): {:.2}", ratio);
+
+        // CT should have ratio close to 1.0 (allow 0.7-1.4 due to noise)
+        assert!(
+            ratio > 0.7 && ratio < 1.4,
+            "CT reduce shows timing variation: ratio={:.2}", ratio
+        );
+    }
+
+    #[test]
+    #[ignore] // Run manually with --ignored
+    fn test_mul_ct_timing() {
+        let ctx = BarrettContext::new(TEST_PRIME);
+        let iterations = 10000;
+
+        // Small * small
+        let mut times_ss = Vec::with_capacity(iterations);
+        for i in 0..iterations {
+            let a = (i as u64) % 1000;
+            let b = (i as u64 * 2) % 1000;
+            let start = std::time::Instant::now();
+            std::hint::black_box(ctx.mul_ct(a, b));
+            times_ss.push(start.elapsed().as_nanos());
+        }
+
+        // Large * large
+        let mut times_ll = Vec::with_capacity(iterations);
+        for i in 0..iterations {
+            let a = TEST_PRIME - 1 - (i as u64 % 1000);
+            let b = TEST_PRIME - 1 - (i as u64 * 2 % 1000);
+            let start = std::time::Instant::now();
+            std::hint::black_box(ctx.mul_ct(a, b));
+            times_ll.push(start.elapsed().as_nanos());
+        }
+
+        let mean_ss: f64 = times_ss.iter().sum::<u128>() as f64 / iterations as f64;
+        let mean_ll: f64 = times_ll.iter().sum::<u128>() as f64 / iterations as f64;
+
+        println!("CT Mul timing analysis:");
+        println!("  Small*small: mean={:.1}ns", mean_ss);
+        println!("  Large*large: mean={:.1}ns", mean_ll);
+
+        let ratio = mean_ll / mean_ss;
+        println!("  Timing ratio: {:.2}", ratio);
+
+        assert!(
+            ratio > 0.7 && ratio < 1.4,
+            "CT mul shows timing variation: ratio={:.2}", ratio
+        );
     }
 }

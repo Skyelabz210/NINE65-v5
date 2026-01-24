@@ -47,8 +47,8 @@ pub struct Circuit {
     pub max_multiplicative_depth: usize,
 }
 
-impl Circuit {
-    pub fn new() -> Self {
+impl Default for Circuit {
+    fn default() -> Self {
         Self {
             nodes: Vec::new(),
             input_nodes: Vec::new(),
@@ -56,6 +56,12 @@ impl Circuit {
             max_depth: 0,
             max_multiplicative_depth: 0,
         }
+    }
+}
+
+impl Circuit {
+    pub fn new() -> Self {
+        Self::default()
     }
     
     pub fn add_node(&mut self, op_type: OpType, inputs: Vec<usize>) -> usize {
@@ -245,7 +251,7 @@ impl ParameterSelector {
         let required_bits = required_bits.ceil() as usize;
         
         // Determine number of 60-bit modulus primes needed
-        let modulus_count = (required_bits + 59) / 60;
+        let modulus_count = required_bits.div_ceil(60);
         
         // Generate modulus chain
         let modulus_chain = self.generate_modulus_chain(modulus_count);

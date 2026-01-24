@@ -23,6 +23,8 @@ serde = ["dep:serde", "dep:serde_json", "dep:bincode"]
 shadow-entropy = []
 # GSO-FHE gravitational swarm optimization noise bounding
 gso = []
+# Allow use of insecure test configurations in release builds (NOT RECOMMENDED)
+allow_insecure = []
 
 [dependencies]
 mana = { path = "../mana", optional = true }

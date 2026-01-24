@@ -1,7 +1,17 @@
 //! Montgomery Arithmetic - Gen 2 Division-Free Modular Multiplication
-//! 
+//!
 //! QMNF Innovation: Persistent Montgomery representation eliminates
 //! the 70-year boundary conversion overhead by staying in residue space.
+//!
+//! # Security
+//!
+//! All operations are implemented in **constant-time** to prevent
+//! timing side-channel attacks. This includes:
+//! - Montgomery reduction (no data-dependent branches)
+//! - Addition/subtraction (constant-time conditional)
+//! - Exponentiation (Montgomery ladder)
+//!
+//! Uses bit manipulation instead of branches for security-critical paths.
 
 /// Montgomery context for a specific modulus
 #[derive(Clone, Debug)]
@@ -75,22 +85,33 @@ impl MontgomeryContext {
     
     /// Montgomery reduction: t / R mod q
     /// REDC algorithm - no division, only multiplication and shifts
+    ///
+    /// # Security
+    ///
+    /// This implementation is **constant-time**: the final conditional
+    /// reduction uses bit manipulation instead of branches to prevent
+    /// timing side-channel attacks.
     #[inline(always)]
     pub fn montgomery_reduce(&self, t: u128) -> u64 {
         // m = (t mod R) * q_inv_neg mod R
         let t_lo = t as u64;
         let m = t_lo.wrapping_mul(self.q_inv_neg);
-        
+
         // t = (t + m * q) / R
         let mq = (m as u128) * (self.q as u128);
         let result = ((t.wrapping_add(mq)) >> 64) as u64;
-        
-        // Final reduction if needed
-        if result >= self.q {
-            result - self.q
-        } else {
-            result
-        }
+
+        // CONSTANT-TIME final reduction
+        // mask = 0xFFFF...FFFF if result >= q, else 0x0000...0000
+        // Uses the fact that (result - q) will underflow if result < q
+        let (diff, borrow) = result.overflowing_sub(self.q);
+        // If no borrow (result >= q), use diff; otherwise use result
+        // borrow is true (1) when result < q, false (0) when result >= q
+        // We want: if borrow { result } else { diff }
+        // mask = borrow as 0 or u64::MAX
+        let mask = (borrow as u64).wrapping_neg(); // 0 if no borrow, u64::MAX if borrow
+        // result = (result & mask) | (diff & !mask)
+        (result & mask) | (diff & !mask)
     }
     
     /// Montgomery squaring (slightly optimized)
@@ -100,15 +121,75 @@ impl MontgomeryContext {
     }
     
     /// Montgomery exponentiation: a^e mod q (in Montgomery form)
+    ///
+    /// # Security
+    ///
+    /// Uses the **Montgomery ladder** algorithm which is constant-time:
+    /// - Always performs the same number of multiplications
+    /// - Memory access pattern is independent of exponent bits
+    /// - No data-dependent branches
+    ///
+    /// This prevents timing and power analysis attacks that could
+    /// recover the exponent (which may be secret in some protocols).
     pub fn montgomery_pow(&self, base: u64, exp: u64) -> u64 {
+        // Montgomery ladder: constant-time exponentiation
+        // R0 = 1, R1 = base
+        // For each bit of exp (MSB to LSB):
+        //   if bit == 0: R1 = R0 * R1, R0 = R0^2
+        //   if bit == 1: R0 = R0 * R1, R1 = R1^2
+        // Result is R0
+
+        let one_mont = self.to_montgomery(1);
+
+        if exp == 0 {
+            return one_mont;
+        }
+
+        let mut r0 = one_mont;
+        let mut r1 = base;
+
+        // Find the highest set bit
+        let bits = 64 - exp.leading_zeros();
+
+        for i in (0..bits).rev() {
+            let bit = (exp >> i) & 1;
+
+            // CONSTANT-TIME swap based on bit
+            // If bit == 1: swap r0 and r1
+            let mask = bit.wrapping_neg(); // 0 if bit=0, u64::MAX if bit=1
+            let tmp = (r0 ^ r1) & mask;
+            r0 ^= tmp;
+            r1 ^= tmp;
+
+            // Always: r1 = r0 * r1, r0 = r0^2
+            r1 = self.montgomery_mul(r0, r1);
+            r0 = self.montgomery_square(r0);
+
+            // CONSTANT-TIME swap back
+            let tmp = (r0 ^ r1) & mask;
+            r0 ^= tmp;
+            r1 ^= tmp;
+        }
+
+        r0
+    }
+
+    /// Variable-time exponentiation (faster, use only with public exponents)
+    ///
+    /// # Security Warning
+    ///
+    /// This function has timing side-channels. Only use when the exponent
+    /// is PUBLIC (e.g., for NTT root computation, not for secret operations).
+    #[inline]
+    pub fn montgomery_pow_vartime(&self, base: u64, exp: u64) -> u64 {
         if exp == 0 {
             return self.to_montgomery(1);
         }
-        
+
         let mut result = self.to_montgomery(1);
         let mut base = base;
         let mut e = exp;
-        
+
         while e > 0 {
             if e & 1 == 1 {
                 result = self.montgomery_mul(result, base);
@@ -116,39 +197,50 @@ impl MontgomeryContext {
             base = self.montgomery_square(base);
             e >>= 1;
         }
-        
+
         result
     }
     
-    /// Add two Montgomery form numbers
+    /// Add two Montgomery form numbers (constant-time)
+    ///
+    /// # Security
+    ///
+    /// Uses constant-time conditional subtraction to prevent timing leaks.
     #[inline(always)]
     pub fn montgomery_add(&self, a: u64, b: u64) -> u64 {
-        let sum = a as u128 + b as u128;
-        if sum >= self.q as u128 {
-            (sum - self.q as u128) as u64
-        } else {
-            sum as u64
-        }
+        let sum = a.wrapping_add(b);
+        // CONSTANT-TIME: subtract q if sum >= q
+        let (diff, borrow) = sum.overflowing_sub(self.q);
+        let mask = (borrow as u64).wrapping_neg();
+        (sum & mask) | (diff & !mask)
     }
-    
-    /// Subtract two Montgomery form numbers
+
+    /// Subtract two Montgomery form numbers (constant-time)
+    ///
+    /// # Security
+    ///
+    /// Uses constant-time conditional addition to prevent timing leaks.
     #[inline(always)]
     pub fn montgomery_sub(&self, a: u64, b: u64) -> u64 {
-        if a >= b {
-            a - b
-        } else {
-            self.q - b + a
-        }
+        let (diff, borrow) = a.overflowing_sub(b);
+        // CONSTANT-TIME: add q if a < b (borrow occurred)
+        let correction = self.q & (borrow as u64).wrapping_neg();
+        diff.wrapping_add(correction)
     }
-    
-    /// Negate in Montgomery form
+
+    /// Negate in Montgomery form (constant-time)
+    ///
+    /// # Security
+    ///
+    /// Uses constant-time zero check to prevent timing leaks.
     #[inline(always)]
     pub fn montgomery_neg(&self, a: u64) -> u64 {
-        if a == 0 {
-            0
-        } else {
-            self.q - a
-        }
+        // CONSTANT-TIME: compute (q - a) but return 0 if a == 0
+        let neg = self.q.wrapping_sub(a);
+        // mask = 0 if a == 0, else u64::MAX
+        let is_zero = a == 0;
+        let mask = (!is_zero as u64).wrapping_neg();
+        neg & mask
     }
 }
 

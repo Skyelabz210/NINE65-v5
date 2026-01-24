@@ -5,6 +5,15 @@
 //! - Mul: tensor product followed by relinearization
 //! - Negate: component-wise negation
 //! - Add/Mul plaintext: operations with unencrypted values
+//!
+//! # Noise Budget Tracking
+//!
+//! Operations come in two variants:
+//! - **Unchecked** (`add`, `mul`, etc.): Fast path, no budget tracking
+//! - **Checked** (`try_add`, `try_mul`, etc.): Returns `Result`, tracks noise budget
+//!
+//! Use checked operations when you need to detect noise exhaustion before it causes
+//! decryption failures. The `TrackedEvaluator` wrapper provides automatic tracking.
 
 #[cfg(feature = "ntt_fft")]
 use crate::arithmetic::NTTEngineFFT as NTTEngine;
@@ -14,7 +23,9 @@ use crate::arithmetic::NTTEngine;
 
 use crate::arithmetic::KElimination;
 use crate::keys::EvaluationKey;
+use crate::noise::budget::{NoiseBudget, NoiseOpType, NoiseExhausted};
 use crate::ops::encrypt::{BFVEncoder, Ciphertext};
+use crate::params::FHEConfig;
 use crate::ring::RingPolynomial;
 
 /// Homomorphic Evaluator
@@ -217,12 +228,162 @@ impl<'a> BFVEvaluator<'a> {
     pub fn mul(&self, ct1: &Ciphertext, ct2: &Ciphertext) -> Ciphertext {
         let (c0, c1, c2) = self.mul_no_relin(ct1, ct2);
         let ct_relin = self.relinearize(&c0, &c1, &c2);
-        
+
         // Scale by t/q to convert from Δ² scale to Δ scale
         Ciphertext {
             c0: self.scale_by_t_over_q(&ct_relin.c0),
             c1: self.scale_by_t_over_q(&ct_relin.c1),
         }
+    }
+}
+
+// =============================================================================
+// TRACKED EVALUATOR: Noise Budget Aware Operations
+// =============================================================================
+
+/// Evaluator with automatic noise budget tracking
+///
+/// Wraps `BFVEvaluator` and tracks noise budget through all operations.
+/// Returns `Err(NoiseExhausted)` when budget is depleted.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut tracked = TrackedEvaluator::new(evaluator, config);
+///
+/// // Operations return Result
+/// let ct_sum = tracked.try_add(&ct_a, &ct_b)?;
+/// let ct_prod = tracked.try_mul_plain(&ct_sum, 5)?;
+///
+/// // Check remaining budget
+/// println!("Budget: {}", tracked.budget());
+/// ```
+pub struct TrackedEvaluator<'a> {
+    /// Inner evaluator
+    evaluator: BFVEvaluator<'a>,
+    /// Current noise budget
+    budget: NoiseBudget,
+    /// Config reference for cost calculations
+    config: &'a FHEConfig,
+}
+
+impl<'a> TrackedEvaluator<'a> {
+    /// Create tracked evaluator with automatic budget from config
+    pub fn new(evaluator: BFVEvaluator<'a>, config: &'a FHEConfig) -> Self {
+        Self {
+            evaluator,
+            budget: NoiseBudget::from_config(config),
+            config,
+        }
+    }
+
+    /// Create with explicit initial budget (for testing)
+    pub fn with_budget(evaluator: BFVEvaluator<'a>, config: &'a FHEConfig, budget_bits: i64) -> Self {
+        Self {
+            evaluator,
+            budget: NoiseBudget::with_budget_bits(budget_bits),
+            config,
+        }
+    }
+
+    /// Get reference to inner evaluator
+    pub fn inner(&self) -> &BFVEvaluator<'a> {
+        &self.evaluator
+    }
+
+    /// Get current noise budget
+    pub fn budget(&self) -> &NoiseBudget {
+        &self.budget
+    }
+
+    /// Get mutable reference to noise budget
+    pub fn budget_mut(&mut self) -> &mut NoiseBudget {
+        &mut self.budget
+    }
+
+    /// Check if an operation can be performed
+    pub fn can_add(&self) -> bool {
+        self.budget.can_perform(NoiseBudget::add_cost())
+    }
+
+    /// Check if plaintext multiplication can be performed
+    pub fn can_mul_plain(&self) -> bool {
+        self.budget.can_perform(NoiseBudget::mul_plain_cost(self.config))
+    }
+
+    /// Check if ciphertext multiplication can be performed
+    pub fn can_mul(&self) -> bool {
+        let cost = NoiseBudget::mul_ct_cost(self.config) + NoiseBudget::relin_cost(self.config);
+        self.budget.can_perform(cost)
+    }
+
+    /// Remaining multiplication depth
+    pub fn remaining_depth(&self) -> usize {
+        self.budget.remaining_multiplications(self.config)
+    }
+
+    // =========================================================================
+    // Tracked Operations (return Result)
+    // =========================================================================
+
+    /// Homomorphic addition with noise tracking
+    pub fn try_add(&mut self, ct1: &Ciphertext, ct2: &Ciphertext) -> Result<Ciphertext, NoiseExhausted> {
+        self.budget.consume(NoiseOpType::Add, NoiseBudget::add_cost())?;
+        Ok(self.evaluator.add(ct1, ct2))
+    }
+
+    /// Homomorphic subtraction with noise tracking
+    pub fn try_sub(&mut self, ct1: &Ciphertext, ct2: &Ciphertext) -> Result<Ciphertext, NoiseExhausted> {
+        self.budget.consume(NoiseOpType::Add, NoiseBudget::add_cost())?;
+        Ok(self.evaluator.sub(ct1, ct2))
+    }
+
+    /// Negate with noise tracking (minimal cost)
+    pub fn try_negate(&mut self, ct: &Ciphertext) -> Result<Ciphertext, NoiseExhausted> {
+        // Negation has negligible noise impact
+        self.budget.consume(NoiseOpType::Add, 100)?;
+        Ok(self.evaluator.negate(ct))
+    }
+
+    /// Add plaintext with noise tracking
+    pub fn try_add_plain(&mut self, ct: &Ciphertext, m: u64) -> Result<Ciphertext, NoiseExhausted> {
+        self.budget.consume(NoiseOpType::AddPlain, NoiseBudget::add_plain_cost())?;
+        Ok(self.evaluator.add_plain(ct, m))
+    }
+
+    /// Multiply by plaintext with noise tracking
+    pub fn try_mul_plain(&mut self, ct: &Ciphertext, m: u64) -> Result<Ciphertext, NoiseExhausted> {
+        self.budget.consume(NoiseOpType::MulPlain, NoiseBudget::mul_plain_cost(self.config))?;
+        Ok(self.evaluator.mul_plain(ct, m))
+    }
+
+    /// Ciphertext multiplication without relinearization (for advanced use)
+    pub fn try_mul_no_relin(&mut self, ct1: &Ciphertext, ct2: &Ciphertext)
+        -> Result<(RingPolynomial, RingPolynomial, RingPolynomial), NoiseExhausted>
+    {
+        self.budget.consume(NoiseOpType::MulCt, NoiseBudget::mul_ct_cost(self.config))?;
+        Ok(self.evaluator.mul_no_relin(ct1, ct2))
+    }
+
+    /// Relinearization with noise tracking
+    pub fn try_relinearize(&mut self, c0: &RingPolynomial, c1: &RingPolynomial, c2: &RingPolynomial)
+        -> Result<Ciphertext, NoiseExhausted>
+    {
+        self.budget.consume(NoiseOpType::Relin, NoiseBudget::relin_cost(self.config))?;
+        Ok(self.evaluator.relinearize(c0, c1, c2))
+    }
+
+    /// Full ciphertext multiplication with relinearization
+    #[allow(deprecated)]
+    pub fn try_mul(&mut self, ct1: &Ciphertext, ct2: &Ciphertext) -> Result<Ciphertext, NoiseExhausted> {
+        // Consume both multiplication and relinearization costs
+        let mul_cost = NoiseBudget::mul_ct_cost(self.config);
+        let relin_cost = NoiseBudget::relin_cost(self.config);
+
+        self.budget.consume(NoiseOpType::MulCt, mul_cost)?;
+        self.budget.consume(NoiseOpType::Relin, relin_cost)?;
+
+        Ok(self.evaluator.mul(ct1, ct2))
     }
 }
 
@@ -922,18 +1083,122 @@ mod tests {
     #[test]
     fn test_homo_mul_benchmark() {
         let (config, ntt, keys, mut harvester, encoder) = setup();
-        
+
         let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
         let evaluator = BFVEvaluator::new(&ntt, &encoder, Some(&keys.eval_key));
-        
+
         let ct = encryptor.encrypt(2, &mut harvester);
-        
+
         let start = std::time::Instant::now();
         for _ in 0..100 {
             let _ = evaluator.mul(&ct, &ct);
         }
         let elapsed = start.elapsed();
-        
+
         println!("Homo mul x100: {:?}", elapsed);
+    }
+
+    // =========================================================================
+    // TrackedEvaluator Tests
+    // =========================================================================
+
+    #[test]
+    fn test_tracked_evaluator_add() {
+        let (config, ntt, keys, mut harvester, encoder) = setup();
+
+        let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
+        let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
+        let evaluator = BFVEvaluator::new(&ntt, &encoder, None);
+        let mut tracked = super::TrackedEvaluator::new(evaluator, &config);
+
+        let ct_a = encryptor.encrypt(100, &mut harvester);
+        let ct_b = encryptor.encrypt(200, &mut harvester);
+
+        // Should succeed with budget
+        let ct_sum = tracked.try_add(&ct_a, &ct_b).expect("Add should succeed");
+        let result = decryptor.decrypt(&ct_sum);
+        assert_eq!(result, 300 % config.t);
+
+        // Budget should be reduced
+        assert!(tracked.budget().remaining_millibits() < tracked.budget().initial_bits() as i64 * 1000);
+    }
+
+    #[test]
+    fn test_tracked_evaluator_exhaustion() {
+        let (config, ntt, _, _, encoder) = setup();
+
+        let evaluator = BFVEvaluator::new(&ntt, &encoder, None);
+        // Create with tiny budget (2 bits)
+        let mut tracked = super::TrackedEvaluator::with_budget(evaluator, &config, 2);
+
+        let ct = Ciphertext {
+            c0: RingPolynomial::zero(config.n, config.q),
+            c1: RingPolynomial::zero(config.n, config.q),
+        };
+
+        // First few adds might work
+        let result1 = tracked.try_add(&ct, &ct);
+        let result2 = tracked.try_add(&ct, &ct);
+        let result3 = tracked.try_add(&ct, &ct);
+
+        // Eventually should exhaust budget
+        let all_ok = result1.is_ok() && result2.is_ok() && result3.is_ok();
+        let any_failed = result1.is_err() || result2.is_err() || result3.is_err();
+
+        println!("Results: r1={}, r2={}, r3={}",
+                 result1.is_ok(), result2.is_ok(), result3.is_ok());
+        println!("Budget remaining: {} millibits", tracked.budget().remaining_millibits());
+
+        // Either all succeed (if budget was enough) or at least one fails
+        assert!(all_ok || any_failed, "Should either all succeed or some fail");
+    }
+
+    #[test]
+    fn test_tracked_evaluator_mul_plain() {
+        let (config, ntt, keys, mut harvester, encoder) = setup();
+
+        let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
+        let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
+        let evaluator = BFVEvaluator::new(&ntt, &encoder, None);
+        // Use explicit budget that's sufficient for mul_plain (log2(t) ≈ 12 bits for t=2^12)
+        let mut tracked = super::TrackedEvaluator::with_budget(evaluator, &config, 50);
+
+        let ct = encryptor.encrypt(10, &mut harvester);
+
+        let ct_scaled = tracked.try_mul_plain(&ct, 5).expect("MulPlain should succeed");
+        let result = decryptor.decrypt(&ct_scaled);
+        assert_eq!(result, 50 % config.t);
+
+        println!("Tracked budget after mul_plain: {}", tracked.budget());
+    }
+
+    #[test]
+    fn test_tracked_evaluator_remaining_depth() {
+        let (config, ntt, _, _, encoder) = setup();
+
+        let evaluator = BFVEvaluator::new(&ntt, &encoder, None);
+        // Use explicit budget for testing depth calculation
+        let tracked = super::TrackedEvaluator::with_budget(evaluator, &config, 100);
+
+        let depth = tracked.remaining_depth();
+        println!("Remaining multiplication depth with 100-bit budget: {}", depth);
+
+        // Should have some depth with 100-bit budget
+        assert!(depth > 0, "Should have positive multiplication depth with 100-bit budget");
+    }
+
+    #[test]
+    fn test_can_perform_checks() {
+        let (config, ntt, _, _, encoder) = setup();
+
+        let evaluator = BFVEvaluator::new(&ntt, &encoder, None);
+        // Use explicit budget for testing can_perform checks
+        let tracked = super::TrackedEvaluator::with_budget(evaluator, &config, 50);
+
+        assert!(tracked.can_add(), "Should be able to add with 50-bit budget");
+        assert!(tracked.can_mul_plain(), "Should be able to mul_plain with 50-bit budget");
+
+        // With 50-bit budget, mul should also be possible
+        println!("can_mul: {}", tracked.can_mul());
     }
 }

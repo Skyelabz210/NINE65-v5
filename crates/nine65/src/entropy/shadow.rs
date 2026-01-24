@@ -3,9 +3,37 @@
 //! QMNF Innovation: Zero-cost entropy harvesting from computational
 //! organization. Achieves 5-10x faster than CSPRNGs while passing
 //! NIST SP 800-22 statistical tests.
+//!
+//! # Thread Safety
+//!
+//! `ShadowHarvester` is **NOT thread-safe**. It maintains mutable internal state
+//! (LFSR and counter) and is `Send` but NOT `Sync`. Each thread should have
+//! its own instance:
+//!
+//! ```ignore
+//! // WRONG: Don't share ShadowHarvester across threads
+//! // let shared = Arc::new(Mutex::new(ShadowHarvester::new())); // Inefficient!
+//!
+//! // RIGHT: Each thread gets its own harvester
+//! let handles: Vec<_> = (0..4).map(|i| {
+//!     thread::spawn(move || {
+//!         let mut rng = ShadowHarvester::with_seed(42 + i);
+//!         // Use rng locally
+//!     })
+//! }).collect();
+//! ```
+//!
+//! For thread-safe cryptographic randomness, use [`SecureRng`](super::SecureRng)
+//! which wraps the OS CSPRNG.
 
 /// Shadow Entropy Harvester
-/// Uses LFSR + counter mixing for deterministic, reproducible randomness
+///
+/// Uses LFSR + counter mixing for deterministic, reproducible randomness.
+///
+/// # Thread Safety
+///
+/// `ShadowHarvester` is `Send` but NOT `Sync`. It has mutable internal state
+/// and should not be shared across threads. Create a separate instance per thread.
 pub struct ShadowHarvester {
     /// LFSR state
     state: u64,

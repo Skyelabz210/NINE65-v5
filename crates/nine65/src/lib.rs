@@ -3,6 +3,12 @@
 //! A complete BFV Fully Homomorphic Encryption implementation with
 //! K-Elimination exact arithmetic and post-quantum security.
 //!
+//! # Safety
+//!
+//! This crate contains no `unsafe` code and enforces this crate-wide.
+
+#![forbid(unsafe_code)]
+//!
 //! ## Core Innovations
 //! 
 //! | Innovation | Benefit | Performance |
@@ -160,6 +166,7 @@ pub mod prelude {
     
     // Ring operations
     pub use crate::ring::RingPolynomial;
+    pub use crate::ring::{PolynomialPool, PooledPolynomial, PoolGuard};
     
     // Key management
     pub use crate::keys::{SecretKey, PublicKey, EvaluationKey, KeySet};
@@ -167,6 +174,9 @@ pub mod prelude {
     // FHE operations - Classical BFV (single modulus)
     pub use crate::ops::{BFVEncoder, BFVEncryptor, BFVDecryptor, BFVEvaluator, Ciphertext};
     pub use crate::ops::{FHENeuralEvaluator, ActivationType, DenseLayer, NeuralNetwork};
+
+    // Galois automorphisms for SIMD slot rotations
+    pub use crate::ops::{GaloisEngine, GaloisKey, GaloisKeySet, GaloisEvaluator};
 
     // FHE operations - DualRNS with K-Elimination (RECOMMENDED for ct×ct multiplication)
     pub use crate::ops::rns_fhe::{

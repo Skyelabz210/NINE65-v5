@@ -147,7 +147,7 @@ impl ParameterValidator {
             _ => {
                 // Rough interpolation
                 let log_n = 64 - (n as u64).leading_zeros();
-                (log_n as u32 - 10) * 27
+                (log_n - 10) * 27
             }
         }
     }

@@ -3,6 +3,10 @@
 //! QMNF Innovation: CRTBigInt parallel coefficient operations enable
 //! exact arithmetic on integers larger than any single prime modulus.
 
+// Allow explicit indexing in RNS computations - loop indices are used
+// in CRT reconstruction and multi-limb arithmetic, not just array access.
+#![allow(clippy::needless_range_loop)]
+
 use super::montgomery::MontgomeryContext;
 use zeroize::Zeroize;
 #[cfg(feature = "ntt_fft")]
@@ -769,7 +773,7 @@ impl DualRNSPolynomial {
         // Precompute q_last^{-1} mod p for each output prime p
         let q_last_inv_main: Vec<Option<u64>> = ctx.main.primes.iter()
             .map(|&p| {
-                let ql_mod_p = (q_last % p) as u64;
+                let ql_mod_p = q_last % p;
                 if ql_mod_p == 0 {
                     None
                 } else {
@@ -780,7 +784,7 @@ impl DualRNSPolynomial {
 
         let q_last_inv_anchor: Vec<Option<u64>> = ctx.anchor.primes.iter()
             .map(|&p| {
-                let ql_mod_p = (q_last % p) as u64;
+                let ql_mod_p = q_last % p;
                 if ql_mod_p == 0 {
                     None
                 } else {

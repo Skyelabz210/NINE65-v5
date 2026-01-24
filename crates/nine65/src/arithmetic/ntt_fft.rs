@@ -1,18 +1,22 @@
 //! NTT FFT - Cooley-Tukey O(N log N) Implementation
-//! 
+//!
 //! NINE65 V2 INNOVATION: Drop-in replacement for O(N²) DFT
-//! 
+//!
 //! This file is ADDITIVE - it doesn't replace ntt.rs
 //! Enable with feature flag: --features ntt_fft
-//! 
+//!
 //! Expected speedup: 500-2000× depending on N
-//! 
+//!
 //! Usage:
 //!   #[cfg(feature = "ntt_fft")]
 //!   use crate::arithmetic::ntt_fft::NTTEngineFFT as NTTEngine;
-//!   
+//!
 //!   #[cfg(not(feature = "ntt_fft"))]
 //!   use crate::arithmetic::ntt::NTTEngine;
+
+// Allow explicit indexing in FFT algorithms - the loop indices are used in
+// butterfly computations and bit-reversal, not just for array access.
+#![allow(clippy::needless_range_loop)]
 
 use super::montgomery::MontgomeryContext;
 use super::persistent_montgomery::PersistentMontgomery;
@@ -533,42 +537,52 @@ mod tests {
         assert_eq!(result, expected, "FFT multiply doesn't match schoolbook");
     }
     
+    /// Benchmark test for 1024-point FFT NTT multiply
+    ///
+    /// Marked #[ignore] - timing depends on machine load.
+    /// Run manually: cargo test -p nine65 --lib -- ntt_fft::tests::test_benchmark_1024 --ignored --nocapture
     #[test]
+    #[ignore]
     fn test_benchmark_1024() {
         let engine = NTTEngineFFT::new(TEST_PRIME, 1024);
-        
+
         let a: Vec<u64> = (0..1024).map(|i| i % TEST_PRIME).collect();
         let b: Vec<u64> = (0..1024).map(|i| (i * 2) % TEST_PRIME).collect();
-        
+
         let start = std::time::Instant::now();
         for _ in 0..1000 {
             let _ = engine.multiply(&a, &b);
         }
         let elapsed = start.elapsed();
-        
+
         println!("FFT NTT 1024-point multiply x1000: {:?}", elapsed);
         println!("Per multiply: {:?}", elapsed / 1000);
-        
+
         // Should be WAY faster than 13.5ms (current DFT)
         assert!(elapsed.as_millis() < 5000, "FFT should complete 1000 muls in under 5s");
     }
-    
+
+    /// Benchmark test for 4096-point FFT NTT multiply
+    ///
+    /// Marked #[ignore] - timing depends on machine load.
+    /// Run manually: cargo test -p nine65 --lib -- ntt_fft::tests::test_benchmark_4096 --ignored --nocapture
     #[test]
+    #[ignore]
     fn test_benchmark_4096() {
         let engine = NTTEngineFFT::new(TEST_PRIME, 4096);
-        
+
         let a: Vec<u64> = (0..4096).map(|i| i % TEST_PRIME).collect();
         let b: Vec<u64> = (0..4096).map(|i| (i * 2) % TEST_PRIME).collect();
-        
+
         let start = std::time::Instant::now();
         for _ in 0..100 {
             let _ = engine.multiply(&a, &b);
         }
         let elapsed = start.elapsed();
-        
+
         println!("FFT NTT 4096-point multiply x100: {:?}", elapsed);
         println!("Per multiply: {:?}", elapsed / 100);
-        
+
         // Should be WAY faster than 213ms (current DFT)
         assert!(elapsed.as_millis() < 2000, "FFT should complete 100 muls in under 2s");
     }

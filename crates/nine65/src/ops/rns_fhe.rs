@@ -18,7 +18,8 @@ use crate::arithmetic::NTTEngine;
 
 use crate::arithmetic::{RNSContext, RNSPolynomial, DualRNSContext, KElimination};
 use crate::params::{FHEConfig, mod_inverse};
-use crate::entropy::ShadowHarvester;
+use crate::entropy::{ShadowHarvester, FheRng, SecureRng};
+use crate::errors::{Nine65Error, Nine65Result};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// RNS-native ciphertext: stored as parallel limbs from encryption
@@ -63,6 +64,16 @@ pub struct DualRNSPoly {
 /// Maintains both main and anchor residues through ALL operations,
 /// enabling exact reconstruction even after tensor product causes
 /// wraparound in main RNS (when Δ² > Q).
+///
+/// # Thread Safety
+///
+/// `DualRNSCiphertext` is `Send + Sync`. Ciphertexts can be safely:
+/// - Sent between threads
+/// - Shared via `Arc<DualRNSCiphertext>` for read operations
+/// - Cloned for independent modifications in different threads
+///
+/// For concurrent homomorphic operations on the same data, clone the
+/// ciphertext first (ciphertexts are cheap to clone).
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct DualRNSCiphertext {
@@ -164,6 +175,170 @@ pub struct RNSKeySet {
 }
 
 // ============================================================================
+// VALIDATION
+// ============================================================================
+
+/// Maximum polynomial degree to prevent DoS attacks via excessive allocation
+const MAX_POLY_DEGREE: usize = 32768;
+
+/// Maximum number of RNS limbs to prevent DoS attacks
+const MAX_RNS_LIMBS: usize = 64;
+
+/// Maximum ciphertext level to prevent invalid state
+const MAX_LEVEL: usize = 32;
+
+impl DualRNSPoly {
+    /// Validate the polynomial structure
+    ///
+    /// # Security
+    /// Call this after deserialization to prevent:
+    /// - DoS via excessive allocation (bounded by MAX_POLY_DEGREE, MAX_RNS_LIMBS)
+    /// - Inconsistent internal state
+    pub fn validate(&self) -> Nine65Result<()> {
+        // Check polynomial degree bounds
+        if self.n == 0 {
+            return Err(Nine65Error::InvalidParameter {
+                message: "DualRNSPoly: polynomial degree n cannot be 0".to_string(),
+            });
+        }
+        if self.n > MAX_POLY_DEGREE {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSPoly: polynomial degree {} exceeds maximum {}",
+                    self.n, MAX_POLY_DEGREE
+                ),
+            });
+        }
+        if !self.n.is_power_of_two() {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSPoly: polynomial degree {} must be power of 2",
+                    self.n
+                ),
+            });
+        }
+
+        // Validate main limbs
+        if self.main.len() > MAX_RNS_LIMBS {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSPoly: {} main limbs exceeds maximum {}",
+                    self.main.len(),
+                    MAX_RNS_LIMBS
+                ),
+            });
+        }
+        for (i, limb) in self.main.iter().enumerate() {
+            if limb.len() != self.n {
+                return Err(Nine65Error::InvalidParameter {
+                    message: format!(
+                        "DualRNSPoly: main limb {} has length {} but n={}",
+                        i,
+                        limb.len(),
+                        self.n
+                    ),
+                });
+            }
+        }
+
+        // Validate anchor limbs
+        if self.anchor.len() > MAX_RNS_LIMBS {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSPoly: {} anchor limbs exceeds maximum {}",
+                    self.anchor.len(),
+                    MAX_RNS_LIMBS
+                ),
+            });
+        }
+        for (i, limb) in self.anchor.iter().enumerate() {
+            if limb.len() != self.n {
+                return Err(Nine65Error::InvalidParameter {
+                    message: format!(
+                        "DualRNSPoly: anchor limb {} has length {} but n={}",
+                        i,
+                        limb.len(),
+                        self.n
+                    ),
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DualRNSCiphertext {
+    /// Validate the ciphertext structure
+    ///
+    /// # Security
+    /// Call this after deserialization to prevent:
+    /// - DoS via excessive allocation
+    /// - Inconsistent internal state
+    /// - Invalid level values
+    pub fn validate(&self) -> Nine65Result<()> {
+        // Validate c0 and c1 polynomials
+        self.c0.validate()?;
+        self.c1.validate()?;
+
+        // c0 and c1 must have matching degree
+        if self.c0.n != self.c1.n {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSCiphertext: c0.n={} != c1.n={}",
+                    self.c0.n, self.c1.n
+                ),
+            });
+        }
+
+        // c0 and c1 must have matching main limb count
+        if self.c0.main.len() != self.c1.main.len() {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSCiphertext: c0 main limbs {} != c1 main limbs {}",
+                    self.c0.main.len(),
+                    self.c1.main.len()
+                ),
+            });
+        }
+
+        // c0 and c1 must have matching anchor limb count
+        if self.c0.anchor.len() != self.c1.anchor.len() {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSCiphertext: c0 anchor limbs {} != c1 anchor limbs {}",
+                    self.c0.anchor.len(),
+                    self.c1.anchor.len()
+                ),
+            });
+        }
+
+        // Level must be within bounds
+        if self.level > MAX_LEVEL {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSCiphertext: level {} exceeds maximum {}",
+                    self.level, MAX_LEVEL
+                ),
+            });
+        }
+
+        // Level should be consistent with number of main limbs
+        if self.level > self.c0.main.len() {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "DualRNSCiphertext: level {} > main limb count {}",
+                    self.level,
+                    self.c0.main.len()
+                ),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
 // SERIALIZATION HELPERS
 // ============================================================================
 
@@ -174,9 +349,28 @@ impl DualRNSCiphertext {
         serde_json::to_string(self)
     }
 
-    /// Deserialize from JSON string
+    /// Deserialize from JSON string (unchecked)
+    ///
+    /// # Security Warning
+    /// This does not validate the deserialized data. Use `from_json_validated`
+    /// when deserializing untrusted input.
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
+    }
+
+    /// Deserialize from JSON string with validation
+    ///
+    /// # Security
+    /// Validates the deserialized ciphertext to prevent:
+    /// - DoS attacks via excessive allocation
+    /// - Inconsistent internal state
+    pub fn from_json_validated(s: &str) -> Nine65Result<Self> {
+        let ct: Self = serde_json::from_str(s)
+            .map_err(|e| Nine65Error::DeserializationError {
+                message: format!("JSON parse error: {}", e),
+            })?;
+        ct.validate()?;
+        Ok(ct)
     }
 
     /// Serialize to compact binary format (bincode)
@@ -184,9 +378,28 @@ impl DualRNSCiphertext {
         bincode::serialize(self)
     }
 
-    /// Deserialize from binary format (bincode)
+    /// Deserialize from binary format (unchecked)
+    ///
+    /// # Security Warning
+    /// This does not validate the deserialized data. Use `from_bytes_validated`
+    /// when deserializing untrusted input.
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
+    }
+
+    /// Deserialize from binary format with validation
+    ///
+    /// # Security
+    /// Validates the deserialized ciphertext to prevent:
+    /// - DoS attacks via excessive allocation
+    /// - Inconsistent internal state
+    pub fn from_bytes_validated(bytes: &[u8]) -> Nine65Result<Self> {
+        let ct: Self = bincode::deserialize(bytes)
+            .map_err(|e| Nine65Error::DeserializationError {
+                message: format!("Bincode parse error: {}", e),
+            })?;
+        ct.validate()?;
+        Ok(ct)
     }
 }
 
@@ -273,6 +486,30 @@ impl AutoCiphertext {
 ///
 /// Single-RNS ciphertexts/keys are stored in Montgomery form to enable
 /// persistent Montgomery NTT without repeated conversions.
+///
+/// # Thread Safety
+///
+/// `RNSFHEContext` is `Send + Sync` and can be safely shared across threads.
+/// The context is immutable after construction - all encryption/decryption
+/// operations use `&self` references. For concurrent operations, wrap in
+/// `Arc<RNSFHEContext>` and share across threads.
+///
+/// ```ignore
+/// use std::sync::Arc;
+/// use std::thread;
+///
+/// let ctx = Arc::new(RNSFHEContext::new(&config));
+/// let handles: Vec<_> = (0..4).map(|_| {
+///     let ctx = Arc::clone(&ctx);
+///     thread::spawn(move || {
+///         // Safe to use ctx from multiple threads
+///         ctx.encrypt_dual(42, &public_key, &mut rng)
+///     })
+/// }).collect();
+/// ```
+///
+/// **Note**: The RNG passed to encryption methods must be thread-local.
+/// Do NOT share a single `ShadowHarvester` across threads.
 pub struct RNSFHEContext {
     /// Dual-RNS context (main + anchor systems)
     pub dual_rns: DualRNSContext,
@@ -296,14 +533,34 @@ pub struct RNSFHEContext {
 }
 
 impl RNSFHEContext {
-    /// Create RNS FHE context from config
+    /// Create RNS FHE context from config (fallible version)
     ///
-    /// Requires config with at least 2 primes for RNS multiplication
-    pub fn new(config: &FHEConfig) -> Self {
-        assert!(config.primes.len() >= 2,
-                "RNS-native FHE requires at least 2 primes. Use light_rns or higher.");
-        assert!(config.primes.len() <= 3,
-                "Currently supports up to 3 primes (Q fits in u128)");
+    /// Returns `Err` if:
+    /// - Config has fewer than 2 primes
+    /// - Config has more than 3 primes
+    /// - Plaintext modulus is zero
+    pub fn try_new(config: &FHEConfig) -> Nine65Result<Self> {
+        if config.primes.len() < 2 {
+            return Err(Nine65Error::ConfigError {
+                message: format!(
+                    "RNS-native FHE requires at least 2 primes, got {}. Use light_rns or higher.",
+                    config.primes.len()
+                ),
+            });
+        }
+        if config.primes.len() > 3 {
+            return Err(Nine65Error::ConfigError {
+                message: format!(
+                    "Currently supports up to 3 primes (Q fits in u128), got {}",
+                    config.primes.len()
+                ),
+            });
+        }
+        if config.t == 0 {
+            return Err(Nine65Error::ConfigError {
+                message: "Plaintext modulus t must be > 0".into(),
+            });
+        }
 
         // Create dual-RNS context with main + anchor systems
         let dual_rns = DualRNSContext::for_fhe(&config.primes, config.n);
@@ -329,7 +586,7 @@ impl RNSFHEContext {
         // Legacy K-Elimination (now using dual_rns internally)
         let ke = KElimination::for_fhe(config.primes[0]);
 
-        Self {
+        Ok(Self {
             dual_rns,
             rns,
             ntt_engines,
@@ -339,7 +596,16 @@ impl RNSFHEContext {
             delta_rns,
             n: config.n,
             config: config.clone(),
-        }
+        })
+    }
+
+    /// Create RNS FHE context from config
+    ///
+    /// # Panics
+    /// Panics if config has fewer than 2 or more than 3 primes.
+    /// Use `try_new()` for fallible construction.
+    pub fn new(config: &FHEConfig) -> Self {
+        Self::try_new(config).expect("Invalid FHE config for RNS-native FHE")
     }
 
     /// Create RNS FHE context for coefficient-domain K-Elimination
@@ -524,8 +790,13 @@ impl RNSFHEContext {
     }
 
     /// Get smallest prime (used for sampling bounds)
+    ///
+    /// # Safety
+    /// Constructor guarantees at least 2 primes, so this never fails.
     fn smallest_prime(&self) -> u64 {
-        *self.config.primes.iter().min().unwrap()
+        debug_assert!(!self.config.primes.is_empty(), "Invariant violated: primes cannot be empty");
+        // SAFETY: Constructor validates primes.len() >= 2
+        *self.config.primes.iter().min().unwrap_or(&0)
     }
 
     /// Convert a single-RNS polynomial into Montgomery form (persistent mode).
@@ -627,7 +898,7 @@ impl RNSFHEContext {
         let decomp_base = 1u64 << 16; // 2^16 decomposition base
         // Number of digits based on Q size (using 128-bit representation)
         let q_bits = 128 - self.q_product.leading_zeros() as usize;
-        let num_digits = (q_bits + 15) / 16;
+        let num_digits = q_bits.div_ceil(16);
 
         // s^2 in RNS
         let s2 = self.rns_poly_mul(&sk.s, &sk.s);
@@ -976,7 +1247,7 @@ impl RNSFHEContext {
         // Number of digits based on Q (128 bits max for 3 primes)
         let q_bits = 128 - self.q_product.leading_zeros() as usize;
         let base_bits = 64 - base.leading_zeros() as usize;
-        let num_digits = (q_bits + base_bits - 1) / base_bits;
+        let num_digits = q_bits.div_ceil(base_bits);
 
         // First, reconstruct to get actual coefficients (mod Q)
         let mut coeffs: Vec<u128> = (0..self.n)
@@ -1051,6 +1322,19 @@ impl RNSFHEContext {
     // enabling EXACT reconstruction via K-Elimination even when Δ² > Q.
 
     /// Generate dual-track key set with anchor residues
+    ///
+    /// # Security
+    ///
+    /// **PRODUCTION**: Use OS-seeded RNG for cryptographic security:
+    /// ```ignore
+    /// let mut rng = ShadowHarvester::from_os_seed();
+    /// let keys = ctx.generate_keys_dual(&mut rng);
+    /// ```
+    ///
+    /// **TESTING ONLY**: Deterministic seeds for reproducibility:
+    /// ```ignore
+    /// let mut rng = ShadowHarvester::with_seed(42);  // INSECURE - testing only!
+    /// ```
     pub fn generate_keys_dual(&self, rng: &mut ShadowHarvester) -> DualRNSKeySet {
         // Generate secret key s with small coefficients {-1, 0, 1}
         let s_choices: Vec<i8> = (0..self.n)
@@ -1087,10 +1371,13 @@ impl RNSFHEContext {
 
         // Generate random a - must be consistent across main AND anchor primes
         // Sample in [0, min_all_primes) to ensure correct representation in all moduli
+        // SAFETY: Constructor validates primes.len() >= 2, anchor primes always exist
+        debug_assert!(!self.config.primes.is_empty() && !self.dual_rns.anchor.primes.is_empty(),
+                      "Invariant violated: primes cannot be empty");
         let min_all_primes = *self.config.primes.iter()
             .chain(self.dual_rns.anchor.primes.iter())
             .min()
-            .unwrap();
+            .unwrap_or(&u64::MAX);
         let a_coeffs: Vec<u64> = (0..self.n)
             .map(|_| rng.next_u64() % min_all_primes)
             .collect();
@@ -1133,6 +1420,23 @@ impl RNSFHEContext {
     /// - Only key holder can decrypt
     ///
     /// This is the standard IND-CPA secure FHE model.
+    ///
+    /// # Security
+    ///
+    /// **PRODUCTION**: Use OS-seeded RNG for cryptographic security:
+    /// ```ignore
+    /// let mut rng = ShadowHarvester::from_os_seed();
+    /// let keys = ctx.generate_keys_dual_full(&mut rng);
+    /// ```
+    ///
+    /// **TESTING ONLY**: Deterministic seeds for reproducibility:
+    /// ```ignore
+    /// let mut rng = ShadowHarvester::with_seed(42);  // INSECURE - testing only!
+    /// let keys = ctx.generate_keys_dual_full(&mut rng);
+    /// ```
+    ///
+    /// The evaluation key contains encrypted values of s². Using predictable
+    /// randomness in production could compromise the secret key.
     pub fn generate_keys_dual_full(&self, rng: &mut ShadowHarvester) -> DualRNSFullKeySet {
         // First generate basic keys
         let basic_keys = self.generate_keys_dual(rng);
@@ -1154,7 +1458,7 @@ impl RNSFHEContext {
     fn generate_eval_key_dual(&self, sk: &DualRNSSecretKey, rng: &mut ShadowHarvester) -> DualRNSEvalKey {
         let decomp_base = 1u64 << 16; // 2^16 decomposition base
         let q_bits = 128 - self.q_product.leading_zeros() as usize;
-        let num_digits = (q_bits + 15) / 16;
+        let num_digits = q_bits.div_ceil(16);
 
         // Find minimum prime across main AND anchor for safe sampling
         let min_main = self.config.primes.iter().min().copied().unwrap_or(u64::MAX);
@@ -1259,7 +1563,7 @@ impl RNSFHEContext {
 
         // Encode message: m * Δ
         let delta_big = self.q_product / self.t as u128;
-        let encoded = (m as u128 * delta_big) as u128;
+        let encoded = m as u128 * delta_big;
 
         // Create message polynomial (constant term only)
         let mut m_coeffs = vec![0u64; self.n];
@@ -1335,6 +1639,99 @@ impl RNSFHEContext {
             c1,
             level: self.config.primes.len(),
         }
+    }
+
+    /// Encrypt plaintext to dual-track ciphertext with generic RNG
+    ///
+    /// Allows using any `FheRng` implementation for encryption randomness.
+    /// For production, use with `SecureRng`. For testing, use with `ShadowHarvester`.
+    pub fn encrypt_dual_with_rng<R: FheRng>(&self, m: u64, pk: &DualRNSPublicKey, rng: &mut R) -> DualRNSCiphertext {
+        assert!(m < self.t, "Plaintext must be < t");
+
+        // Encode message: m * Δ
+        let delta_big = self.q_product / self.t as u128;
+        let encoded = m as u128 * delta_big;
+
+        // Create message polynomial (constant term only)
+        let mut m_coeffs = vec![0u64; self.n];
+        m_coeffs[0] = (encoded % self.q_product) as u64;
+
+        let m_main = self.to_main_rns(&m_coeffs);
+        let m_anchor = self.to_anchor_rns_u128(&m_coeffs, encoded);
+        let m_dual = DualRNSPoly { main: m_main, anchor: m_anchor, n: self.n };
+
+        // Generate small u with coefficients {-1, 0, 1}
+        let u_choices: Vec<i8> = (0..self.n)
+            .map(|_| {
+                let r = rng.next_u64() % 3;
+                match r {
+                    0 => 0i8,
+                    1 => 1i8,
+                    _ => -1i8,
+                }
+            })
+            .collect();
+
+        let u_main: Vec<Vec<u64>> = self.config.primes.iter()
+            .map(|&p| {
+                u_choices.iter().map(|&c| {
+                    if c < 0 { p - 1 } else { c as u64 }
+                }).collect()
+            })
+            .collect();
+        let u_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+            .map(|&p| {
+                u_choices.iter().map(|&c| {
+                    if c < 0 { p - 1 } else { c as u64 }
+                }).collect()
+            })
+            .collect();
+        let u_dual = DualRNSPoly { main: u_main, anchor: u_anchor, n: self.n };
+
+        // Generate errors e1, e2 as SIGNED values, then convert correctly for each modulus
+        let e1_signed: Vec<i64> = (0..self.n)
+            .map(|_| sample_cbd_signed_rng(rng, self.config.eta))
+            .collect();
+        let e1_main: Vec<Vec<u64>> = self.config.primes.iter()
+            .map(|&p| e1_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
+            .collect();
+        let e1_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+            .map(|&p| e1_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
+            .collect();
+        let e1_dual = DualRNSPoly { main: e1_main, anchor: e1_anchor, n: self.n };
+
+        let e2_signed: Vec<i64> = (0..self.n)
+            .map(|_| sample_cbd_signed_rng(rng, self.config.eta))
+            .collect();
+        let e2_main: Vec<Vec<u64>> = self.config.primes.iter()
+            .map(|&p| e2_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
+            .collect();
+        let e2_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+            .map(|&p| e2_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
+            .collect();
+        let e2_dual = DualRNSPoly { main: e2_main, anchor: e2_anchor, n: self.n };
+
+        // c0 = pk0 * u + e1 + m (in BOTH main and anchor systems)
+        let pk0_u = self.dual_poly_mul(&pk.pk0, &u_dual);
+        let c0 = self.dual_poly_add(&self.dual_poly_add(&pk0_u, &e1_dual), &m_dual);
+
+        // c1 = pk1 * u + e2 (in BOTH main and anchor systems)
+        let pk1_u = self.dual_poly_mul(&pk.pk1, &u_dual);
+        let c1 = self.dual_poly_add(&pk1_u, &e2_dual);
+
+        DualRNSCiphertext {
+            c0,
+            c1,
+            level: self.config.primes.len(),
+        }
+    }
+
+    /// Encrypt with cryptographically secure randomness (RECOMMENDED FOR PRODUCTION)
+    ///
+    /// Uses `SecureRng` (OS CSPRNG) for all randomness, providing IND-CPA security.
+    pub fn encrypt_dual_secure(&self, m: u64, pk: &DualRNSPublicKey) -> DualRNSCiphertext {
+        let mut rng = SecureRng::new();
+        self.encrypt_dual_with_rng(m, pk, &mut rng)
     }
 
     /// Decrypt dual-track ciphertext
@@ -2272,6 +2669,11 @@ fn signed_to_mod(v: i64, p: u64) -> u64 {
 
 /// Sample from centered binomial distribution, returning SIGNED value
 fn sample_cbd_signed(rng: &mut ShadowHarvester, eta: usize) -> i64 {
+    sample_cbd_signed_rng(rng, eta)
+}
+
+/// Sample from centered binomial distribution with generic RNG
+fn sample_cbd_signed_rng<R: FheRng>(rng: &mut R, eta: usize) -> i64 {
     let mut sum: i64 = 0;
     for _ in 0..eta {
         let a = (rng.next_u64() & 1) as i64;
@@ -2283,12 +2685,12 @@ fn sample_cbd_signed(rng: &mut ShadowHarvester, eta: usize) -> i64 {
 
 /// Sample from centered binomial distribution (legacy version for single modulus)
 fn sample_cbd(rng: &mut ShadowHarvester, eta: usize, q: u64) -> u64 {
-    let mut sum: i64 = 0;
-    for _ in 0..eta {
-        let a = (rng.next_u64() & 1) as i64;
-        let b = (rng.next_u64() & 1) as i64;
-        sum += a - b;
-    }
+    sample_cbd_rng(rng, eta, q)
+}
+
+/// Sample from centered binomial distribution with generic RNG
+fn sample_cbd_rng<R: FheRng>(rng: &mut R, eta: usize, q: u64) -> u64 {
+    let sum = sample_cbd_signed_rng(rng, eta);
 
     if sum >= 0 {
         sum as u64
@@ -2296,6 +2698,33 @@ fn sample_cbd(rng: &mut ShadowHarvester, eta: usize, q: u64) -> u64 {
         (q as i64 + sum) as u64
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THREAD SAFETY STATIC ASSERTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Compile-time verification that key types are thread-safe.
+// These assertions fail at compile time if the types don't implement Send/Sync.
+const _: () = {
+    const fn assert_send<T: Send>() {}
+    const fn assert_sync<T: Sync>() {}
+
+    // Core types
+    assert_send::<RNSFHEContext>();
+    assert_sync::<RNSFHEContext>();
+    assert_send::<DualRNSCiphertext>();
+    assert_sync::<DualRNSCiphertext>();
+    assert_send::<DualRNSPoly>();
+    assert_sync::<DualRNSPoly>();
+
+    // Key types
+    assert_send::<DualRNSSecretKey>();
+    assert_sync::<DualRNSSecretKey>();
+    assert_send::<DualRNSPublicKey>();
+    assert_sync::<DualRNSPublicKey>();
+    assert_send::<DualRNSKeySet>();
+    assert_sync::<DualRNSKeySet>();
+};
 
 #[cfg(test)]
 mod tests {
@@ -6593,5 +7022,180 @@ mod tests {
 
         // Bincode should always be smaller
         assert!(bincode_size < json_size, "Bincode should be more compact than JSON");
+    }
+
+    // =========================================================================
+    // VALIDATION TESTS
+    // =========================================================================
+
+    #[test]
+    fn test_dual_rns_poly_validation_valid() {
+        // Valid polynomial should pass validation
+        let poly = DualRNSPoly {
+            main: vec![vec![1, 2, 3, 4]; 2],  // 2 limbs, 4 coeffs
+            anchor: vec![vec![5, 6, 7, 8]; 1], // 1 anchor limb
+            n: 4,
+        };
+        assert!(poly.validate().is_ok());
+    }
+
+    #[test]
+    fn test_dual_rns_poly_validation_zero_degree() {
+        let poly = DualRNSPoly {
+            main: vec![],
+            anchor: vec![],
+            n: 0,
+        };
+        assert!(poly.validate().is_err());
+    }
+
+    #[test]
+    fn test_dual_rns_poly_validation_non_power_of_two() {
+        let poly = DualRNSPoly {
+            main: vec![vec![1, 2, 3]; 1],
+            anchor: vec![],
+            n: 3, // Not a power of 2
+        };
+        assert!(poly.validate().is_err());
+    }
+
+    #[test]
+    fn test_dual_rns_poly_validation_inconsistent_limb_length() {
+        let poly = DualRNSPoly {
+            main: vec![vec![1, 2, 3, 4], vec![1, 2, 3]], // Second limb wrong length
+            anchor: vec![],
+            n: 4,
+        };
+        assert!(poly.validate().is_err());
+    }
+
+    #[test]
+    fn test_dual_rns_ciphertext_validation_valid() {
+        let ct = DualRNSCiphertext {
+            c0: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![vec![5, 6, 7, 8]; 1],
+                n: 4,
+            },
+            c1: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![vec![5, 6, 7, 8]; 1],
+                n: 4,
+            },
+            level: 2,
+        };
+        assert!(ct.validate().is_ok());
+    }
+
+    #[test]
+    fn test_dual_rns_ciphertext_validation_mismatched_degree() {
+        let ct = DualRNSCiphertext {
+            c0: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![],
+                n: 4,
+            },
+            c1: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4, 5, 6, 7, 8]; 2],
+                anchor: vec![],
+                n: 8, // Different from c0
+            },
+            level: 2,
+        };
+        assert!(ct.validate().is_err());
+    }
+
+    #[test]
+    fn test_dual_rns_ciphertext_validation_mismatched_limb_count() {
+        let ct = DualRNSCiphertext {
+            c0: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![],
+                n: 4,
+            },
+            c1: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 3], // Different count
+                anchor: vec![],
+                n: 4,
+            },
+            level: 2,
+        };
+        assert!(ct.validate().is_err());
+    }
+
+    #[test]
+    fn test_dual_rns_ciphertext_validation_invalid_level() {
+        let ct = DualRNSCiphertext {
+            c0: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![],
+                n: 4,
+            },
+            c1: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![],
+                n: 4,
+            },
+            level: 100, // Too high (> MAX_LEVEL)
+        };
+        assert!(ct.validate().is_err());
+    }
+
+    #[test]
+    fn test_dual_rns_ciphertext_validation_level_exceeds_limbs() {
+        let ct = DualRNSCiphertext {
+            c0: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![],
+                n: 4,
+            },
+            c1: DualRNSPoly {
+                main: vec![vec![1, 2, 3, 4]; 2],
+                anchor: vec![],
+                n: 4,
+            },
+            level: 5, // > 2 main limbs
+        };
+        assert!(ct.validate().is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_validated_deserialization_bincode() {
+        let config = FHEConfig::light_rns_exact();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let keys = ctx.generate_keys_dual(&mut rng);
+        let ct = ctx.encrypt_dual(42, &keys.public_key, &mut rng);
+
+        // Serialize and deserialize with validation
+        let bytes = ct.to_bytes().expect("Serialization failed");
+        let ct_restored = DualRNSCiphertext::from_bytes_validated(&bytes)
+            .expect("Validated deserialization failed");
+
+        // Verify correctness
+        let restored = ctx.decrypt_dual(&ct_restored, &keys.secret_key);
+        assert_eq!(restored, 42, "Validated roundtrip failed");
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_validated_deserialization_json() {
+        let config = FHEConfig::light_rns_exact();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let keys = ctx.generate_keys_dual(&mut rng);
+        let ct = ctx.encrypt_dual(42, &keys.public_key, &mut rng);
+
+        // Serialize and deserialize with validation
+        let json = ct.to_json().expect("JSON serialization failed");
+        let ct_restored = DualRNSCiphertext::from_json_validated(&json)
+            .expect("Validated JSON deserialization failed");
+
+        // Verify correctness
+        let restored = ctx.decrypt_dual(&ct_restored, &keys.secret_key);
+        assert_eq!(restored, 42, "Validated JSON roundtrip failed");
     }
 }

@@ -1,23 +1,49 @@
 //! FHE Configuration - Parameter Sets for Various Security Levels
 //!
-//! QMNF provides pre-validated parameter sets:
-//! - light: Testing ONLY (80-bit security) - NOT FOR PRODUCTION
-//! - standard_128: Production (128-bit security)
-//! - high_192: High security (192-bit security)
-//! - deep_128: Deep circuits (128-bit, larger N)
-//! - batched: SIMD operations (128-bit, small t)
+//! # Security Warning
 //!
-//! For production deployment, use the `production` module.
+//! **IMPORTANT**: Many legacy parameter sets have lower security than originally
+//! claimed due to hybrid lattice attacks. Use the `secure_configs` module for
+//! production deployment.
 //!
-//! SECURITY: Always validate parameters before use to prevent
-//! the Hidden Orbital Problem. Use the `validation` module.
+//! ## Security Levels (Verified)
+//!
+//! | Config | N | Claimed | Actual | Status |
+//! |--------|---|---------|--------|--------|
+//! | `light` | 1024 | 80-bit | **36-bit** | TEST ONLY |
+//! | `he_standard_128` | 2048 | 128-bit | **56-bit** | TEST ONLY |
+//! | `standard_128` | 4096 | 128-bit | 96-bit | MARGINAL |
+//! | `high_192` | 8192 | 192-bit | 176-bit | SECURE |
+//! | `SecureConfig::secure_128()` | 4096 | 128-bit | **128-bit** | PRODUCTION |
+//! | `SecureConfig::secure_192()` | 8192 | 192-bit | **192-bit** | PRODUCTION |
+//!
+//! ## For Production Use
+//!
+//! ```ignore
+//! use nine65::params::secure_configs::SecureConfig;
+//!
+//! // This is verified to meet 128-bit security against hybrid attacks
+//! let config = SecureConfig::secure_128();
+//! ```
+//!
+//! ## Legacy Configs (Testing Only)
+//!
+//! The `light()`, `he_standard_128()`, etc. functions are retained for
+//! backward compatibility and testing but should NOT be used in production.
 
 pub mod primes;
 pub mod production;
 pub mod validation;
+pub mod security_estimator;
+pub mod secure_configs;
 
 pub use primes::*;
 pub use validation::{validate_params, assert_params_valid, ParameterValidator, ValidationResult};
+pub use security_estimator::{
+    LatticeSecurityEstimator, SecurityEstimate, SecretDistribution,
+    HEStandardBounds, CostModel,
+};
+pub use secure_configs::{SecureConfig, ProductionSafe, assert_production_safe};
 
 /// FHE Configuration Parameters
 #[derive(Clone, Debug)]
@@ -39,9 +65,23 @@ pub struct FHEConfig {
 }
 
 impl FHEConfig {
-    /// Light configuration for testing (80-bit security)
-    /// Small parameters, fast operations
-    /// NOTE: Single-modulus, limited to add/mul_plain only
+    /// Light configuration for testing (~36-bit actual security)
+    ///
+    /// # Security Warning
+    ///
+    /// **DO NOT USE IN PRODUCTION**
+    ///
+    /// This config has only ~36 bits of security against hybrid lattice attacks.
+    /// Use `SecureConfig::secure_128()` for production.
+    ///
+    /// # Use Cases
+    /// - Unit tests
+    /// - Performance benchmarks
+    /// - Development debugging
+    #[cfg_attr(not(any(test, debug_assertions)), deprecated(
+        since = "5.0.0",
+        note = "light() has only ~36-bit security. Use SecureConfig::secure_128() for production."
+    ))]
     pub fn light() -> Self {
         Self {
             n: 1024,
@@ -49,7 +89,7 @@ impl FHEConfig {
             q: 998244353,
             t: 2053,  // Carefully chosen to avoid encode/decode precision issues
             eta: 2,
-            security_bits: 80,
+            security_bits: 36,  // CORRECTED: actual security level
             name: "light",
         }
     }
@@ -219,10 +259,15 @@ impl FHEConfig {
         (delta_bits as f64) - initial_noise
     }
     
-    /// Standard 128-bit security configuration
+    /// Standard configuration (~96-bit actual security)
     ///
-    /// Uses 3 NTT-friendly primes for RNS multiplication.
-    /// RNS capacity Q ≈ 10^27 >> N × q² ≈ 4 × 10^21 (tensor product bound)
+    /// # Security Note
+    ///
+    /// This config achieves ~96 bits of security against hybrid attacks.
+    /// For guaranteed 128-bit security, use `SecureConfig::secure_128()`.
+    ///
+    /// Suitable for applications where 96-bit security is acceptable
+    /// and performance is prioritized over maximum security margin.
     pub fn standard_128() -> Self {
         Self {
             n: 4096,
@@ -233,12 +278,17 @@ impl FHEConfig {
             q: 998244353,  // Primary modulus
             t: 65537,
             eta: 3,
-            security_bits: 128,
+            security_bits: 96,  // CORRECTED: actual hybrid attack security
             name: "standard_128",
         }
     }
-    
-    /// High 192-bit security configuration
+
+    /// High security configuration (~176-bit actual security)
+    ///
+    /// This config exceeds 128-bit security and is suitable for
+    /// applications requiring long-term security guarantees.
+    ///
+    /// For exact 192-bit security, use `SecureConfig::secure_192()`.
     pub fn high_192() -> Self {
         Self {
             n: 8192,
@@ -246,7 +296,7 @@ impl FHEConfig {
             q: 998244353,
             t: 65537,
             eta: 3,
-            security_bits: 192,
+            security_bits: 176,  // CORRECTED: actual hybrid attack security
             name: "high_192",
         }
     }
@@ -279,24 +329,26 @@ impl FHEConfig {
         }
     }
     
-    /// HE Standard 128-bit Compliant Configuration
-    /// 
-    /// Meets HomomorphicEncryption.org Security Standard v1.1:
-    /// - N = 2048 (minimum for 128-bit security)
-    /// - log(q) ≤ 54 bits (we use 30-bit prime)
-    /// - N/log(q) ratio ≈ 68 (well above 38 threshold)
-    /// 
-    /// This is the **recommended production configuration** for applications
-    /// requiring formal compliance with published standards.
-    /// 
-    /// # Security Analysis
-    /// 
-    /// | Parameter | Value | Requirement | Status |
-    /// |-----------|-------|-------------|--------|
-    /// | N | 2048 | ≥ 2048 | ✓ |
-    /// | log(q) | 30 | ≤ 54 | ✓ |
-    /// | N/log(q) | 68.3 | > 38 | ✓ |
-    /// | Security | 128-bit | 128-bit | ✓ |
+    /// HE Standard 128-bit Configuration (~56-bit actual security)
+    ///
+    /// # Security Warning
+    ///
+    /// **DO NOT USE IN PRODUCTION**
+    ///
+    /// Despite meeting HE Standard ratios, this config only achieves ~56 bits
+    /// of security against hybrid MITM+BKZ attacks due to ternary secret exploitation.
+    ///
+    /// The HE Standard v1.1 table was designed for Gaussian secrets, not ternary.
+    /// Use `SecureConfig::secure_128()` for actual 128-bit security.
+    ///
+    /// # Historical Note
+    ///
+    /// This config is kept for backward compatibility and to demonstrate
+    /// why N/log(q) ratio alone is insufficient for ternary secrets.
+    #[cfg_attr(not(any(test, debug_assertions)), deprecated(
+        since = "5.0.0",
+        note = "he_standard_128() has only ~56-bit security with ternary secrets. Use SecureConfig::secure_128()."
+    ))]
     pub fn he_standard_128() -> Self {
         // Validate at construction time
         let config = Self {
@@ -305,15 +357,15 @@ impl FHEConfig {
             q: 998244353,
             t: 65537,  // Standard plaintext modulus (Fermat prime F4)
             eta: 3,
-            security_bits: 128,
+            security_bits: 56,  // CORRECTED: actual security with ternary secrets
             name: "he_standard_128",
         };
-        
+
         // Verify orbital bounds
         let result = validate_params(config.n, config.q, config.t);
-        debug_assert!(result.orbital_safe, 
+        debug_assert!(result.orbital_safe,
                      "he_standard_128 config fails orbital bounds check");
-        
+
         config
     }
     

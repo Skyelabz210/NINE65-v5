@@ -4,5 +4,7 @@
 //! R_q = Z_q[X]/(X^N + 1).
 
 pub mod polynomial;
+pub mod pool;
 
 pub use polynomial::RingPolynomial;
+pub use pool::{PolynomialPool, PooledPolynomial, PoolGuard};

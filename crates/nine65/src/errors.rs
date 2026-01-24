@@ -124,6 +124,64 @@ pub enum Nine65Error {
     /// Security level not met
     #[error("security level not met: {bits} bits < required {required} bits")]
     SecurityLevelNotMet { bits: u32, required: u32 },
+
+    // ═══════════════════════════════════════════════════
+    // ENCODING/ENCRYPTION ERRORS
+    // ═══════════════════════════════════════════════════
+
+    /// Message out of plaintext space bounds
+    ///
+    /// # Theorem Reference
+    /// BFV encoding requires m < t (plaintext modulus)
+    #[error("message out of bounds: {message} >= plaintext modulus {modulus}")]
+    MessageOutOfBounds { message: u64, modulus: u64 },
+
+    /// Invalid polynomial degree
+    #[error("invalid polynomial degree: got {got}, expected {expected}")]
+    InvalidPolynomialDegree { got: usize, expected: usize },
+
+    /// Key regime mismatch
+    #[error("key regime mismatch: {message}")]
+    KeyRegimeMismatch { message: String },
+
+    /// NTT configuration error
+    #[error("NTT configuration error: {message}")]
+    NTTConfigError { message: String },
+
+    /// Invalid configuration
+    #[error("configuration error: {message}")]
+    ConfigError { message: String },
+
+    // ═══════════════════════════════════════════════════
+    // BATCHING ERRORS
+    // ═══════════════════════════════════════════════════
+
+    /// Batching not supported for given parameters
+    ///
+    /// # Requirement
+    /// CRT batching requires `t ≡ 1 (mod 2N)` for the ring to split
+    #[error("batching not supported for t={t}, N={n}: {reason}")]
+    BatchingNotSupported { t: u64, n: usize, reason: String },
+
+    /// Too many slot values for batching
+    #[error("too many slot values: got {got}, max {max}")]
+    TooManySlotValues { got: usize, max: usize },
+
+    /// No modular inverse exists
+    #[error("no modular inverse: {value}^(-1) mod {modulus} does not exist")]
+    NoModularInverse { value: u64, modulus: u64 },
+
+    // ═══════════════════════════════════════════════════
+    // SERIALIZATION ERRORS
+    // ═══════════════════════════════════════════════════
+
+    /// Deserialization failed
+    ///
+    /// # Security
+    /// Returned when deserializing untrusted input fails validation.
+    /// Prevents DoS via malformed data.
+    #[error("deserialization error: {message}")]
+    DeserializationError { message: String },
 }
 
 /// Result type alias for NINE65 operations
@@ -135,6 +193,15 @@ impl Nine65Error {
         matches!(self,
             Nine65Error::NoiseOverflow { .. } |
             Nine65Error::DepthExceeded { .. }
+        )
+    }
+
+    /// Check if error is batching-related
+    pub fn is_batching_error(&self) -> bool {
+        matches!(self,
+            Nine65Error::BatchingNotSupported { .. } |
+            Nine65Error::TooManySlotValues { .. } |
+            Nine65Error::NoModularInverse { .. }
         )
     }
 
@@ -159,6 +226,19 @@ impl Nine65Error {
             Nine65Error::DecryptionFailed |
             Nine65Error::KeyGenFailed { .. } |
             Nine65Error::SecurityLevelNotMet { .. } => "Cryptographic",
+
+            Nine65Error::MessageOutOfBounds { .. } |
+            Nine65Error::InvalidPolynomialDegree { .. } |
+            Nine65Error::KeyRegimeMismatch { .. } => "Encoding",
+
+            Nine65Error::NTTConfigError { .. } |
+            Nine65Error::ConfigError { .. } => "Configuration",
+
+            Nine65Error::BatchingNotSupported { .. } |
+            Nine65Error::TooManySlotValues { .. } |
+            Nine65Error::NoModularInverse { .. } => "Batching",
+
+            Nine65Error::DeserializationError { .. } => "Serialization",
         }
     }
 }

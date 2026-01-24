@@ -8,13 +8,14 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 
 #[cfg(not(feature = "ntt_fft"))]
 use crate::arithmetic::NTTEngine;
-use crate::entropy::ShadowHarvester;
+use crate::entropy::{ShadowHarvester, FheRng};
 use zeroize::Zeroize;
 
 /// Polynomial in R_q = Z_q[X]/(X^N + 1)
 ///
 /// Implements `Zeroize` for secure memory clearing of sensitive data.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RingPolynomial {
     /// Coefficients in standard form (not NTT)
     pub coeffs: Vec<u64>,
@@ -123,6 +124,37 @@ impl RingPolynomial {
     /// Generate uniform random polynomial
     pub fn random_uniform(n: usize, q: u64, harvester: &mut ShadowHarvester) -> Self {
         let coeffs: Vec<u64> = (0..n).map(|_| harvester.uniform(q)).collect();
+        Self { coeffs, q }
+    }
+
+    // =========================================================================
+    // GENERIC RNG METHODS (for secure/flexible entropy sources)
+    // =========================================================================
+
+    /// Generate random polynomial with CBD noise using any FheRng
+    ///
+    /// For production encryption, use with `SecureRng`.
+    /// For testing, use with `ShadowHarvester`.
+    pub fn random_cbd_rng<R: FheRng>(n: usize, q: u64, eta: usize, rng: &mut R) -> Self {
+        let signed = rng.cbd_vector(n, eta);
+        Self::from_signed(&signed, q)
+    }
+
+    /// Generate random ternary polynomial using any FheRng
+    ///
+    /// For production encryption, use with `SecureRng`.
+    /// For testing, use with `ShadowHarvester`.
+    pub fn random_ternary_rng<R: FheRng>(n: usize, q: u64, rng: &mut R) -> Self {
+        let signed = rng.ternary_vector(n);
+        Self::from_signed(&signed, q)
+    }
+
+    /// Generate uniform random polynomial using any FheRng
+    ///
+    /// For production encryption, use with `SecureRng`.
+    /// For testing, use with `ShadowHarvester`.
+    pub fn random_uniform_rng<R: FheRng>(n: usize, q: u64, rng: &mut R) -> Self {
+        let coeffs: Vec<u64> = (0..n).map(|_| rng.uniform(q)).collect();
         Self { coeffs, q }
     }
     

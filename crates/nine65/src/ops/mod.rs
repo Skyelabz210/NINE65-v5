@@ -6,21 +6,27 @@
 //! - RNS-based multiplication for ct×ct
 //! - Noise management
 //! - Neural network operations
+//! - Galois automorphisms for SIMD slot rotations
+//! - CRT batching for SIMD packing (N/2 slots per ciphertext)
 
+pub mod batch;
 pub mod encrypt;
 pub mod homomorphic;
 pub mod rns_mul;
 pub mod rns_fhe;
 pub mod neural;
+pub mod galois;
 
 #[cfg(feature = "gso")]
 pub mod gso_fhe;
 
+pub use batch::BatchEncoder;
 pub use encrypt::{BFVEncoder, BFVEncryptor, BFVDecryptor, Ciphertext};
-pub use homomorphic::BFVEvaluator;
+pub use homomorphic::{BFVEvaluator, TrackedEvaluator};
 pub use rns_mul::RNSEvaluator;
 pub use rns_fhe::{RNSFHEContext, RNSCiphertext, RNSKeySet, RNSSecretKey, RNSPublicKey, RNSEvalKey};
 pub use neural::{FHENeuralEvaluator, ActivationType, DenseLayer, NeuralNetwork};
+pub use galois::{GaloisEngine, GaloisKey, GaloisKeySet, GaloisEvaluator};
 
 #[cfg(feature = "gso")]
 pub use gso_fhe::{GSOFHEContext, GSOCiphertext, NoiseEstimate, NoiseStats, AttractorBasin, GSOSwarm};

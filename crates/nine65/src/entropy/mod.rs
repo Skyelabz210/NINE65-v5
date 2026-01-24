@@ -1,29 +1,48 @@
 //! Entropy Module - NINE65 Entropy System
 //!
-//! Two core entropy sources:
+//! ## Core Entropy Sources
 //!
-//! ## Shadow Entropy (`shadow` module)
+//! ### Shadow Entropy (`shadow` module)
 //! - Deterministic, reproducible randomness
-//! - Use for: Testing, benchmarks, noise sampling
+//! - Use for: Testing, benchmarks
 //! - Fast: <10ns per sample
+//! - **NOT SECURE** - never use for production keys
 //!
-//! ## Secure Entropy (`secure` module)
+//! ### Secure Entropy (`secure` module)
 //! - OS CSPRNG (non-deterministic)
-//! - Use for: Secret key generation, public key randomness
+//! - Use for: Key generation, encryption randomness
 //! - Required for production security
+//!
+//! ### FheRng Trait (`rng_trait` module)
+//! - Unified interface for both entropy sources
+//! - Allows generic code over randomness source
 //!
 //! # Security Guidance
 //!
-//! | Operation | Use This |
-//! |-----------|----------|
-//! | Secret key generation | `secure::*` |
-//! | Public key 'a' polynomial | `secure::*` |
-//! | Error/noise sampling | `shadow::*` or `secure::*` |
-//! | Testing/benchmarks | `shadow::*` |
-//! | Reproducible results | `shadow::*` |
+//! | Operation | Recommended | Alternative |
+//! |-----------|-------------|-------------|
+//! | Secret key generation | `SecureRng` | NONE |
+//! | Public key randomness | `SecureRng` | NONE |
+//! | Encryption randomness | `SecureRng` | `ShadowHarvester` (testing only) |
+//! | Testing/benchmarks | `ShadowHarvester` | `SecureRng` |
+//!
+//! # Example
+//!
+//! ```ignore
+//! use nine65::entropy::{FheRng, SecureRng, ShadowHarvester};
+//!
+//! // Production encryption
+//! let mut rng = SecureRng::new();
+//! let ct = encryptor.encrypt_with_rng(42, &mut rng);
+//!
+//! // Testing with deterministic randomness
+//! let mut rng = ShadowHarvester::with_seed(42);
+//! let ct = encryptor.encrypt_with_rng(42, &mut rng);
+//! ```
 
 pub mod shadow;
 pub mod secure;
+pub mod rng_trait;
 
 #[cfg(feature = "shadow-entropy")]
 pub mod wassan_noise;
@@ -31,6 +50,7 @@ pub mod wassan_noise;
 pub mod crt_shadow;
 
 pub use shadow::ShadowHarvester;
+pub use rng_trait::{FheRng, require_secure_rng};
 
 #[cfg(feature = "shadow-entropy")]
 pub use wassan_noise::WassanNoiseField;

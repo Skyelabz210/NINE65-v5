@@ -18,8 +18,20 @@
 //! ## Submodules
 //!
 //! - `budget`: Config-aware noise budget tracking with cost estimation
+//!
+//! ## Re-exports
+//!
+//! The most commonly used types from the budget submodule are re-exported
+//! for convenience:
+//!
+//! ```ignore
+//! use nine65::noise::{NoiseBudget, NoiseExhausted, NoiseOpType};
+//! ```
 
 pub mod budget;
+
+// Re-export commonly used types from budget module
+pub use budget::{NoiseBudget, NoiseExhausted, NoiseOpType, NoiseOperation};
 
 use std::collections::VecDeque;
 
@@ -628,8 +640,8 @@ pub struct NoiseDistribution {
     count: u64,
 }
 
-impl NoiseDistribution {
-    pub fn new() -> Self {
+impl Default for NoiseDistribution {
+    fn default() -> Self {
         Self {
             median: P2QuantileEstimator::median(),
             p90: P2QuantileEstimator::p90(),
@@ -638,6 +650,12 @@ impl NoiseDistribution {
             sum: 0,
             count: 0,
         }
+    }
+}
+
+impl NoiseDistribution {
+    pub fn new() -> Self {
+        Self::default()
     }
     
     /// Update all estimators with new noise observation (millibits)
@@ -722,14 +740,20 @@ pub struct MultiWindowNoiseDetector {
     threshold_sigma: i64,
 }
 
-impl MultiWindowNoiseDetector {
-    pub fn new() -> Self {
+impl Default for MultiWindowNoiseDetector {
+    fn default() -> Self {
         Self {
             short: NoiseWindow::new(16),
             medium: NoiseWindow::new(64),
             long: NoiseWindow::new(256),
             threshold_sigma: 3 * FIXEDQ_SCALE, // 3σ threshold
         }
+    }
+}
+
+impl MultiWindowNoiseDetector {
+    pub fn new() -> Self {
+        Self::default()
     }
     
     /// Update with new noise measurement (millibits)

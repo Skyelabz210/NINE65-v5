@@ -415,9 +415,9 @@ impl RNSEvaluator {
 
     /// Decompose polynomial into base-T digits
     fn decompose_polynomial(&self, poly: &RingPolynomial, base: u64) -> Vec<RingPolynomial> {
-        let num_digits = ((64 - self.q.leading_zeros()) as usize +
-                         (64 - base.leading_zeros()) as usize - 1) /
-                         (64 - base.leading_zeros()) as usize;
+        let q_bits = (64 - self.q.leading_zeros()) as usize;
+        let base_bits = (64 - base.leading_zeros()) as usize;
+        let num_digits = q_bits.div_ceil(base_bits);
 
         let mut digits = Vec::with_capacity(num_digits);
         let mut current = poly.coeffs.clone();
