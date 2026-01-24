@@ -74,14 +74,13 @@ impl FHEConfig {
     /// This config has only ~36 bits of security against hybrid lattice attacks.
     /// Use `SecureConfig::secure_128()` for production.
     ///
-    /// # Use Cases
-    /// - Unit tests
-    /// - Performance benchmarks
-    /// - Development debugging
-    #[cfg_attr(not(any(test, debug_assertions)), deprecated(
+    /// # Security Warning
+    /// This configuration provides only ~36-bit security and is NOT safe for production.
+    /// Use ONLY for unit tests, benchmarks, or development debugging.
+    #[deprecated(
         since = "5.0.0",
-        note = "light() has only ~36-bit security. Use SecureConfig::secure_128() for production."
-    ))]
+        note = "INSECURE: light() has only ~36-bit security. Use SecureConfig::secure_128() for production."
+    )]
     pub fn light() -> Self {
         Self {
             n: 1024,
@@ -341,14 +340,14 @@ impl FHEConfig {
     /// The HE Standard v1.1 table was designed for Gaussian secrets, not ternary.
     /// Use `SecureConfig::secure_128()` for actual 128-bit security.
     ///
-    /// # Historical Note
+    /// # Security Warning
     ///
-    /// This config is kept for backward compatibility and to demonstrate
-    /// why N/log(q) ratio alone is insufficient for ternary secrets.
-    #[cfg_attr(not(any(test, debug_assertions)), deprecated(
+    /// This configuration provides only ~56-bit security with ternary secrets.
+    /// This is NOT safe for production use. Kept for backward compatibility only.
+    #[deprecated(
         since = "5.0.0",
-        note = "he_standard_128() has only ~56-bit security with ternary secrets. Use SecureConfig::secure_128()."
-    ))]
+        note = "INSECURE: he_standard_128() has only ~56-bit security with ternary secrets. Use SecureConfig::secure_128()."
+    )]
     pub fn he_standard_128() -> Self {
         // Validate at construction time
         let config = Self {
