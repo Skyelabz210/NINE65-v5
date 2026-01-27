@@ -1,6 +1,6 @@
 # NINE65 - Bootstrap-Free Fully Homomorphic Encryption
 
-**High-performance FHE achieving depth-50 without bootstrapping**
+**High-performance FHE achieving depth-50 without bootstrapping (symmetric mode)**
 
 ---
 
@@ -8,12 +8,14 @@
 
 | Metric | NINE65 | Traditional FHE |
 |--------|--------|-----------------|
-| **Max Depth** | 50+ levels | 10-15 levels |
+| **Max Depth** | 50+ levels (symmetric) | 10-15 levels |
 | **Bootstrap Required** | Never | Every ~10 muls |
-| **Depth-50 Circuit** | 812ms | 2,000-5,000ms |
+| **Depth-50 Circuit** | 812ms (symmetric) | 2,000-5,000ms |
 | **Memory** | ~200MB | 1-3GB |
 | **Hardware** | CPU only | GPU recommended |
-| **Post-Quantum** | ~170-bit quantum security | Varies |
+| **Post-Quantum** | Rough LWE baseline in docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md | Varies |
+
+Public-mode depth baseline is recorded in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md.
 
 ---
 
@@ -21,11 +23,19 @@
 
 NINE65 targets post-quantum security through LWE (Learning With Errors) based cryptography:
 
-### Security Estimates
-| Parameter Set | Classical Security | Quantum Security |
-|---------------|-------------------|------------------|
-| `he_standard_128` | ~128-bit | ~170-bit |
-| `light_rns_exact` | ~100-bit | ~130-bit |
+### Lattice Estimator Baseline (2026-01-27)
+Rough LWE estimates (Core-SVP + GSA) for SecureConfig parameters are recorded in
+docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md.
+
+| SecureConfig | n | log2(q) | min attack log2(rop) |
+|--------------|---|---------|----------------------|
+| `secure_128` | 4096 | 89.26 | 123.6 |
+| `secure_192` | 8192 | 145.39 | 165.6 |
+| `secure_256` | 16384 | 203.81 | 268.1 |
+
+Notes:
+- These are rough estimates, not formal security proofs.
+- Test-only configs (`light`, `he_standard_128`, `light_rns_exact`) require `allow_insecure`.
 
 ### Self-Cryptanalysis
 
@@ -34,13 +44,8 @@ This repository includes security analysis tools in `src/security/`:
 - K-Elimination specific attack analysis
 - LLL/BKZ lattice attack simulations
 
-| Attack | Status |
-|--------|--------|
-| Shor's Algorithm | DOES NOT APPLY (Ring-LWE) |
-| Primal/Dual Lattice | 96-256 bit security |
-| K-Elimination Inversion | Infeasible (2^60 uncertainty) |
-| RNS Correlation | No leakage (CRT secure) |
-| Timing Side-Channel | Constant-time |
+Timing side-channel posture and parameter warnings are documented in
+docs/REDSHIRT_SECURITY_ASSESSMENT.md.
 
 ### Why LWE is Quantum-Resistant
 - **Lattice-based hardness**: Security relies on the hardness of lattice problems
@@ -53,7 +58,23 @@ This repository includes security analysis tools in `src/security/`:
 cargo test -p nine65 security::tests -- --nocapture
 ```
 
-**Note**: These are parameter estimates based on standard LWE security analysis. For formal guarantees, external audits and estimator tools (e.g., lattice-estimator) are recommended.
+**Note**: These are parameter estimates based on standard LWE security analysis.
+For formal guarantees, external audits and independent estimator runs are recommended.
+Baseline estimator outputs are recorded in docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md.
+
+---
+
+## Public Mode Depth Baseline (2026-01-27)
+
+Public-key (eval-key) mode is depth-limited relative to symmetric mode. The depth sweep
+baseline is recorded in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md.
+
+Summary:
+- `standard_128`: max depth 4 at bases 2^16/2^12/2^10; max depth 5 at base 2^8
+- `high_192`: max depth 4 at bases 2^16/2^12/2^10/2^8
+
+For deeper public-mode circuits, use symmetric mode or modulus switching with retuned
+parameters and re-run the depth sweep.
 
 ---
 
@@ -83,15 +104,12 @@ Classical period finding without circular dependencies:
 - **K-Elimination verification**: Winding number oracle
 - **Shor's classical reduction**: Complete factoring via gcd(a^(r/2) ± 1, N)
 
-### 5. Encrypted Quantum Operations
-FHE × Sparse Grover for blind quantum search:
-- **2^n quantum states in O(1) storage**: 4 ciphertexts (marked/unmarked × Fp2)
-- **Linear noise growth**: ct+ct and ct×plaintext only
-- **1000+ iterations without bootstrapping**: Sufficient for 2^20 Grover search
-
 ---
 
 ## Performance Benchmarks
+
+Performance numbers are from internal release benchmarks. Reproduce and gate via
+docs/RELEASE_CHECKLIST.md.
 
 ### Arithmetic Operations (Single-threaded, Release Build)
 
@@ -132,6 +150,8 @@ Bootstraps required: 0
 
 ## Comparison vs Industry Leaders
 
+Methodology and sources are documented in docs/FHE_BENCHMARK_COMPARISON.md.
+
 ```
 Library          | Max Depth | Bootstrap | Depth-50 Time
 -----------------+-----------+-----------+--------------
@@ -161,10 +181,6 @@ NINE65/MANA_boosted/
 │   │       ├── ops/
 │   │       │   ├── rns_fhe.rs          # RNS-based FHE operations
 │   │       │   └── gso_fhe.rs          # GSO noise bounding layer
-│   │       ├── quantum/
-│   │       │   ├── taxonomy.rs         # State compression taxonomy
-│   │       │   ├── sparse_grover.rs    # Sparse Grover over Fp2
-│   │       │   └── encrypted.rs        # Encrypted quantum ops
 │   │       ├── entropy/
 │   │       │   ├── crt_shadow.rs       # CRT Shadow entropy
 │   │       │   ├── wassan_noise.rs     # Holographic noise field
@@ -184,7 +200,7 @@ NINE65/MANA_boosted/
 
 ## Workspace Crates
 
-- **`nine65`**: Core FHE implementation (dual-RNS, K-Elimination, GSO-FHE, BFV ops, quantum)
+- **`nine65`**: Core FHE implementation (dual-RNS, K-Elimination, GSO-FHE, BFV ops)
 - **`mana`**: Modular arithmetic accelerator
 - **`unhal`**: Hardware abstraction and pipeline helpers
 
@@ -238,12 +254,12 @@ NINE65_PERF_TESTS=1 cargo test -p nine65 --lib \
 ## Quick Start
 
 ```rust
-use nine65::params::FHEConfig;
+use nine65::params::secure_configs::SecureConfig;
 use nine65::ops::rns_fhe::RNSFHEContext;
 use nine65::ops::gso_fhe::GSOFHEContext;
 
-// Create FHE context with exact RNS arithmetic
-let config = FHEConfig::light_rns_exact();
+// Create FHE context with production SecureConfig
+let config = SecureConfig::secure_128().into_config();
 let inner = RNSFHEContext::new_coeff_domain(&config);
 let ctx = GSOFHEContext::new(inner);
 
@@ -254,7 +270,7 @@ let keys = ctx.keygen();
 let ct_a = ctx.encrypt(42, &keys.public_key);
 let ct_b = ctx.encrypt(7, &keys.public_key);
 
-// Homomorphic operations (depth-50 capable)
+// Homomorphic operations (symmetric depth-50+ capable)
 let ct_sum = ctx.add(&ct_a, &ct_b);
 let ct_prod = ctx.mul(&ct_a, &ct_b, &keys.secret_key);
 
@@ -263,14 +279,17 @@ let result = ctx.decrypt(&ct_prod, &keys.secret_key);
 assert_eq!(result, 42 * 7);
 ```
 
-### Public Mode (Multi-Party, Deeper Circuits)
+### Public Mode (Multi-Party, Depth-Limited)
+
+Public mode depth is limited; see docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md for
+current baselines.
 
 ```rust
-use nine65::params::FHEConfig;
+use nine65::params::secure_configs::SecureConfig;
 use nine65::ops::rns_fhe::RNSFHEContext;
 use nine65::entropy::ShadowHarvester;
 
-let config = FHEConfig::high_192();
+let config = SecureConfig::secure_192().into_config();
 let ctx = RNSFHEContext::new_coeff_domain(&config);
 let mut rng = ShadowHarvester::from_os_seed();
 
@@ -300,6 +319,8 @@ assert_eq!(result, 6);
 ### Documentation
 - `docs/SECURITY_PROOFS.md` - Security assumptions and proofs
 - `docs/FHE_BENCHMARK_COMPARISON.md` - Industry comparison with sources
+- `docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md` - LWE estimator baseline
+- `docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md` - public-mode depth sweep
 
 ---
 
@@ -307,7 +328,7 @@ assert_eq!(result, 6);
 
 NINE65 is built on the QMNF (Quantized Modular Number Field) architecture:
 
-1. **Integer-only arithmetic**: No floating-point at any layer
+1. **Integer-only arithmetic**: No floating-point in cryptographic runtime paths
 2. **Stacked CRT**: Two-layer exact arithmetic (fast + unlimited precision)
 3. **Fused Piggyback Division**: 40x faster RNS division via anchor-first computation
 4. **Deterministic execution**: Bit-identical results across all platforms
@@ -320,5 +341,5 @@ Proprietary. See `LICENSE`.
 
 ---
 
-*Last updated: January 2026*
+*Last updated: 2026-01-27*
 *NINE65 - Bootstrap-Free FHE with K-Elimination*
