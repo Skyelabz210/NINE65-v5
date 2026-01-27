@@ -522,8 +522,11 @@ pub struct RNSFHEContext {
     pub ke: KElimination,
     /// Plaintext modulus
     pub t: u64,
-    /// Q = product of main primes (stored as u128)
+    /// Q = product of main primes (stored as u128, 0 if too large)
     pub q_product: u128,
+    /// Exact bit-width of Q (sum of prime bit-widths)
+    /// Used for decomposition sizing when q_product=0 sentinel
+    pub q_bits: usize,
     /// Polynomial degree
     pub n: usize,
     /// Scaling factor Δ = floor(Q/t) in RNS form
@@ -571,6 +574,11 @@ impl RNSFHEContext {
             .map(|&p| NTTEngine::new(p, config.n))
             .collect();
 
+        // Compute Q bit-width (sum of prime bit-widths) - always valid
+        let q_bits: usize = config.primes.iter()
+            .map(|&p| (64 - p.leading_zeros()) as usize)
+            .sum();
+
         // Compute Q = product of main primes (checked for u128 overflow)
         let q_product: u128 = config.primes.iter()
             .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))
@@ -597,6 +605,7 @@ impl RNSFHEContext {
             ke,
             t: config.t,
             q_product,
+            q_bits,
             delta_rns,
             n: config.n,
             config: config.clone(),
@@ -663,6 +672,7 @@ impl RNSFHEContext {
             ke,
             t: config.t,
             q_product,
+            q_bits: q_bits as usize,
             delta_rns,
             n: config.n,
             config: config.clone(),
@@ -905,8 +915,8 @@ impl RNSFHEContext {
     fn generate_eval_key(&self, sk: &RNSSecretKey, rng: &mut ShadowHarvester) -> RNSEvalKey {
         let q_min = self.smallest_prime();
         let decomp_base = 1u64 << 16; // 2^16 decomposition base
-        // Number of digits based on Q size (using 128-bit representation)
-        let q_bits = 128 - self.q_product.leading_zeros() as usize;
+        // Number of digits based on Q size (use stored q_bits, not leading_zeros)
+        let q_bits = self.q_bits;
         let num_digits = q_bits.div_ceil(16);
 
         // s^2 in RNS
@@ -1251,8 +1261,8 @@ impl RNSFHEContext {
     /// Decompose RNS polynomial into base-T digits
     fn decompose_rns_poly(&self, poly: &RNSPolynomial, base: u64) -> Vec<RNSPolynomial> {
         let poly_standard = self.convert_from_montgomery_form(poly);
-        // Number of digits based on Q (128 bits max for 3 primes)
-        let q_bits = 128 - self.q_product.leading_zeros() as usize;
+        // Number of digits based on Q (use stored q_bits, not leading_zeros)
+        let q_bits = self.q_bits;
         let base_bits = 64 - base.leading_zeros() as usize;
         let num_digits = q_bits.div_ceil(base_bits);
 
@@ -1510,7 +1520,8 @@ impl RNSFHEContext {
     ) -> DualRNSEvalKey {
         assert!(decomp_base.is_power_of_two() && decomp_base >= 2, "decomp_base must be power of two >= 2");
         let base_bits = decomp_base.trailing_zeros() as usize;
-        let q_bits = 128 - self.q_product.leading_zeros() as usize;
+        // Use stored q_bits (valid even when q_product=0 sentinel for large Q)
+        let q_bits = self.q_bits;
         let num_digits = q_bits.div_ceil(base_bits);
 
         // Find minimum prime across main AND anchor for safe sampling
