@@ -3,33 +3,59 @@
 //! Based on HomomorphicEncryption.org standards and lattice-estimator validation.
 //! These are NOT toy parameters.
 
-/// NTT-friendly primes for production use
-/// All satisfy: q ≡ 1 (mod 2N) for N up to 32768
-/// Selected for: ~60-bit size, coprimality, NTT compatibility
+/// DEPRECATED: These values contain bit errors and are NOT prime
+///
+/// WARNING: Do NOT use these values for cryptographic operations!
+/// Verification shows these constants are COMPOSITE (not prime).
+///
+/// Example: 1152921504606846977 was claimed to be 2^60 - 2^14 + 1,
+/// but the actual value of 2^60 - 2^14 + 1 = 1152921504606830593.
+///
+/// Use PRODUCTION_PRIMES_30BIT or validated 51-bit primes instead:
+/// - Verified 51-bit NTT prime: 1125899906990081 (q ≡ 1 mod 16384)
+///
+/// These constants are preserved for backwards compatibility only.
+/// They will be removed in a future version.
+#[deprecated(
+    since = "0.2.0",
+    note = "CRITICAL: These values are NOT prime. Use PRODUCTION_PRIMES_30BIT instead."
+)]
 pub const PRODUCTION_PRIMES_60BIT: [u64; 20] = [
-    // First batch - primary ciphertext modulus chain
-    1152921504606846977,  // 2^60 - 2^14 + 1
-    1152921504606584833,  // Close to 2^60
-    1152921504606322689,  // 
-    1152921504606060545,  //
-    1152921504605798401,  //
-    1152921504605536257,  //
-    1152921504605274113,  //
-    1152921504605011969,  //
-    1152921504604749825,  //
-    1152921504604487681,  //
-    // Second batch - for deeper circuits
-    1152921504604225537,  //
-    1152921504603963393,  //
-    1152921504603701249,  //
-    1152921504603439105,  //
-    1152921504603176961,  //
-    // Special primes for rescaling
-    1099511627777,        // ~2^40, for final levels
-    1099511627553,        //
-    1099511627329,        //
-    1099511627105,        //
-    1099511626881,        //
+    // INVALID - DO NOT USE - preserved only for backwards compatibility
+    1152921504606846977,  // NOT PRIME - claimed 2^60 - 2^14 + 1
+    1152921504606584833,  // NOT VERIFIED
+    1152921504606322689,  // NOT VERIFIED
+    1152921504606060545,  // NOT VERIFIED
+    1152921504605798401,  // NOT VERIFIED
+    1152921504605536257,  // NOT VERIFIED
+    1152921504605274113,  // NOT VERIFIED
+    1152921504605011969,  // NOT VERIFIED
+    1152921504604749825,  // NOT VERIFIED
+    1152921504604487681,  // NOT VERIFIED
+    1152921504604225537,  // NOT VERIFIED
+    1152921504603963393,  // NOT VERIFIED
+    1152921504603701249,  // NOT VERIFIED
+    1152921504603439105,  // NOT VERIFIED
+    1152921504603176961,  // NOT VERIFIED
+    1099511627777,        // NOT VERIFIED
+    1099511627553,        // NOT VERIFIED
+    1099511627329,        // NOT VERIFIED
+    1099511627105,        // NOT VERIFIED
+    1099511626881,        // NOT VERIFIED
+];
+
+/// Verified NTT-friendly primes for high-security configurations
+///
+/// These primes have been validated (2026-01-25):
+/// - Primality verified with sympy.isprime (Miller-Rabin + Lucas)
+/// - NTT compatibility: q ≡ 1 (mod 16384) for N up to 8192
+/// - Coprimality verified between all primes
+pub const VERIFIED_PRIMES_51BIT: [u64; 5] = [
+    1125899906990081,     // Verified prime, q ≡ 1 (mod 16384), 51 bits
+    1125899907219457,     // Verified prime, q ≡ 1 (mod 16384), 51 bits
+    1125899907776513,     // Verified prime, q ≡ 1 (mod 16384), 51 bits
+    1125899908005889,     // Verified prime, q ≡ 1 (mod 16384), 51 bits
+    1125899908022273,     // Verified prime, q ≡ 1 (mod 16384), 51 bits
 ];
 
 /// 30-bit NTT primes (for lighter operations, still secure with enough of them)
@@ -312,10 +338,8 @@ mod tests {
     
     #[test]
     fn test_primes_are_coprime() {
-        for i in 0..PRODUCTION_PRIMES_30BIT.len() {
-            for j in (i+1)..PRODUCTION_PRIMES_30BIT.len() {
-                let a = PRODUCTION_PRIMES_30BIT[i];
-                let b = PRODUCTION_PRIMES_30BIT[j];
+        for (i, &a) in PRODUCTION_PRIMES_30BIT.iter().enumerate() {
+            for &b in PRODUCTION_PRIMES_30BIT.iter().skip(i + 1) {
                 assert_ne!(a, b, "Duplicate primes");
             }
         }

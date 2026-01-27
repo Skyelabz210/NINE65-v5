@@ -310,6 +310,11 @@ impl GSOFHEContext {
         self.inner.generate_keys_dual_full(rng)
     }
 
+    /// Generate full keys optimized for deeper public circuits (smaller decomposition base)
+    pub fn generate_full_keys_public_deep(&self, rng: &mut ShadowHarvester) -> DualRNSFullKeySet {
+        self.inner.generate_keys_dual_full_public_deep(rng)
+    }
+
     // ========================================================================
     // ENCRYPTION/DECRYPTION
     // ========================================================================

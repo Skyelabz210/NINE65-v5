@@ -35,31 +35,80 @@ pub const PRIMES_8192: [u64; 8] = [
     1637613569,   // 16384 × 99952 + 1 (31 bits)
 ];
 
-/// Check if a number is prime (simple trial division for small primes)
+/// Check if a number is prime (deterministic Miller-Rabin for u64)
 pub fn is_prime(n: u64) -> bool {
     if n < 2 {
         return false;
     }
-    if n == 2 || n == 3 {
-        return true;
-    }
-    if n % 2 == 0 || n % 3 == 0 {
-        return false;
-    }
-    
-    let mut i = 5u64;
-    while i * i <= n {
-        if n % i == 0 || n % (i + 2) == 0 {
+    // Quick checks for small primes
+    const SMALL_PRIMES: [u64; 12] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
+    for &p in &SMALL_PRIMES {
+        if n == p {
+            return true;
+        }
+        if n % p == 0 {
             return false;
         }
-        i += 6;
+    }
+
+    // Write n-1 = d * 2^s with d odd
+    let mut d = n - 1;
+    let mut s = 0u32;
+    while (d & 1) == 0 {
+        d >>= 1;
+        s += 1;
+    }
+
+    #[inline]
+    fn mod_mul(a: u64, b: u64, m: u64) -> u64 {
+        ((a as u128 * b as u128) % m as u128) as u64
+    }
+
+    #[inline]
+    fn mod_pow(mut base: u64, mut exp: u64, m: u64) -> u64 {
+        let mut acc = 1u64;
+        while exp > 0 {
+            if exp & 1 == 1 {
+                acc = mod_mul(acc, base, m);
+            }
+            base = mod_mul(base, base, m);
+            exp >>= 1;
+        }
+        acc
+    }
+
+    #[inline]
+    fn is_composite_witness(a: u64, n: u64, d: u64, s: u32) -> bool {
+        let mut x = mod_pow(a % n, d, n);
+        if x == 1 || x == n - 1 {
+            return false;
+        }
+        for _ in 1..s {
+            x = mod_mul(x, x, n);
+            if x == n - 1 {
+                return false;
+            }
+        }
+        true
+    }
+
+    // Deterministic bases for 64-bit integers
+    // Ref: https://miller-rabin.appspot.com/
+    const BASES: [u64; 7] = [2, 325, 9375, 28178, 450775, 9780504, 1795265022];
+    for &a in &BASES {
+        if a % n == 0 {
+            continue;
+        }
+        if is_composite_witness(a, n, d, s) {
+            return false;
+        }
     }
     true
 }
 
 /// Check if prime is NTT-compatible for given N
 pub fn is_ntt_compatible(q: u64, n: usize) -> bool {
-    (q - 1) % (2 * n as u64) == 0
+    (q - 1).is_multiple_of(2 * n as u64)
 }
 
 /// Find NTT-friendly primes near a target value
@@ -125,7 +174,7 @@ pub fn mod_pow(base: u64, exp: u64, m: u64) -> u64 {
 
 /// Find a primitive n-th root of unity modulo prime q
 pub fn find_primitive_root(q: u64, n: usize) -> u64 {
-    assert!((q - 1) % (n as u64) == 0, "n must divide q-1");
+    assert!((q - 1).is_multiple_of(n as u64), "n must divide q-1");
     
     let exp = (q - 1) / (n as u64);
     

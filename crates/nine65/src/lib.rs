@@ -26,58 +26,63 @@
 //! No f32, f64, or any floating-point types in critical paths.
 //! 
 //! ## Quick Start: Production FHE
-//! 
+//!
 //! ```ignore
 //! use nine65::prelude::*;
+//! use nine65::params::secure_configs::SecureConfig;
 //!
-//! // 1. Use HE-Standard compliant parameters
-//! let config = FHEConfig::he_standard_128();  // 128-bit security
+//! // 1. Use SecureConfig for production (128-bit+ security guaranteed)
+//! let secure = SecureConfig::secure_128();
+//! let config = FHEConfig::standard_128();  // Or derive from SecureConfig
 //! let ntt = NTTEngine::new(config.q, config.n);
-//! 
+//!
 //! // 2. Generate keys with OS CSPRNG (PRODUCTION)
 //! let keys = KeySet::generate_secure(&config, &ntt);
-//! 
+//!
 //! // 3. Setup encoder/encryptor/decryptor
 //! let encoder = BFVEncoder::new(&config);
 //! let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
 //! let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
-//! 
+//!
 //! // 4. Encrypt with secure entropy
-//! let mut harvester = ShadowHarvester::from_os_seed();
-//! let ct = encryptor.encrypt(42, &mut harvester);
-//! 
+//! let ct = encryptor.encrypt_secure(42);  // Uses OS CSPRNG internally
+//!
 //! // 5. Decrypt
 //! let result = decryptor.decrypt(&ct);
 //! assert_eq!(result, 42);
 //! ```
 //! 
 //! ## Quick Start: Testing/Benchmarks
-//! 
+//!
 //! ```ignore
 //! use nine65::prelude::*;
 //!
 //! // Use deterministic parameters for reproducible tests
+//! // Note: light() requires `allow_insecure` feature for testing only
+//! #[cfg(feature = "allow_insecure")]
 //! let config = FHEConfig::light();
 //! let ntt = NTTEngine::new(config.q, config.n);
 //! let mut rng = ShadowHarvester::with_seed(42);  // Deterministic!
-//! 
+//!
 //! // Generate deterministic keys
 //! let keys = KeySet::generate(&config, &ntt, &mut rng);
 //! let encoder = BFVEncoder::new(&config);
-//! 
+//!
 //! // Encrypt with deterministic entropy
 //! let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
 //! let ct = encryptor.encrypt(42, &mut rng);
 //! ```
-//! 
+//!
 //! ## Security Levels
-//! 
+//!
 //! | Config | N | Security | Use Case |
 //! |--------|---|----------|----------|
-//! | `light()` | 1024 | ~80-bit | Testing only |
-//! | `he_standard_128()` | 2048 | 128-bit | **Production recommended** |
-//! | `standard_128()` | 4096 | 128-bit | Deep circuits |
-//! | `high_192()` | 8192 | 192-bit | High security |
+//! | `SecureConfig::secure_128()` | 4096 | 128-bit | **Production recommended** |
+//! | `SecureConfig::secure_192()` | 8192 | 192-bit | High security |
+//! | `standard_128()` | 4096 | 128-bit | Production (FHEConfig) |
+//! | `high_192()` | 8192 | 192-bit | High security (FHEConfig) |
+//! | `light()` | 1024 | ~36-bit | Testing only (`allow_insecure`) |
+//! | `he_standard_128()` | 2048 | ~56-bit | Testing only (`allow_insecure`) |
 //! 
 //! ## Module Overview
 //! 
@@ -157,12 +162,14 @@ pub mod prelude {
     // Entropy sources
     pub use crate::entropy::ShadowHarvester;
     pub use crate::entropy::SecureRng;  // OS CSPRNG for production use
+    #[cfg(any(test, feature = "deterministic_rng"))]
+    pub use crate::entropy::DeterministicRng;
     #[cfg(feature = "shadow-entropy")]
     pub use crate::entropy::WassanNoiseField;
     pub use crate::entropy::{secure_bytes, secure_u64, secure_ternary};
     
     // Parameters
-    pub use crate::params::FHEConfig;
+    pub use crate::params::{FHEConfig, SecureConfig};
     
     // Ring operations
     pub use crate::ring::RingPolynomial;
@@ -177,6 +184,10 @@ pub mod prelude {
 
     // Galois automorphisms for SIMD slot rotations
     pub use crate::ops::{GaloisEngine, GaloisKey, GaloisKeySet, GaloisEvaluator};
+
+    // Batch encoding and parallel operations
+    pub use crate::ops::BatchEncoder;
+    pub use crate::ops::parallel::{ParallelEncryptor, ParallelDecryptor};
 
     // FHE operations - DualRNS with K-Elimination (RECOMMENDED for ct×ct multiplication)
     pub use crate::ops::rns_fhe::{
@@ -210,7 +221,7 @@ mod integration_tests {
     #[test]
     fn test_full_fhe_workflow() {
         // 1. Setup parameters
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let mut rng = ShadowHarvester::with_seed(42);
         
@@ -266,83 +277,112 @@ mod integration_tests {
     }
     
     /// Production-grade FHE test with 128-bit security parameters
-    /// NOTE: This test demonstrates the noise challenge at production parameters.
-    /// Proper noise budget tracking (Next Step #3) will fix this.
+    /// NOTE: This runs full-sized keygen for N=8192; expect it to be slower than unit tests.
     #[test]
-    #[ignore]  // Needs proper noise budget tracking for N=8192
     fn test_production_128bit() {
         use crate::params::production::ProductionConfig128;
-        
+        use crate::noise::budget::{NoiseBudget, NoiseOpType};
+
         let config = ProductionConfig128::standard();
-        
+
         println!("\n=== PRODUCTION 128-BIT FHE TEST ===");
         println!("N = {}", config.n);
         println!("log(Q) = {} bits", config.log_q());
         println!("Security = {}-bit", config.estimated_security());
         println!("Max depth = {} multiplications", config.max_depth);
         println!("Primes in chain = {}", config.primes.len());
-        
+
         // Validate security BEFORE proceeding
         assert!(config.validate().is_ok(), "Config must be secure");
         assert!(config.estimated_security() >= 128, "Must have 128-bit security");
-        
-        // Create FHE context with first prime (for single-level test)
+
+        // Use 51-bit NTT-friendly prime for sufficient headroom at N=8192
+        // 30-bit primes give Δ≈2^14 which is insufficient (noise at N=8192 is ~2^32)
+        // 51-bit prime gives Δ≈2^35 which provides ~3 bits of headroom for basic ops
+        // Verified: 1125899906990081 ≡ 1 (mod 16384), is prime
+        let prime_51bit: u64 = 1125899906990081;
+        println!("\nUsing 51-bit prime for single-level test: {}", prime_51bit);
+        println!("log2(prime) = {} bits", 64 - prime_51bit.leading_zeros());
+
         let fhe_config = FHEConfig::custom(
             config.n,
-            vec![config.primes[0]],  // Single prime for this test
+            vec![prime_51bit],
             config.t,
             config.eta,
         ).expect("Valid config");
-        
+
+        // Initialize noise budget tracking
+        let mut budget = NoiseBudget::from_config(&fhe_config);
+        println!("\nInitial {}", budget);
+
         let ntt = NTTEngine::new(fhe_config.q, fhe_config.n);
         let mut rng = ShadowHarvester::with_seed(0xDEAD_BEEF);
-        
+
         println!("\nGenerating keys for N={}...", config.n);
         let start = std::time::Instant::now();
         let keys = KeySet::generate(&fhe_config, &ntt, &mut rng);
         let keygen_time = start.elapsed();
         println!("KeyGen: {:?}", keygen_time);
-        
+
         let encoder = BFVEncoder::new(&fhe_config);
         let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, fhe_config.eta);
         let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
         let evaluator = BFVEvaluator::new(&ntt, &encoder, Some(&keys.eval_key));
-        
+
         // Encrypt test values
         let a = 12345u64;
         let b = 54321u64;
-        
+
         println!("\nEncrypting messages...");
         let start = std::time::Instant::now();
         let ct_a = encryptor.encrypt(a, &mut rng);
         let ct_b = encryptor.encrypt(b, &mut rng);
         let encrypt_time = start.elapsed();
         println!("Encrypt (×2): {:?}", encrypt_time);
-        
+
+        // Track encryption noise cost
+        let _ = budget.consume(NoiseOpType::Encrypt, NoiseBudget::encrypt_cost(&fhe_config));
+        let _ = budget.consume(NoiseOpType::Encrypt, NoiseBudget::encrypt_cost(&fhe_config));
+        println!("After encryption: {}", budget);
+
         // Homomorphic addition
         println!("\nHomomorphic operations...");
         let start = std::time::Instant::now();
         let ct_sum = evaluator.add(&ct_a, &ct_b);
         let add_time = start.elapsed();
-        
+
+        // Track addition noise cost
+        let _ = budget.consume(NoiseOpType::Add, NoiseBudget::add_cost());
+        println!("After addition: {}", budget);
+
         let start = std::time::Instant::now();
         let ct_diff = evaluator.sub(&ct_b, &ct_a);
         let sub_time = start.elapsed();
-        
+
+        // Subtraction has same noise cost as addition
+        let _ = budget.consume(NoiseOpType::Add, NoiseBudget::add_cost());
+        println!("After subtraction: {}", budget);
+
         // Decrypt and verify
         let start = std::time::Instant::now();
         let sum = decryptor.decrypt(&ct_sum);
         let diff = decryptor.decrypt(&ct_diff);
         let decrypt_time = start.elapsed();
-        
-        println!("Homo Add: {:?}", add_time);
-        println!("Homo Sub: {:?}", sub_time);
-        println!("Decrypt: {:?}", decrypt_time);
-        
+
+        println!("\nHomomorphic timings:");
+        println!("  Add: {:?}", add_time);
+        println!("  Sub: {:?}", sub_time);
+        println!("  Decrypt: {:?}", decrypt_time);
+
         // Verify correctness
         assert_eq!(sum, (a + b) % fhe_config.t, "Addition failed");
         assert_eq!(diff, (b - a) % fhe_config.t, "Subtraction failed");
-        
+
+        // Final budget check
+        assert!(budget.remaining_millibits() > 0, "Should have positive noise budget remaining");
+        println!("\nFinal {}", budget);
+        println!("Remaining multiplications possible: {}", budget.remaining_multiplications(&fhe_config));
+
         println!("\n✅ PRODUCTION 128-BIT TEST PASSED");
         println!("   {} + {} = {} (encrypted)", a, b, sum);
         println!("   {} - {} = {} (encrypted)", b, a, diff);
@@ -351,7 +391,7 @@ mod integration_tests {
     /// Benchmark test
     #[test]
     fn test_benchmarks() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let mut rng = ShadowHarvester::with_seed(999);
         
@@ -381,8 +421,10 @@ mod integration_tests {
         let _ = evaluator.add(&ct, &ct2);
         let add_time = start.elapsed();
         
-        // Homo mul benchmark
+        // Homo mul benchmark (using BFVEvaluator::mul for timing - note: mul_dual_symmetric
+        // has overflow issues at N=4096, tracked for future fix)
         let start = std::time::Instant::now();
+        #[allow(deprecated)]
         let _ = evaluator.mul(&ct, &ct2);
         let mul_time = start.elapsed();
         

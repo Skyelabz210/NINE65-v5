@@ -157,7 +157,7 @@ impl CyclotomicPolynomial {
 /// Modular distance on the torus - replaces sin(θ)
 #[inline]
 pub fn modular_distance(a: u64, b: u64, modulus: u64) -> u64 {
-    let diff = if a > b { a - b } else { b - a };
+    let diff = a.abs_diff(b);
     diff.min(modulus - diff)
 }
 
@@ -169,8 +169,10 @@ pub fn toric_coupling(phase_a: u64, phase_b: u64, modulus: u64, scale: u64) -> i
     
     if phase_a <= phase_b {
         if phase_b - phase_a <= half_mod { coupling as i64 } else { -(coupling as i64) }
+    } else if phase_a - phase_b <= half_mod {
+        -(coupling as i64)
     } else {
-        if phase_a - phase_b <= half_mod { -(coupling as i64) } else { coupling as i64 }
+        coupling as i64
     }
 }
 

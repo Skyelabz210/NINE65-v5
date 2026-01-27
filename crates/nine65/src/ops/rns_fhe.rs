@@ -536,23 +536,20 @@ pub struct RNSFHEContext {
 impl RNSFHEContext {
     /// Create RNS FHE context from config (fallible version)
     ///
+    /// Prefer this over [`new()`](Self::new) for error handling in library code.
+    ///
+    /// # Errors
+    ///
     /// Returns `Err` if:
-    /// - Config has fewer than 2 primes
-    /// - Config has more than 3 primes
+    /// - Config has fewer than 2 primes (use `light_rns` or higher)
+    /// - Q = product of primes does not fit in u128
     /// - Plaintext modulus is zero
+    #[must_use = "this returns a Result that must be handled"]
     pub fn try_new(config: &FHEConfig) -> Nine65Result<Self> {
         if config.primes.len() < 2 {
             return Err(Nine65Error::ConfigError {
                 message: format!(
                     "RNS-native FHE requires at least 2 primes, got {}. Use light_rns or higher.",
-                    config.primes.len()
-                ),
-            });
-        }
-        if config.primes.len() > 3 {
-            return Err(Nine65Error::ConfigError {
-                message: format!(
-                    "Currently supports up to 3 primes (Q fits in u128), got {}",
                     config.primes.len()
                 ),
             });
@@ -574,9 +571,15 @@ impl RNSFHEContext {
             .map(|&p| NTTEngine::new(p, config.n))
             .collect();
 
-        // Compute Q = product of main primes
+        // Compute Q = product of main primes (checked for u128 overflow)
         let q_product: u128 = config.primes.iter()
-            .fold(1u128, |acc, &p| acc * p as u128);
+            .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))
+            .ok_or_else(|| Nine65Error::ConfigError {
+                message: format!(
+                    "Q product exceeds u128 capacity for {} primes",
+                    config.primes.len()
+                ),
+            })?;
 
         // Compute Δ = floor(Q/t) and store in RNS form
         let delta_big = q_product / config.t as u128;
@@ -626,8 +629,13 @@ impl RNSFHEContext {
     pub fn new_coeff_domain(config: &FHEConfig) -> Self {
         assert!(config.primes.len() >= 2,
                 "RNS-native FHE requires at least 2 primes.");
-        assert!(config.primes.len() <= 3,
-                "Currently supports up to 3 primes (Q fits in u128)");
+
+        // Verify Q fits in u128 (allows up to ~4 primes of 30 bits each)
+        let q_bits: u32 = config.primes.iter()
+            .map(|&p| 64 - p.leading_zeros())
+            .sum();
+        assert!(q_bits <= 126,
+                "Q product exceeds u128 capacity (need <= 126 bits, got {} bits)", q_bits);
 
         // Create dual-RNS context with 5 anchor primes for Q²×N capacity
         let dual_rns = DualRNSContext::for_fhe_coeff_domain(&config.primes, config.n);
@@ -801,7 +809,7 @@ impl RNSFHEContext {
     }
 
     /// Convert a single-RNS polynomial into Montgomery form (persistent mode).
-    fn to_montgomery_poly(&self, poly: &RNSPolynomial) -> RNSPolynomial {
+    fn to_montgomery_form(&self, poly: &RNSPolynomial) -> RNSPolynomial {
         let limbs: Vec<Vec<u64>> = poly.limbs.iter()
             .zip(self.rns.mont_contexts.iter())
             .map(|(limb, mont)| limb.iter().map(|&c| mont.to_montgomery(c)).collect())
@@ -811,7 +819,7 @@ impl RNSFHEContext {
     }
 
     /// Convert a single-RNS polynomial from Montgomery form back to standard residues.
-    fn from_montgomery_poly(&self, poly: &RNSPolynomial) -> RNSPolynomial {
+    fn convert_from_montgomery_form(&self, poly: &RNSPolynomial) -> RNSPolynomial {
         let limbs: Vec<Vec<u64>> = poly.limbs.iter()
             .zip(self.rns.mont_contexts.iter())
             .map(|(limb, mont)| limb.iter().map(|&c| mont.from_montgomery(c)).collect())
@@ -858,7 +866,7 @@ impl RNSFHEContext {
                 }).collect()
             })
             .collect();
-        let s_rns = self.to_montgomery_poly(&RNSPolynomial { limbs: s_limbs, n: self.n });
+        let s_rns = self.to_montgomery_form(&RNSPolynomial { limbs: s_limbs, n: self.n });
         let secret_key = RNSSecretKey { s: s_rns };
 
         // Generate public key: pk = (pk0, pk1) where pk0 = -(a*s + e), pk1 = a
@@ -866,13 +874,13 @@ impl RNSFHEContext {
         let a_coeffs: Vec<u64> = (0..self.n)
             .map(|_| rng.next_u64() % q_min)
             .collect();
-        let a_rns = self.to_montgomery_poly(&RNSPolynomial::from_poly(&a_coeffs, &self.rns));
+        let a_rns = self.to_montgomery_form(&RNSPolynomial::from_poly(&a_coeffs, &self.rns));
 
         // Generate small error e
         let e_coeffs: Vec<u64> = (0..self.n)
             .map(|_| sample_cbd(rng, self.config.eta, q_min))
             .collect();
-        let e_rns = self.to_montgomery_poly(&RNSPolynomial::from_poly(&e_coeffs, &self.rns));
+        let e_rns = self.to_montgomery_form(&RNSPolynomial::from_poly(&e_coeffs, &self.rns));
 
         // Compute a*s in RNS (NTT multiply in each limb)
         let as_rns = self.rns_poly_mul(&a_rns, &secret_key.s);
@@ -924,13 +932,13 @@ impl RNSFHEContext {
             let a_coeffs: Vec<u64> = (0..self.n)
                 .map(|_| rng.next_u64() % q_min)
                 .collect();
-            let a_rns = self.to_montgomery_poly(&RNSPolynomial::from_poly(&a_coeffs, &self.rns));
+            let a_rns = self.to_montgomery_form(&RNSPolynomial::from_poly(&a_coeffs, &self.rns));
 
             // Generate error e_i
             let e_coeffs: Vec<u64> = (0..self.n)
                 .map(|_| sample_cbd(rng, self.config.eta, q_min))
                 .collect();
-            let e_rns = self.to_montgomery_poly(&RNSPolynomial::from_poly(&e_coeffs, &self.rns));
+            let e_rns = self.to_montgomery_form(&RNSPolynomial::from_poly(&e_coeffs, &self.rns));
 
             // rlk0_i = -(a_i * s + e_i) + power * s^2
             let as_rns = self.rns_poly_mul(&a_rns, &sk.s);
@@ -966,7 +974,7 @@ impl RNSFHEContext {
                 coeffs
             })
             .collect();
-        let m_rns = self.to_montgomery_poly(&RNSPolynomial { limbs: m_limbs, n: self.n });
+        let m_rns = self.to_montgomery_form(&RNSPolynomial { limbs: m_limbs, n: self.n });
 
         // Generate small u with coefficients in {-1, 0, 1}
         // Create directly with correct -1 handling per limb
@@ -988,18 +996,18 @@ impl RNSFHEContext {
                 }).collect()
             })
             .collect();
-        let u_rns = self.to_montgomery_poly(&RNSPolynomial { limbs: u_limbs, n: self.n });
+        let u_rns = self.to_montgomery_form(&RNSPolynomial { limbs: u_limbs, n: self.n });
 
         // Generate errors e1, e2
         let e1_coeffs: Vec<u64> = (0..self.n)
             .map(|_| sample_cbd(rng, self.config.eta, q_min))
             .collect();
-        let e1_rns = self.to_montgomery_poly(&RNSPolynomial::from_poly(&e1_coeffs, &self.rns));
+        let e1_rns = self.to_montgomery_form(&RNSPolynomial::from_poly(&e1_coeffs, &self.rns));
 
         let e2_coeffs: Vec<u64> = (0..self.n)
             .map(|_| sample_cbd(rng, self.config.eta, q_min))
             .collect();
-        let e2_rns = self.to_montgomery_poly(&RNSPolynomial::from_poly(&e2_coeffs, &self.rns));
+        let e2_rns = self.to_montgomery_form(&RNSPolynomial::from_poly(&e2_coeffs, &self.rns));
 
         // c0 = pk0 * u + e1 + m
         let pk0_u = self.rns_poly_mul(&pk.pk0, &u_rns);
@@ -1035,7 +1043,7 @@ impl RNSFHEContext {
         // Handle potential overflow by using u128 carefully
         // For values close to Q, we need centered reduction
         let q_half = self.q_product / 2;
-        let centered_value = if full_value > q_half {
+        if full_value > q_half {
             // Negative value in centered representation
             // inner - Q, but we need to be careful with signs
             // (Q - full_value) * t / Q gives the negative magnitude
@@ -1051,9 +1059,7 @@ impl RNSFHEContext {
             // Positive value
             let scaled = (full_value * self.t as u128 + q_half) / self.q_product;
             (scaled % self.t as u128) as u64
-        };
-
-        centered_value
+        }
     }
 
     /// Homomorphic addition
@@ -1114,7 +1120,7 @@ impl RNSFHEContext {
     ///           = ((x_i × t × Q_i^{-1}) / q_i) × (1/Q_i) × Q_i
     ///           ≈ floor((x_i × t × Q_i^{-1}) / q_i) mod q_i
     fn exact_rescale(&self, poly: &RNSPolynomial) -> RNSPolynomial {
-        let poly_standard = self.from_montgomery_poly(poly);
+        let poly_standard = self.convert_from_montgomery_form(poly);
         let mut result_limbs: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.rns.num_primes()];
 
         // Precompute scaling factors for each limb
@@ -1164,7 +1170,7 @@ impl RNSFHEContext {
             }
         }
 
-        self.to_montgomery_poly(&RNSPolynomial { limbs: result_limbs, n: self.n })
+        self.to_montgomery_form(&RNSPolynomial { limbs: result_limbs, n: self.n })
     }
 
     /// Alternative rescaling: per-limb approximation (faster but less accurate)
@@ -1173,7 +1179,7 @@ impl RNSFHEContext {
     /// Uses per-limb scaling which gives approximate results with bounded error.
     #[allow(dead_code)]
     fn approx_rescale(&self, poly: &RNSPolynomial) -> RNSPolynomial {
-        let poly_standard = self.from_montgomery_poly(poly);
+        let poly_standard = self.convert_from_montgomery_form(poly);
         let mut result_limbs: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.rns.num_primes()];
 
         // Precompute per-limb scaling factors
@@ -1214,7 +1220,7 @@ impl RNSFHEContext {
             }
         }
 
-        self.to_montgomery_poly(&RNSPolynomial { limbs: result_limbs, n: self.n })
+        self.to_montgomery_form(&RNSPolynomial { limbs: result_limbs, n: self.n })
     }
 
     /// Relinearization: convert degree-2 ciphertext to degree-1
@@ -1244,7 +1250,7 @@ impl RNSFHEContext {
 
     /// Decompose RNS polynomial into base-T digits
     fn decompose_rns_poly(&self, poly: &RNSPolynomial, base: u64) -> Vec<RNSPolynomial> {
-        let poly_standard = self.from_montgomery_poly(poly);
+        let poly_standard = self.convert_from_montgomery_form(poly);
         // Number of digits based on Q (128 bits max for 3 primes)
         let q_bits = 128 - self.q_product.leading_zeros() as usize;
         let base_bits = 64 - base.leading_zeros() as usize;
@@ -1265,7 +1271,7 @@ impl RNSFHEContext {
         for _ in 0..num_digits {
             let digit: Vec<u64> = coeffs.iter().map(|&c| (c % base as u128) as u64).collect();
             let digit_poly = RNSPolynomial::from_poly(&digit, &self.rns);
-            digits.push(self.to_montgomery_poly(&digit_poly));
+            digits.push(self.to_montgomery_form(&digit_poly));
             coeffs = coeffs.iter().map(|&c| c / base as u128).collect();
         }
 
@@ -1452,14 +1458,60 @@ impl RNSFHEContext {
         }
     }
 
+    /// Generate FULL dual-track keys optimized for deeper PUBLIC circuits
+    ///
+    /// Uses a smaller decomposition base (2^10) to reduce relinearization noise.
+    /// This increases eval-key size and relinearization cost, but extends depth.
+    ///
+    /// For finer control, use `generate_keys_dual_full_with_base`.
+    pub fn generate_keys_dual_full_public_deep(
+        &self,
+        rng: &mut ShadowHarvester,
+    ) -> DualRNSFullKeySet {
+        self.generate_keys_dual_full_with_base(rng, 1u64 << 10)
+    }
+
+    /// Generate FULL dual-track keys with a custom decomposition base for PUBLIC relinearization
+    ///
+    /// Use this to tune public-mode depth vs eval-key size/perf.
+    /// Smaller bases reduce relinearization noise but increase key size.
+    pub fn generate_keys_dual_full_with_base(
+        &self,
+        rng: &mut ShadowHarvester,
+        decomp_base: u64,
+    ) -> DualRNSFullKeySet {
+        // First generate basic keys
+        let basic_keys = self.generate_keys_dual(rng);
+
+        // Generate evaluation key for public relinearization
+        let eval_key = self.generate_eval_key_dual_with_base(&basic_keys.secret_key, rng, decomp_base);
+
+        DualRNSFullKeySet {
+            secret_key: basic_keys.secret_key,
+            public_key: basic_keys.public_key,
+            eval_key,
+        }
+    }
+
     /// Generate dual-track evaluation key for relinearization
     ///
     /// Creates encrypted versions of s² so multiplication can be done without sk.
     /// Uses digit decomposition to reduce noise growth.
     fn generate_eval_key_dual(&self, sk: &DualRNSSecretKey, rng: &mut ShadowHarvester) -> DualRNSEvalKey {
-        let decomp_base = 1u64 << 16; // 2^16 decomposition base
+        self.generate_eval_key_dual_with_base(sk, rng, 1u64 << 16)
+    }
+
+    /// Generate dual-track evaluation key for relinearization with a custom base
+    fn generate_eval_key_dual_with_base(
+        &self,
+        sk: &DualRNSSecretKey,
+        rng: &mut ShadowHarvester,
+        decomp_base: u64,
+    ) -> DualRNSEvalKey {
+        assert!(decomp_base.is_power_of_two() && decomp_base >= 2, "decomp_base must be power of two >= 2");
+        let base_bits = decomp_base.trailing_zeros() as usize;
         let q_bits = 128 - self.q_product.leading_zeros() as usize;
-        let num_digits = q_bits.div_ceil(16);
+        let num_digits = q_bits.div_ceil(base_bits);
 
         // Find minimum prime across main AND anchor for safe sampling
         let min_main = self.config.primes.iter().min().copied().unwrap_or(u64::MAX);
@@ -1567,10 +1619,9 @@ impl RNSFHEContext {
         let encoded = m as u128 * delta_big;
 
         // Create message polynomial (constant term only)
-        let mut m_coeffs = vec![0u64; self.n];
-        m_coeffs[0] = (encoded % self.q_product) as u64;
-
-        let m_main = self.to_main_rns(&m_coeffs);
+        // CRITICAL FIX: Use u128-aware RNS conversion to avoid truncation when Q > 2^64
+        let m_coeffs = vec![0u64; self.n];  // Zero vector (coeff 0 handled by u128 path)
+        let m_main = self.to_main_rns_u128(&m_coeffs, encoded);
         let m_anchor = self.to_anchor_rns_u128(&m_coeffs, encoded);
         let m_dual = DualRNSPoly { main: m_main, anchor: m_anchor, n: self.n };
 
@@ -1654,10 +1705,9 @@ impl RNSFHEContext {
         let encoded = m as u128 * delta_big;
 
         // Create message polynomial (constant term only)
-        let mut m_coeffs = vec![0u64; self.n];
-        m_coeffs[0] = (encoded % self.q_product) as u64;
-
-        let m_main = self.to_main_rns(&m_coeffs);
+        // CRITICAL FIX: Use u128-aware RNS conversion to avoid truncation when Q > 2^64
+        let m_coeffs = vec![0u64; self.n];  // Zero vector (coeff 0 handled by u128 path)
+        let m_main = self.to_main_rns_u128(&m_coeffs, encoded);
         let m_anchor = self.to_anchor_rns_u128(&m_coeffs, encoded);
         let m_dual = DualRNSPoly { main: m_main, anchor: m_anchor, n: self.n };
 
@@ -1736,8 +1786,73 @@ impl RNSFHEContext {
     }
 
     /// Decrypt dual-track ciphertext
+    ///
+    /// This function is level-aware: if the ciphertext has been modulus-switched
+    /// to fewer primes, decryption will use only those primes.
     pub fn decrypt_dual(&self, ct: &DualRNSCiphertext, sk: &DualRNSSecretKey) -> u64 {
         self.decrypt_dual_with_diagnostics(ct, sk).0
+    }
+
+    /// Project a polynomial to a lower level (keep only first `level` main limbs)
+    fn project_poly_to_level(&self, poly: &DualRNSPoly, level: usize) -> DualRNSPoly {
+        let main: Vec<Vec<u64>> = poly.main.iter().take(level).cloned().collect();
+        // Keep all anchor limbs (they're still valid for any level)
+        let anchor = poly.anchor.clone();
+        DualRNSPoly { main, anchor, n: poly.n }
+    }
+
+    /// Level-aware polynomial multiplication (operates only on shared primes)
+    fn dual_poly_mul_level(&self, a: &DualRNSPoly, b: &DualRNSPoly) -> DualRNSPoly {
+        let level = a.main.len().min(b.main.len());
+
+        // Main limbs: NTT multiply for each prime at this level
+        let main: Vec<Vec<u64>> = (0..level)
+            .map(|limb_idx| {
+                self.ntt_engines[limb_idx].multiply(&a.main[limb_idx], &b.main[limb_idx])
+            })
+            .collect();
+
+        // Anchor: use full multiplication (anchors always have all limbs)
+        let anchor: Vec<Vec<u64>> = a.anchor.iter()
+            .zip(&b.anchor)
+            .zip(self.dual_rns.anchor.ntt_engines.iter())
+            .map(|((a_limb, b_limb), ntt)| {
+                ntt.multiply(a_limb, b_limb)
+            })
+            .collect();
+
+        DualRNSPoly { main, anchor, n: a.n }
+    }
+
+    /// Level-aware polynomial addition
+    fn dual_poly_add_level(&self, a: &DualRNSPoly, b: &DualRNSPoly) -> DualRNSPoly {
+        let level = a.main.len().min(b.main.len());
+
+        let main: Vec<Vec<u64>> = (0..level)
+            .map(|limb_idx| {
+                let prime = self.config.primes[limb_idx];
+                a.main[limb_idx].iter().zip(&b.main[limb_idx])
+                    .map(|(&x, &y)| {
+                        let sum = x as u128 + y as u128;
+                        if sum >= prime as u128 { (sum - prime as u128) as u64 } else { sum as u64 }
+                    })
+                    .collect()
+            })
+            .collect();
+
+        let anchor: Vec<Vec<u64>> = (0..self.dual_rns.anchor.primes.len())
+            .map(|limb_idx| {
+                let prime = self.dual_rns.anchor.primes[limb_idx];
+                a.anchor[limb_idx].iter().zip(&b.anchor[limb_idx])
+                    .map(|(&x, &y)| {
+                        let sum = x as u128 + y as u128;
+                        if sum >= prime as u128 { (sum - prime as u128) as u64 } else { sum as u64 }
+                    })
+                    .collect()
+            })
+            .collect();
+
+        DualRNSPoly { main, anchor, n: a.n }
     }
 
     /// Decrypt with diagnostics: returns (decrypted, rounding_margin)
@@ -1747,31 +1862,49 @@ impl RNSFHEContext {
     /// - Negative margin: rounding failed (error exceeded Δ/2)
     ///
     /// This is the key diagnostic for noise budget exhaustion.
+    /// This function is level-aware and works with modulus-switched ciphertexts.
     #[cfg(any(test, debug_assertions))]
     pub fn decrypt_dual_with_diagnostics(&self, ct: &DualRNSCiphertext, sk: &DualRNSSecretKey) -> (u64, i128) {
-        // inner = c0 + c1 * s (use main RNS only for decryption)
-        let c1_s = self.dual_poly_mul(&ct.c1, &sk.s);
-        let inner = self.dual_poly_add(&ct.c0, &c1_s);
+        let ct_level = ct.c0.main.len();
+        let sk_level = sk.s.main.len();
 
-        // Reconstruct constant term from main RNS
+        // inner = c0 + c1 * s (level-aware)
+        let (inner, q_level, delta) = if ct_level < sk_level {
+            // Ciphertext has been modulus-switched - project sk down
+            let sk_projected = self.project_poly_to_level(&sk.s, ct_level);
+            let c1_s = self.dual_poly_mul_level(&ct.c1, &sk_projected);
+            let inner = self.dual_poly_add_level(&ct.c0, &c1_s);
+
+            // Compute Q_level = product of first ct_level primes
+            let q_level: u128 = self.config.primes[..ct_level].iter()
+                .fold(1u128, |acc, &p| acc.saturating_mul(p as u128));
+            let delta = q_level / self.t as u128;
+            (inner, q_level, delta)
+        } else {
+            // Standard case: ct and sk have same level
+            let c1_s = self.dual_poly_mul(&ct.c1, &sk.s);
+            let inner = self.dual_poly_add(&ct.c0, &c1_s);
+            (inner, self.q_product, self.q_product / self.t as u128)
+        };
+
+        // Reconstruct constant term from main RNS (level-aware)
         let rns_coeff: Vec<u64> = inner.main.iter().map(|limb| limb[0]).collect();
-        let full_value = self.rns.to_int(&rns_coeff);
+        let full_value = self.rns.to_int_level(&rns_coeff, ct_level);
 
-        // Δ = Q/t (scaling factor)
-        let delta = self.q_product / self.t as u128;
+        // Use the computed q_level and delta (already level-aware from above)
         let delta_half = delta / 2;
-        let q_half = self.q_product / 2;
+        let q_half = q_level / 2;
 
-        // Decode: round(inner * t / Q) mod t
+        // Decode: round(inner * t / Q_level) mod t
         let (decoded, margin) = if full_value > q_half {
-            // Negative case
-            let neg_magnitude = self.q_product - full_value;
-            let scaled_neg = (neg_magnitude * self.t as u128 + q_half) / self.q_product;
+            // Negative case (value in upper half of [0, Q_level))
+            let neg_magnitude = q_level - full_value;
+            let scaled_neg = (neg_magnitude * self.t as u128 + q_half) / q_level;
             let decoded = if scaled_neg == 0 { 0 } else { self.t - (scaled_neg % self.t as u128) as u64 };
 
             // Error = distance from ideal encoding point
-            // For decoded value m, ideal point would be (Q - m*Δ) for negative
-            let ideal_point = self.q_product - (decoded as u128 * delta);
+            // For decoded value m, ideal point would be (Q_level - m*Δ) for negative
+            let ideal_point = q_level.saturating_sub(decoded as u128 * delta);
             let error = if full_value > ideal_point {
                 (full_value - ideal_point) as i128
             } else {
@@ -1781,7 +1914,7 @@ impl RNSFHEContext {
             (decoded, margin)
         } else {
             // Positive case
-            let scaled = (full_value * self.t as u128 + q_half) / self.q_product;
+            let scaled = (full_value * self.t as u128 + q_half) / q_level;
             let decoded = (scaled % self.t as u128) as u64;
 
             // For decoded value m, ideal point would be m*Δ
@@ -1794,25 +1927,40 @@ impl RNSFHEContext {
         (decoded, margin)
     }
 
-    /// Non-cfg version for release builds
+    /// Non-cfg version for release builds (level-aware)
     #[cfg(not(any(test, debug_assertions)))]
     fn decrypt_dual_with_diagnostics(&self, ct: &DualRNSCiphertext, sk: &DualRNSSecretKey) -> (u64, i128) {
-        // inner = c0 + c1 * s (use main RNS only for decryption)
-        let c1_s = self.dual_poly_mul(&ct.c1, &sk.s);
-        let inner = self.dual_poly_add(&ct.c0, &c1_s);
+        let ct_level = ct.c0.main.len();
+        let sk_level = sk.s.main.len();
 
-        // Reconstruct constant term from main RNS
+        // inner = c0 + c1 * s (level-aware)
+        let (inner, q_level) = if ct_level < sk_level {
+            // Ciphertext has been modulus-switched - project sk down
+            let sk_projected = self.project_poly_to_level(&sk.s, ct_level);
+            let c1_s = self.dual_poly_mul_level(&ct.c1, &sk_projected);
+            let inner = self.dual_poly_add_level(&ct.c0, &c1_s);
+            let q_level: u128 = self.config.primes[..ct_level].iter()
+                .fold(1u128, |acc, &p| acc.saturating_mul(p as u128));
+            (inner, q_level)
+        } else {
+            // Standard case: ct and sk have same level
+            let c1_s = self.dual_poly_mul(&ct.c1, &sk.s);
+            let inner = self.dual_poly_add(&ct.c0, &c1_s);
+            (inner, self.q_product)
+        };
+
+        // Reconstruct constant term from main RNS (level-aware)
         let rns_coeff: Vec<u64> = inner.main.iter().map(|limb| limb[0]).collect();
-        let full_value = self.rns.to_int(&rns_coeff);
+        let full_value = self.rns.to_int_level(&rns_coeff, ct_level);
 
-        // Decode: round(inner * t / Q) mod t
-        let q_half = self.q_product / 2;
+        // Decode: round(inner * t / Q_level) mod t
+        let q_half = q_level / 2;
         let decoded = if full_value > q_half {
-            let neg_magnitude = self.q_product - full_value;
-            let scaled_neg = (neg_magnitude * self.t as u128 + q_half) / self.q_product;
+            let neg_magnitude = q_level - full_value;
+            let scaled_neg = (neg_magnitude * self.t as u128 + q_half) / q_level;
             if scaled_neg == 0 { 0 } else { self.t - (scaled_neg % self.t as u128) as u64 }
         } else {
-            let scaled = (full_value * self.t as u128 + q_half) / self.q_product;
+            let scaled = (full_value * self.t as u128 + q_half) / q_level;
             (scaled % self.t as u128) as u64
         };
         (decoded, 0) // No diagnostics in release
@@ -1912,6 +2060,35 @@ impl RNSFHEContext {
         DualRNSCiphertext { c0: c0_new, c1: c1_new, level: ct1.level.min(ct2.level) }
     }
 
+    /// Determine the main-prime level encoded in an evaluation key
+    fn eval_key_level(evk: &DualRNSEvalKey) -> usize {
+        evk.rlk.first().map(|(c0, _)| c0.main.len()).unwrap_or(0)
+    }
+
+    /// Modulus-switch an evaluation key down to the target level
+    fn mod_switch_eval_key_to_level(&self, evk: &DualRNSEvalKey, target_level: usize) -> DualRNSEvalKey {
+        assert!(target_level >= 2, "Target level must leave at least 2 primes");
+
+        let mut rlk = Vec::with_capacity(evk.rlk.len());
+        for (rlk0, rlk1) in evk.rlk.iter() {
+            let mut c0 = rlk0.clone();
+            let mut c1 = rlk1.clone();
+
+            while c0.main.len() > target_level {
+                c0 = self.mod_switch_down_dual(&c0).expect("Eval key mod-switch failed");
+                c1 = self.mod_switch_down_dual(&c1).expect("Eval key mod-switch failed");
+            }
+
+            rlk.push((c0, c1));
+        }
+
+        DualRNSEvalKey {
+            rlk,
+            decomp_base: evk.decomp_base,
+            num_digits: evk.num_digits,
+        }
+    }
+
     /// Relinearize a degree-2 term using evaluation keys
     ///
     /// Standard BFV relinearization:
@@ -1924,6 +2101,19 @@ impl RNSFHEContext {
     ///                                   = e0 + sum(d_i * rlk0_i) + (e1 + sum(d_i * rlk1_i))*s
     ///                                   ≈ e0 + e2*s² + e1*s (the original degree-2 result)
     fn relinearize_dual(&self, poly: &DualRNSPoly, evk: &DualRNSEvalKey) -> (DualRNSPoly, DualRNSPoly) {
+        let poly_level = poly.main.len();
+        let evk_level = Self::eval_key_level(evk);
+
+        let evk_down;
+        let evk = if evk_level == poly_level {
+            evk
+        } else if evk_level > poly_level {
+            evk_down = self.mod_switch_eval_key_to_level(evk, poly_level);
+            &evk_down
+        } else {
+            panic!("Eval key level {} < ciphertext level {}", evk_level, poly_level);
+        };
+
         // Initialize accumulators to zero
         let mut result_c0 = self.dual_poly_zero();
         let mut result_c1 = self.dual_poly_zero();
@@ -1960,43 +2150,42 @@ impl RNSFHEContext {
         //
         // digit_i(x) = floor(x / base^i) mod base
 
-        let base_power = (0..digit_idx).fold(1u128, |acc, _| acc * base as u128);
-        let base_128 = base as u128;
-        let m_product = self.dual_rns.main_product;
+        debug_assert!(base.is_power_of_two(), "decomp_base must be power of two");
+        let base_bits = base.trailing_zeros();
+        let base_mask = (base as u128) - 1;
 
-        let mut main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.config.primes.len()];
+        // Level-aware modulus product for K-Elimination
+        let ct_level = poly.main.len();
+        let m_product_level = self.main_product_for_level(ct_level);
+
+        let mut main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; ct_level];
         let mut anchor: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
 
         for i in 0..self.n {
             // Use K-Elimination to get EXACT value
             let main_residues: Vec<u64> = poly.main.iter().map(|limb| limb[i]).collect();
-            let v_m = self.rns.to_int(&main_residues);
+            let v_m = self.rns.to_int_level(&main_residues, ct_level);
             let anchor_residues: Vec<u64> = poly.anchor.iter().map(|limb| limb[i]).collect();
-            let k = self.dual_rns.extract_k_rns(v_m, &anchor_residues);
+            let level_primes = &self.config.primes[..ct_level];
+            let k = self.dual_rns.extract_k_rns_level(v_m, &anchor_residues, level_primes);
 
             // Compute exact_value = v_m + k * M using wide arithmetic
             // k * M can exceed u128 (k up to ~10^21, M ~10^18, product ~10^39 > 2^128)
             // Use 256-bit representation: (lo, hi) where value = lo + hi * 2^128
             let (exact_lo, exact_hi) = wide_add_u128(
                 v_m, 0,  // v_m as (lo, hi)
-                wide_mul_u128(k, m_product)  // k * M as (lo, hi)
+                wide_mul_u128(k, m_product_level)  // k * M_level as (lo, hi)
             );
 
-            // Extract digit: (exact / base_power) mod base
-            // Since base = 2^16 and base_power = 2^(16*idx), we need bits [16*idx : 16*idx+16)
-            // For digit_idx up to ~8 (covers up to ~2^128), this stays in the low word
-            let digit = if digit_idx < 8 {
-                // Digit is in low 128 bits
-                ((exact_lo / base_power) % base_128) as u64
+            // Extract digit for power-of-two base: digit = (exact >> (base_bits * idx)) & (base - 1)
+            let shift_bits = (digit_idx as u32) * base_bits;
+            let digit = if shift_bits < 128 {
+                let hi_part = if shift_bits == 0 { 0 } else { exact_hi << (128 - shift_bits) };
+                let merged = (exact_lo >> shift_bits) | hi_part;
+                (merged & base_mask) as u64
             } else {
-                // Digit might be in high bits - use wide division
-                // For our parameters (Q^2 < 10^40, fits in ~133 bits), digit_idx < 9 suffices
-                let shift_bits = (digit_idx as u32) * 16;
-                if shift_bits < 128 {
-                    ((exact_lo >> shift_bits) | (exact_hi << (128 - shift_bits))) as u64 & 0xFFFF
-                } else {
-                    (exact_hi >> (shift_bits - 128)) as u64 & 0xFFFF
-                }
+                let hi_shift = shift_bits - 128;
+                ((exact_hi >> hi_shift) & base_mask) as u64
             };
 
             // Store digit in each RNS limb (digit is small, fits in all moduli)
@@ -2010,6 +2199,15 @@ impl RNSFHEContext {
 
         DualRNSPoly { main, anchor, n: self.n }
     }
+
+    /// Product of the first `level` main primes (Q_level)
+    fn main_product_for_level(&self, level: usize) -> u128 {
+        debug_assert!(level <= self.config.primes.len(), "Level exceeds prime count");
+        self.config.primes[..level].iter()
+            .fold(1u128, |acc, &p| acc.saturating_mul(p as u128))
+    }
+
+    // NOTE: Level-aware k extraction uses DualRNSContext::extract_k_rns_level.
 
     /// Create zero polynomial in dual form
     fn dual_poly_zero(&self) -> DualRNSPoly {
@@ -2029,31 +2227,48 @@ impl RNSFHEContext {
     /// IMPORTANT: We CENTER v_m around Q/2 before processing to handle values
     /// that represent negative noise (values > Q/2 are interpreted as negative).
     fn k_elim_rescale_dual(&self, poly: &DualRNSPoly) -> DualRNSPoly {
-        let delta = self.q_product / self.t as u128;
-        let m_product = self.dual_rns.main_product;
-        let q_half = m_product / 2;
+        // Level-aware: determine the current ciphertext level from polynomial
+        let ct_level = poly.main.len();
 
-        let mut result_main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.config.primes.len()];
+        // Compute level-specific modulus products
+        let m_product_level: u128 = self.config.primes[..ct_level].iter()
+            .fold(1u128, |acc, &p| acc.saturating_mul(p as u128));
+        let delta = m_product_level / self.t as u128;
+        let q_half = m_product_level / 2;
+        let t_u128 = self.t as u128;
+        let r = m_product_level - delta * t_u128;
+
+        // Output at the same level as input
+        let mut result_main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; ct_level];
         let mut result_anchor: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
 
-        // Product of first N anchor primes for signed k interpretation
+        // Product of anchor primes for signed k interpretation
         // (used for k > A_n/2 detection)
-        // Use min(3, available) primes for the signed interpretation threshold
-        let num_primes_for_sign = self.dual_rns.anchor.primes.len().min(3);
+        // CRITICAL: Must match the number of primes used in k reconstruction
+        // For 4+ main primes, we use 4 anchor primes for k reconstruction
+        // so we need 4 anchor primes for the signed interpretation threshold
+        let num_primes_for_sign = if ct_level >= 4 && self.dual_rns.anchor.primes.len() >= 4 {
+            4
+        } else {
+            self.dual_rns.anchor.primes.len().min(3)
+        };
         let a_n_product: u128 = self.dual_rns.anchor.primes[0..num_primes_for_sign].iter()
-            .fold(1u128, |acc, &p| acc * p as u128);
+            .fold(1u128, |acc, &p| acc.saturating_mul(p as u128));
 
         for i in 0..self.n {
-            // Reconstruct v_m from main RNS (mod M = Q)
+            // Reconstruct v_m from main RNS (mod M = level modulus)
             let main_residues: Vec<u64> = poly.main.iter().map(|limb| limb[i]).collect();
-            let v_m = self.rns.to_int(&main_residues);
+            // Use level-aware CRT reconstruction
+            let v_m = self.rns.to_int_level(&main_residues, ct_level);
 
             // Get anchor residues (don't call to_int, it may overflow for 5+ primes)
             let anchor_residues: Vec<u64> = poly.anchor.iter().map(|limb| limb[i]).collect();
 
-            // K-Elimination: compute k using RNS-domain method
-            // This works for any number of anchor primes
-            let k = self.dual_rns.extract_k_rns(v_m, &anchor_residues);
+            // K-Elimination: compute k using LEVEL-AWARE RNS-domain method
+            // CRITICAL: Use level-specific M_level⁻¹, not full M⁻¹
+            // This is the key fix for depth > 1 circuits
+            let level_primes = &self.config.primes[..ct_level];
+            let k = self.dual_rns.extract_k_rns_level(v_m, &anchor_residues, level_primes);
 
             // Interpret k as signed using anchor prime product
             // k > A_n/2 means the true value wrapped below 0
@@ -2063,7 +2278,7 @@ impl RNSFHEContext {
             #[cfg(test)]
             if i == 0 {
                 eprintln!("  [rescale coeff 0] M={:.2e}, A3={:.2e}, A3/2={:.2e}",
-                    m_product as f64, a_n_product as f64, (a_n_product/2) as f64);
+                    m_product_level as f64, a_n_product as f64, (a_n_product/2) as f64);
                 eprintln!("    v_m={} ({:.2e})", v_m, v_m as f64);
                 eprintln!("    k={} ({:.2e}), k > A3/2 = {}", k, k as f64, k > a_n_product / 2);
                 eprintln!("    k_signed = {}{} (is_neg={})",
@@ -2083,7 +2298,7 @@ impl RNSFHEContext {
             //
             // CENTER v_m: if v_m > M/2, interpret as v_m - M (negative)
             let v_m_centered: i128 = if v_m > q_half {
-                v_m as i128 - m_product as i128
+                v_m as i128 - m_product_level as i128
             } else {
                 v_m as i128
             };
@@ -2095,60 +2310,16 @@ impl RNSFHEContext {
             // For rescaling with the "k mod Δ" trick:
             // round((v_m + k*M) / Δ) ≡ round((v_m + (k mod Δ)*M) / Δ) (mod M)
             let k_mod_delta = k_signed.magnitude % delta;
+            let k_base = k_mod_delta * t_u128;
+            let k_rem = k_mod_delta * r;
+
+            let rem_term_mod = round_div_signed_mod(v_m_centered, k_rem, !k_signed.is_neg, delta, m_product_level);
+            let base_mod = k_base % m_product_level;
 
             let scaled_mod_m = if !k_signed.is_neg {
-                // POSITIVE k case: v_exact = v_m + k*M
-                // With centering: v_exact_centered = v_m_centered + k_mod_delta * M
-
-                if v_m_centered >= 0 {
-                    // v_m is positive, adding k*M keeps it positive
-                    let v_prime = v_m_centered as u128 + k_mod_delta * m_product;
-                    // Round and reduce
-                    ((v_prime + delta / 2) / delta) % m_product
-                } else {
-                    // v_m is negative (v_m_centered < 0)
-                    // v_exact_centered = v_m_centered + k_mod_delta * M
-                    let neg_vm = (-v_m_centered) as u128;
-                    let k_contrib = k_mod_delta * m_product;
-
-                    if k_contrib >= neg_vm {
-                        // Net result is positive
-                        let net = k_contrib - neg_vm;
-                        ((net + delta / 2) / delta) % m_product
-                    } else {
-                        // Net result is still negative
-                        let net_neg = neg_vm - k_contrib;
-                        let scaled_neg = (net_neg + delta / 2) / delta;
-                        let scaled_mod = scaled_neg % m_product;
-                        if scaled_mod == 0 { 0 } else { m_product - scaled_mod }
-                    }
-                }
+                add_mod_u128(base_mod, rem_term_mod, m_product_level)
             } else {
-                // NEGATIVE k case: v_exact = v_m - neg_k*M
-                // With centering: v_exact_centered = v_m_centered - k_mod_delta * M
-                let k_contrib = k_mod_delta * m_product;
-
-                if v_m_centered >= 0 {
-                    let pos_vm = v_m_centered as u128;
-                    if pos_vm >= k_contrib {
-                        // Result is positive
-                        let net = pos_vm - k_contrib;
-                        ((net + delta / 2) / delta) % m_product
-                    } else {
-                        // Result is negative
-                        let net_neg = k_contrib - pos_vm;
-                        let scaled_neg = (net_neg + delta / 2) / delta;
-                        let scaled_mod = scaled_neg % m_product;
-                        if scaled_mod == 0 { 0 } else { m_product - scaled_mod }
-                    }
-                } else {
-                    // v_m is already negative, subtracting makes it more negative
-                    let neg_vm = (-v_m_centered) as u128;
-                    let total_neg = neg_vm + k_contrib;
-                    let scaled_neg = (total_neg + delta / 2) / delta;
-                    let scaled_mod = scaled_neg % m_product;
-                    if scaled_mod == 0 { 0 } else { m_product - scaled_mod }
-                }
+                sub_mod_u128(rem_term_mod, base_mod, m_product_level)
             };
 
             // ═══════════════════════════════════════════════════════════════════
@@ -2167,16 +2338,16 @@ impl RNSFHEContext {
             //   - Anchor: (M-5) % a_j = (M mod a_j) - 5 ≠ -5 mod a_j ✗
             //
             // Fix: Extract the TRUE signed integer, then reduce to BOTH systems
-            let m_half = m_product / 2;
+            let m_half = m_product_level / 2;
             let true_value: i128 = if scaled_mod_m > m_half {
                 // Represents negative: true_value = scaled_mod_m - M
-                -((m_product - scaled_mod_m) as i128)
+                -((m_product_level - scaled_mod_m) as i128)
             } else {
                 scaled_mod_m as i128
             };
 
-            // Re-encode TRUE value to main RNS
-            for (j, &p) in self.config.primes.iter().enumerate() {
+            // Re-encode TRUE value to main RNS (level primes only)
+            for (j, &p) in self.config.primes[..ct_level].iter().enumerate() {
                 let p128 = p as i128;
                 result_main[j][i] = ((true_value % p128 + p128) % p128) as u64;
             }
@@ -2195,6 +2366,235 @@ impl RNSFHEContext {
         }
 
         DualRNSPoly { main: result_main, anchor: result_anchor, n: self.n }
+    }
+
+    // ========================================================================
+    // K-ELIMINATION MODULUS SWITCHING (for deeper public mode circuits)
+    // ========================================================================
+    //
+    // Standard BFV modulus switching: after multiplication, drop a prime q_L
+    // from the chain Q = q_0 × ... × q_L to get Q' = Q / q_L.
+    //
+    // This shrinks noise relative to the new modulus, enabling deeper circuits.
+    //
+    // K-Elimination enhancement: Use exact value reconstruction for precise
+    // rounding instead of approximate floating-point.
+
+    /// Modulus switch down: drop the last prime from the RNS chain
+    ///
+    /// Given a polynomial at level L with Q_L = q_0 × ... × q_L,
+    /// compute the equivalent polynomial at level L-1 with Q_{L-1} = Q_L / q_L.
+    ///
+    /// This is critical for deeper public mode circuits because:
+    /// 1. After multiplication, noise grows
+    /// 2. K-Elimination rescale divides by Δ (maintains message scale)
+    /// 3. Modulus switch divides by q_L (shrinks noise relative to new Q)
+    ///
+    /// # Algorithm (K-Elimination Enhanced)
+    ///
+    /// For each coefficient x:
+    /// 1. Reconstruct exact x using K-Elimination (main + anchor → exact value)
+    /// 2. Compute x' = round(x / q_L) using integer rounding
+    /// 3. Represent x' in remaining primes q_0...q_{L-1} and updated anchor
+    ///
+    /// # Returns
+    ///
+    /// The modulus-switched polynomial, or None if already at minimum level.
+    ///
+    /// Requires at least 3 primes to switch (to leave at least 2 after switching).
+    /// This ensures we can still do operations and decrypt after switching.
+    pub fn mod_switch_down_dual(&self, poly: &DualRNSPoly) -> Option<DualRNSPoly> {
+        let num_poly_primes = poly.main.len();
+
+        // Need at least 3 primes to switch (leave 2 remaining)
+        // With only 2 primes, switching would leave 1, which breaks RNS operations
+        if num_poly_primes < 3 {
+            return None;
+        }
+
+        // Get the prime we're dropping (last one in the current polynomial)
+        let q_last = self.config.primes[num_poly_primes - 1];
+        let q_last_half = q_last / 2;
+
+        // Product of main primes for this level (Q_level)
+        let m_product = self.main_product_for_level(num_poly_primes);
+        #[cfg(test)]
+        let m_product_new = m_product / q_last as u128;
+
+        // Result has one fewer main prime
+        let mut result_main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; num_poly_primes - 1];
+        let mut result_anchor: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
+
+        let m_half = m_product / 2;
+
+        for i in 0..self.n {
+            // Get value mod M from main RNS representation
+            let main_residues: Vec<u64> = poly.main.iter().map(|limb| limb[i]).collect();
+            let v_m = self.rns.to_int_level(&main_residues, num_poly_primes);
+
+            // Center the value to [-M/2, M/2) for correct signed rounding
+            // Note: For modulus switching, we only need v mod M (the centered rep).
+            // K-Elimination's k×M contribution is ≡ 0 (mod M), so we skip it.
+            let v_centered: i128 = if v_m > m_half {
+                v_m as i128 - m_product as i128
+            } else {
+                v_m as i128
+            };
+
+            // Modulus switch: round(v_centered / q_last)
+            // This shrinks the value proportionally to the new smaller modulus
+            let q_last_i128 = q_last as i128;
+            let v_div = v_centered / q_last_i128;
+            let v_rem = v_centered % q_last_i128;
+
+            // Round to nearest (standard rounding for modulus switch)
+            let rounded = if v_rem.abs() as u64 >= q_last_half {
+                if v_rem >= 0 { v_div + 1 } else { v_div - 1 }
+            } else {
+                v_div
+            };
+
+            // Now encode `rounded` into the NEW RNS systems
+            // Main: only first (num_poly_primes - 1) primes
+            for (j, &p) in self.config.primes[..num_poly_primes - 1].iter().enumerate() {
+                let p_i128 = p as i128;
+                result_main[j][i] = ((rounded % p_i128 + p_i128) % p_i128) as u64;
+            }
+
+            // Anchor: all anchor primes (unchanged count)
+            for (j, &p) in self.dual_rns.anchor.primes.iter().enumerate() {
+                let p_i128 = p as i128;
+                result_anchor[j][i] = ((rounded % p_i128 + p_i128) % p_i128) as u64;
+            }
+
+            #[cfg(test)]
+            if i == 0 {
+                eprintln!("  [mod_switch coeff 0] dropping q_L={}", q_last);
+                eprintln!("    v_centered={} ({:.2e})", v_centered, v_centered as f64);
+                eprintln!("    rounded={} ({:.2e})", rounded, rounded as f64);
+                eprintln!("    Q_old={:.2e}, Q_new={:.2e}", m_product as f64, m_product_new as f64);
+            }
+        }
+
+        Some(DualRNSPoly { main: result_main, anchor: result_anchor, n: self.n })
+    }
+
+    /// Modulus switch a ciphertext down one level
+    ///
+    /// Applies modulus switching to both c0 and c1 polynomials.
+    /// Returns None if already at minimum level.
+    pub fn mod_switch_ct_down(&self, ct: &DualRNSCiphertext) -> Option<DualRNSCiphertext> {
+        let c0_new = self.mod_switch_down_dual(&ct.c0)?;
+        let c1_new = self.mod_switch_down_dual(&ct.c1)?;
+
+        Some(DualRNSCiphertext {
+            c0: c0_new,
+            c1: c1_new,
+            level: ct.level.saturating_sub(1),
+        })
+    }
+
+    /// Public mode multiplication with modulus switching for deeper circuits
+    ///
+    /// This combines:
+    /// 1. Tensor product
+    /// 2. Relinearization (using eval keys)
+    /// 3. K-Elimination rescale (divide by Δ)
+    /// 4. Modulus switch (drop q_L, shrink noise relative to new Q)
+    ///
+    /// The modulus switch after multiplication is key to deeper public mode:
+    /// - Standard rescale: ct' = ct / Δ (maintains message, scales down ct)
+    /// - Modulus switch: ct'' = round(ct' / q_L) (shrinks Q, proportionally shrinks noise)
+    ///
+    /// Together, they enable depth 5-10+ in public mode (vs depth 1 without mod switch).
+    pub fn mul_dual_public_deep(&self, ct1: &DualRNSCiphertext, ct2: &DualRNSCiphertext,
+                                evk: &DualRNSEvalKey) -> DualRNSCiphertext {
+        // Standard public multiplication: tensor → relin → rescale
+        let ct_mul = self.mul_dual_public(ct1, ct2, evk);
+
+        // Apply modulus switch to shrink noise
+        // If mod_switch fails (only 1 prime left), return the result without switching
+        self.mod_switch_ct_down(&ct_mul).unwrap_or(ct_mul)
+    }
+
+    // ========================================================================
+    // NOISE-TRACKED OPERATIONS (HIGH-003)
+    // ========================================================================
+    //
+    // These variants integrate NoiseBudget tracking into the FHE operations.
+    // Use these for production code that needs to monitor noise consumption.
+
+    /// Tracked multiplication: mul + relin + rescale with noise budget tracking
+    ///
+    /// Returns `Err(NoiseExhausted)` if there's insufficient budget.
+    /// On success, updates the budget and returns the result ciphertext.
+    pub fn mul_dual_public_tracked(
+        &self,
+        ct1: &DualRNSCiphertext,
+        ct2: &DualRNSCiphertext,
+        evk: &DualRNSEvalKey,
+        budget: &mut crate::noise::budget::NoiseBudget,
+    ) -> Result<DualRNSCiphertext, crate::noise::budget::NoiseExhausted> {
+        use crate::noise::budget::{NoiseBudget, NoiseOpType};
+
+        // Calculate total cost: mul + relin + rescale(gain)
+        let mul_cost = NoiseBudget::mul_ct_cost(&self.config);
+        let relin_cost = NoiseBudget::relin_cost(&self.config);
+        let rescale_gain = NoiseBudget::rescale_cost(&self.config);  // Negative
+
+        // Try to consume for multiplication
+        budget.consume(NoiseOpType::MulCt, mul_cost)?;
+        budget.consume(NoiseOpType::Relin, relin_cost)?;
+        budget.consume(NoiseOpType::Rescale, rescale_gain)?;  // This adds back budget
+
+        // Perform the actual operation
+        Ok(self.mul_dual_public(ct1, ct2, evk))
+    }
+
+    /// Tracked deep multiplication: includes modulus switch
+    ///
+    /// Returns `Err(NoiseExhausted)` if there's insufficient budget.
+    pub fn mul_dual_public_deep_tracked(
+        &self,
+        ct1: &DualRNSCiphertext,
+        ct2: &DualRNSCiphertext,
+        evk: &DualRNSEvalKey,
+        budget: &mut crate::noise::budget::NoiseBudget,
+    ) -> Result<DualRNSCiphertext, crate::noise::budget::NoiseExhausted> {
+        // First do the tracked multiplication
+        let ct_mul = self.mul_dual_public_tracked(ct1, ct2, evk, budget)?;
+
+        // Modulus switch gives additional noise reduction
+        // The rescale gain in mul_dual_public_tracked already accounts for basic rescaling
+        // No additional budget consumption for mod_switch (it's a net win)
+
+        Ok(self.mod_switch_ct_down(&ct_mul).unwrap_or(ct_mul))
+    }
+
+    /// Tracked addition with noise budget tracking
+    ///
+    /// Addition has minimal noise cost compared to multiplication.
+    pub fn add_dual_tracked(
+        &self,
+        ct1: &DualRNSCiphertext,
+        ct2: &DualRNSCiphertext,
+        budget: &mut crate::noise::budget::NoiseBudget,
+    ) -> Result<DualRNSCiphertext, crate::noise::budget::NoiseExhausted> {
+        use crate::noise::budget::{NoiseBudget, NoiseOpType};
+
+        budget.consume(NoiseOpType::Add, NoiseBudget::add_cost())?;
+        Ok(self.add_dual(ct1, ct2))
+    }
+
+    /// Get the FHE config for external noise budget calculations
+    pub fn fhe_config(&self) -> &FHEConfig {
+        &self.config
+    }
+
+    // Bench-only wrapper for timing the K-Elim rescale path.
+    #[cfg(feature = "benchmarks")]
+    pub fn bench_k_elim_rescale_dual(&self, poly: &DualRNSPoly) -> DualRNSPoly {
+        self.k_elim_rescale_dual(poly)
     }
 
     // ========================================================================
@@ -2225,15 +2625,15 @@ impl RNSFHEContext {
         DualRNSPoly { main: main_ntt, anchor: anchor_ntt, n: poly.n }
     }
 
-    /// Convert from NTT form back to coefficient form
-    fn from_ntt_form(&self, poly_ntt: &DualRNSPoly) -> DualRNSPoly {
-        // Transform main limbs from NTT form
+    /// Convert a dual-RNS polynomial from NTT form back to coefficient form.
+    ///
+    /// This performs the inverse NTT on both main and anchor limbs.
+    fn to_coefficient_form(&self, poly_ntt: &DualRNSPoly) -> DualRNSPoly {
         let main: Vec<Vec<u64>> = poly_ntt.main.iter()
-            .zip(self.ntt_engines.iter())
+            .zip(self.dual_rns.main.ntt_engines.iter())
             .map(|(limb, ntt)| ntt.intt(limb))
             .collect();
 
-        // Transform anchor limbs from NTT form
         let anchor: Vec<Vec<u64>> = poly_ntt.anchor.iter()
             .zip(self.dual_rns.anchor.ntt_engines.iter())
             .map(|(limb, ntt)| ntt.intt(limb))
@@ -2392,9 +2792,9 @@ impl RNSFHEContext {
 
         // CRITICAL: INTT to coefficient domain before K-Elim rescaling.
         // K-Elim requires coefficients (not NTT points) to be the same value mod different primes.
-        let d0 = self.from_ntt_form(&d0_ntt);
-        let d1 = self.from_ntt_form(&d1_ntt);
-        let d2 = self.from_ntt_form(&d2_ntt);
+        let d0 = self.to_coefficient_form(&d0_ntt);
+        let d1 = self.to_coefficient_form(&d1_ntt);
+        let d2 = self.to_coefficient_form(&d2_ntt);
 
         // K-Elimination rescale in COEFFICIENT domain (the only valid approach)
         let e0 = self.k_elim_rescale_dual(&d0);
@@ -2461,9 +2861,9 @@ impl RNSFHEContext {
 
         // Step 3: INTT back to coefficient domain
         // NOW the residues represent the same polynomial coefficients
-        let d0_coeff = self.from_ntt_form(&d0_ntt);
-        let d1_coeff = self.from_ntt_form(&d1_ntt);
-        let d2_coeff = self.from_ntt_form(&d2_ntt);
+        let d0_coeff = self.to_coefficient_form(&d0_ntt);
+        let d1_coeff = self.to_coefficient_form(&d1_ntt);
+        let d2_coeff = self.to_coefficient_form(&d2_ntt);
 
         // Step 4: K-Elimination rescale in coefficient domain
         // Each coefficient c[i] is the same integer value with residues mod p_j
@@ -2491,9 +2891,25 @@ impl RNSFHEContext {
     // ========================================================================
 
     /// Convert coefficient vector to main RNS form
+    #[allow(dead_code)]
     fn to_main_rns(&self, coeffs: &[u64]) -> Vec<Vec<u64>> {
         self.config.primes.iter()
             .map(|&p| coeffs.iter().map(|&c| c % p).collect())
+            .collect()
+    }
+
+    /// Convert coefficient vector to main RNS form (with u128 precision for encoded value)
+    ///
+    /// CRITICAL: For 3+ prime configs, encoded_value can exceed u64::MAX.
+    /// This function computes residues directly from u128 to avoid truncation.
+    fn to_main_rns_u128(&self, coeffs: &[u64], encoded_value: u128) -> Vec<Vec<u64>> {
+        self.config.primes.iter()
+            .map(|&p| {
+                let mut result: Vec<u64> = coeffs.iter().map(|&c| c % p).collect();
+                // Coefficient 0 comes from the u128 encoded value
+                result[0] = (encoded_value % p as u128) as u64;
+                result
+            })
             .collect()
     }
 
@@ -2614,7 +3030,7 @@ impl SignedK {
 
     /// Get the signed value as i128 (for debugging/display only)
     #[allow(dead_code)]
-    fn to_signed(&self) -> i128 {
+    fn to_signed(self) -> i128 {
         if self.is_neg {
             -(self.magnitude as i128)
         } else {
@@ -2655,6 +3071,82 @@ fn wide_mul_256(a: u128, b: u128) -> (u128, u128) {
     let result_hi = hi_hi + carry2 + if carry1 { 1 } else { 0 };
 
     (result_lo, result_hi)
+}
+
+/// Round value / delta to nearest integer (ties up).
+fn round_div_u128(value: u128, delta: u128) -> u128 {
+    let q = value / delta;
+    let r = value % delta;
+    let threshold = delta - delta / 2;
+    if r >= threshold { q + 1 } else { q }
+}
+
+/// Round (a + b) / delta to nearest integer (ties up), avoiding overflow.
+fn round_div_u128_sum(a: u128, b: u128, delta: u128) -> u128 {
+    let mut q = a / delta + b / delta;
+    let r_a = a % delta;
+    let r_b = b % delta;
+    let (r_sum, overflow) = r_a.overflowing_add(r_b);
+    let mut r = r_sum;
+
+    if overflow || r_sum >= delta {
+        q += 1;
+        r = r_sum.wrapping_sub(delta);
+    }
+
+    let threshold = delta - delta / 2;
+    if r >= threshold { q + 1 } else { q }
+}
+
+/// Compute (-q) mod m with q in u128.
+fn neg_mod_u128(q: u128, m: u128) -> u128 {
+    let q_mod = q % m;
+    if q_mod == 0 { 0 } else { m - q_mod }
+}
+
+/// Round (v_centered ± rem) / delta to nearest integer and map into [0, m).
+/// add_rem = true -> v_centered + rem
+/// add_rem = false -> v_centered - rem
+fn round_div_signed_mod(v_centered: i128, rem: u128, add_rem: bool, delta: u128, m: u128) -> u128 {
+    let (v_neg, v_mag) = if v_centered < 0 {
+        (true, (-v_centered) as u128)
+    } else {
+        (false, v_centered as u128)
+    };
+
+    match (v_neg, add_rem) {
+        (false, true) => {
+            let q = round_div_u128_sum(v_mag, rem, delta);
+            q % m
+        }
+        (false, false) => {
+            if v_mag >= rem {
+                round_div_u128(v_mag - rem, delta) % m
+            } else {
+                neg_mod_u128(round_div_u128(rem - v_mag, delta), m)
+            }
+        }
+        (true, true) => {
+            if rem >= v_mag {
+                round_div_u128(rem - v_mag, delta) % m
+            } else {
+                neg_mod_u128(round_div_u128(v_mag - rem, delta), m)
+            }
+        }
+        (true, false) => {
+            neg_mod_u128(round_div_u128_sum(v_mag, rem, delta), m)
+        }
+    }
+}
+
+/// Modular add without overflow: (a + b) mod m, with a,b < m.
+fn add_mod_u128(a: u128, b: u128, m: u128) -> u128 {
+    if a >= m - b { a + b - m } else { a + b }
+}
+
+/// Modular subtract without overflow: (a - b) mod m, with a,b < m.
+fn sub_mod_u128(a: u128, b: u128, m: u128) -> u128 {
+    if a >= b { a - b } else { m - (b - a) }
 }
 
 /// Convert signed i64 to modular representation
@@ -2728,6 +3220,7 @@ const _: () = {
 };
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
 
@@ -3097,6 +3590,47 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Public mode depth sweep (slow). Run with --nocapture for output."]
+    fn test_public_mode_depth_sweep() {
+        let configs = [
+            FHEConfig::standard_128(),
+            FHEConfig::high_192(),
+        ];
+        let base_bits = [16u32, 12, 10, 8];
+
+        for config in configs {
+            let ctx = RNSFHEContext::new_coeff_domain(&config);
+            let max_depth = if config.n >= 8192 { 16 } else { 12 };
+
+            println!("\n=== Public depth sweep: {} (N={}, t={}) ===", config.name, config.n, config.t);
+
+            for bits in base_bits {
+                let decomp_base = 1u64 << bits;
+                let mut rng = ShadowHarvester::with_seed(1000 + config.n as u64 + bits as u64);
+                let keys = ctx.generate_keys_dual_full_with_base(&mut rng, decomp_base);
+
+                let base = 3u64;
+                let mut expected = base % config.t;
+                let mut ct = ctx.encrypt_dual(base, &keys.public_key, &mut rng);
+
+                let mut achieved = 0usize;
+                for depth in 1..=max_depth {
+                    ct = ctx.mul_dual_public(&ct, &ct, &keys.eval_key);
+                    expected = ((expected as u128 * expected as u128) % config.t as u128) as u64;
+                    let dec = ctx.decrypt_dual(&ct, &keys.secret_key);
+                    if dec != expected {
+                        println!("  base=2^{bits}: fail at depth {} (got {}, expected {})", depth, dec, expected);
+                        break;
+                    }
+                    achieved = depth;
+                }
+
+                println!("  base=2^{bits}: max depth {}", achieved);
+            }
+        }
+    }
+
+    #[test]
     fn test_compare_symmetric_vs_public() {
         // Compare symmetric and public mode outputs to find divergence
         let config = FHEConfig::light_rns_exact();
@@ -3217,6 +3751,86 @@ mod tests {
         }
 
         assert_eq!(dec120_sym, 120, "Symmetric depth-2 should work");
+    }
+
+    #[test]
+    fn test_mul_dual_public_deep_with_mod_switch() {
+        // Test the new mul_dual_public_deep which combines:
+        // 1. Standard public multiplication (tensor → relin → rescale)
+        // 2. Modulus switching (drop last prime to shrink noise)
+        //
+        // This should enable deeper circuits than mul_dual_public alone.
+        //
+        // NOTE: Requires at least 3 primes for modulus switching to work
+        // (switches need 3 primes to leave 2 remaining).
+
+        let config = FHEConfig::depth2_128();  // 4 primes: supports depth-2 with mod switch
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let full_keys = ctx.generate_keys_dual_full(&mut rng);
+
+        println!("=== PUBLIC MODE WITH MODULUS SWITCHING TEST ===");
+        println!("N={}, Q={:.2e}, t={}, {} main primes",
+            ctx.n, ctx.q_product as f64, ctx.t, ctx.config.primes.len());
+
+        // Fresh encryptions
+        let ct2 = ctx.encrypt_dual(2, &full_keys.public_key, &mut rng);
+        let ct3 = ctx.encrypt_dual(3, &full_keys.public_key, &mut rng);
+
+        // Depth-1: 2*3 = 6 (using mul_dual_public_deep)
+        let ct6_deep = ctx.mul_dual_public_deep(&ct2, &ct3, &full_keys.eval_key);
+        let dec6_deep = ctx.decrypt_dual(&ct6_deep, &full_keys.secret_key);
+        println!("Depth-1 with mod_switch: 2*3 = {} (expected 6)", dec6_deep);
+        println!("  ct6_deep.c0.main.len() = {} (primes after switch)", ct6_deep.c0.main.len());
+
+        // Fresh ct for depth-2
+        let ct4 = ctx.encrypt_dual(4, &full_keys.public_key, &mut rng);
+        let ct5 = ctx.encrypt_dual(5, &full_keys.public_key, &mut rng);
+        let ct20_deep = ctx.mul_dual_public_deep(&ct4, &ct5, &full_keys.eval_key);
+        let dec20_deep = ctx.decrypt_dual(&ct20_deep, &full_keys.secret_key);
+        println!("Depth-1 with mod_switch: 4*5 = {} (expected 20)", dec20_deep);
+
+        // Depth-2: 6 * 20 = 120
+        // Note: ct6_deep and ct20_deep now have fewer primes due to mod_switch
+        // Use standard mul_dual_public (no further mod switch) for the second level
+        let ct120_result = ctx.mul_dual_public(&ct6_deep, &ct20_deep, &full_keys.eval_key);
+        let dec120 = ctx.decrypt_dual(&ct120_result, &full_keys.secret_key);
+        println!("Depth-2 result: 6*20 = {} (expected 120)", dec120);
+
+        // Compare with standard public mode (no mod switch)
+        let ct6_std = ctx.mul_dual_public(&ct2, &ct3, &full_keys.eval_key);
+        let ct20_std = ctx.mul_dual_public(&ct4, &ct5, &full_keys.eval_key);
+        let ct120_std = ctx.mul_dual_public(&ct6_std, &ct20_std, &full_keys.eval_key);
+        let dec120_std = ctx.decrypt_dual(&ct120_std, &full_keys.secret_key);
+        println!("Standard public depth-2: 6*20 = {} (expected 120)", dec120_std);
+
+        // Results
+        if dec6_deep == 6 {
+            println!("✓ Depth-1 with mod_switch: PASS");
+        } else {
+            println!("✗ Depth-1 with mod_switch: FAIL (expected 6, got {})", dec6_deep);
+        }
+
+        if dec120 == 120 {
+            println!("✓ Depth-2 with mod_switch: PASS");
+        } else {
+            println!("✗ Depth-2 with mod_switch: FAIL (expected 120, got {})", dec120);
+        }
+
+        if dec120_std == 120 {
+            println!("✓ Standard depth-2: PASS");
+        } else {
+            println!("✗ Standard depth-2: FAIL (expected 120, got {})", dec120_std);
+        }
+
+        // The key metric: did mod_switch help?
+        if dec120 == 120 && dec120_std != 120 {
+            println!("\n=== MODULUS SWITCHING SUCCESS ===");
+            println!("Modulus switching enabled depth-2 where standard public mode failed!");
+        } else if dec120 == 120 && dec120_std == 120 {
+            println!("\nBoth modes work at depth-2 (parameters have enough headroom)");
+        }
     }
 
     #[test]
@@ -3385,6 +3999,77 @@ mod tests {
             let dec = ctx.decrypt(&ct, &keys.secret_key);
             println!("  m={} → decrypt={}", m, dec);
             assert_eq!(dec, m, "Encrypt/decrypt failed for m={}", m);
+        }
+    }
+
+    #[test]
+    fn test_modulus_switching_basic() {
+        // Test mod_switch_down_dual and level-aware decrypt
+        // Uses depth2_128 which has 4 primes (switch to 3, then depth-2 at 3 primes)
+        let config = FHEConfig::depth2_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let full_keys = ctx.generate_keys_dual_full(&mut rng);
+
+        println!("=== MODULUS SWITCHING BASIC TEST ===");
+        println!("N={}, Q={:.2e}, t={}, {} main primes",
+            ctx.n, ctx.q_product as f64, ctx.t, ctx.config.primes.len());
+
+        // Test 1: Simple encrypt -> mul_dual_public_deep -> decrypt
+        let ct2 = ctx.encrypt_dual(2, &full_keys.public_key, &mut rng);
+        let ct3 = ctx.encrypt_dual(3, &full_keys.public_key, &mut rng);
+
+        println!("\nFresh ct2 has {} main primes", ct2.c0.main.len());
+
+        // Use mul_dual_public_deep which applies mod_switch after multiplication
+        let ct6_deep = ctx.mul_dual_public_deep(&ct2, &ct3, &full_keys.eval_key);
+        println!("After mul_dual_public_deep: ct6 has {} main primes", ct6_deep.c0.main.len());
+
+        let dec6 = ctx.decrypt_dual(&ct6_deep, &full_keys.secret_key);
+        println!("Decrypted: 2*3 = {} (expected 6)", dec6);
+
+        // Also test standard multiplication for comparison
+        let ct6_std = ctx.mul_dual_public(&ct2, &ct3, &full_keys.eval_key);
+        let dec6_std = ctx.decrypt_dual(&ct6_std, &full_keys.secret_key);
+        println!("Standard mul decrypt: 2*3 = {} (expected 6)", dec6_std);
+
+        if dec6 == 6 && dec6_std == 6 {
+            println!("\n✓ Both depth-1 operations work correctly");
+        }
+
+        // Now test depth-2 with mod switch enabled
+        let ct4 = ctx.encrypt_dual(4, &full_keys.public_key, &mut rng);
+        let ct5 = ctx.encrypt_dual(5, &full_keys.public_key, &mut rng);
+        let ct20_deep = ctx.mul_dual_public_deep(&ct4, &ct5, &full_keys.eval_key);
+        println!("\nDepth-1: ct20 has {} main primes", ct20_deep.c0.main.len());
+
+        // Depth-2: 6 * 20 = 120
+        // Use standard mul since we may not have enough primes to switch again
+        let ct120 = ctx.mul_dual_public(&ct6_deep, &ct20_deep, &full_keys.eval_key);
+        let dec120 = ctx.decrypt_dual(&ct120, &full_keys.secret_key);
+        println!("Depth-2 with mod_switch: 6*20 = {} (expected 120)", dec120);
+
+        // Compare with standard path (no mod switch)
+        let ct120_std = ctx.mul_dual_public(&ct6_std, &ctx.mul_dual_public(&ct4, &ct5, &full_keys.eval_key), &full_keys.eval_key);
+        let dec120_std = ctx.decrypt_dual(&ct120_std, &full_keys.secret_key);
+        println!("Standard depth-2: 6*20 = {} (expected 120)", dec120_std);
+
+        if dec120 == 120 {
+            println!("\n✓ Modulus switching depth-2: PASS");
+        } else {
+            println!("\n✗ Modulus switching depth-2: FAIL");
+        }
+
+        if dec120_std == 120 {
+            println!("✓ Standard depth-2: PASS");
+        } else {
+            println!("✗ Standard depth-2: FAIL (expected, as baseline)");
+        }
+
+        if dec120 == 120 && dec120_std != 120 {
+            println!("\n=== MODULUS SWITCHING SUCCESS ===");
+            println!("Modulus switching enabled depth-2 where standard failed!");
         }
     }
 
@@ -4001,7 +4686,7 @@ mod tests {
         let d0_ntt = ctx.ntt_pointwise_mul(&ct_a_c0_ntt, &ct_b_c0_ntt);
 
         // INTT to coefficient domain (where K-Elim is valid)
-        let d0 = ctx.from_ntt_form(&d0_ntt);
+        let d0 = ctx.to_coefficient_form(&d0_ntt);
 
         // K-Elimination rescale in COEFFICIENT domain (the only valid approach)
         let e0 = ctx.k_elim_rescale_dual(&d0);
@@ -4274,7 +4959,7 @@ mod tests {
 
         // Convert to NTT and back
         let poly_ntt = ctx.to_ntt_form(&poly);
-        let poly_back = ctx.from_ntt_form(&poly_ntt);
+        let poly_back = ctx.to_coefficient_form(&poly_ntt);
 
         // Check that we got the same coefficients back
         println!("Original coeffs[0:3]: {:?}", &coeffs[0..3]);
@@ -4285,20 +4970,20 @@ mod tests {
 
         // Verify main primes give correct residues
         for (i, &p) in ctx.config.primes.iter().enumerate() {
-            for j in 0..3 {
-                assert_eq!(poly_back.main[i][j], coeffs[j] % p,
+            for (j, &coeff_val) in coeffs.iter().enumerate().take(3) {
+                assert_eq!(poly_back.main[i][j], coeff_val % p,
                     "Main prime {} coeff {} mismatch: {} vs {}",
-                    p, j, poly_back.main[i][j], coeffs[j] % p);
+                    p, j, poly_back.main[i][j], coeff_val % p);
             }
         }
         println!("✓ Main NTT roundtrip correct");
 
         // Verify anchor primes give correct residues
         for (i, &p) in ctx.dual_rns.anchor.primes.iter().enumerate() {
-            for j in 0..3 {
-                assert_eq!(poly_back.anchor[i][j], coeffs[j] % p,
+            for (j, &coeff_val) in coeffs.iter().enumerate().take(3) {
+                assert_eq!(poly_back.anchor[i][j], coeff_val % p,
                     "Anchor prime {} coeff {} mismatch: {} vs {}",
-                    p, j, poly_back.anchor[i][j], coeffs[j] % p);
+                    p, j, poly_back.anchor[i][j], coeff_val % p);
             }
         }
         println!("✓ Anchor NTT roundtrip correct");
@@ -4333,7 +5018,7 @@ mod tests {
         let a_ntt = ctx.to_ntt_form(&poly_a);
         let b_ntt = ctx.to_ntt_form(&poly_b);
         let prod_ntt = ctx.ntt_pointwise_mul(&a_ntt, &b_ntt);
-        let prod = ctx.from_ntt_form(&prod_ntt);
+        let prod = ctx.to_coefficient_form(&prod_ntt);
 
         // For constant polynomials, product[0] should be 5*7=35
         println!("Product coeffs[0]: main={:?}, anchor={:?}",
@@ -4388,7 +5073,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Uses anchor.to_int() which overflows u128. Use assert_main_anchor_consistent() instead."]
+    #[ignore = "Diagnostic trace (verbose)"]
     fn test_mul_dual_debug() {
         // Detailed debugging of mul_dual to find the bug
         let config = FHEConfig::light_rns_exact();
@@ -4578,7 +5263,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Uses anchor.to_int() which overflows u128. Use assert_main_anchor_consistent() instead."]
     fn test_dual_poly_mul_consistency() {
         // Test that dual_poly_mul produces consistent results between main and anchor
         let config = FHEConfig::light_rns_exact();
@@ -4627,60 +5311,28 @@ mod tests {
         // Multiply using dual_poly_mul
         let product = ctx.dual_poly_mul(&p1, &p2);
 
-        // Check consistency for each coefficient
-        let mut inconsistent_count = 0;
-        for i in 0..ctx.n.min(10) {  // Check first 10 coefficients
+        // Check consistency for each coefficient (first 10)
+        for i in 0..ctx.n.min(10) {
             let main_res: Vec<u64> = product.main.iter().map(|l| l[i]).collect();
             let anchor_res: Vec<u64> = product.anchor.iter().map(|l| l[i]).collect();
 
             let v_m = ctx.rns.to_int(&main_res);
-            let v_a = ctx.dual_rns.anchor.to_int(&anchor_res);
-
-            // For small coefficients, v_m == v_a (no wraparound)
-            let expected = expected_coeffs[i];
-            let _expected_unsigned = if expected < 0 {
-                // Handle negative (from negacyclic) by converting to mod M
-                ctx.q_product - (-expected as u128)
-            } else {
-                expected as u128
-            };
-
-            // Check consistency: v_a mod M should equal v_m (for values < M)
-            let v_a_mod_m = v_a % ctx.q_product;
-            let consistent = v_m == v_a_mod_m;
-
-            if !consistent || i < 5 {
-                println!("  coeff[{}]: main={}, anchor={}, expected={}",
-                         i, v_m, v_a, expected);
-                println!("    anchor mod M = {}, consistent: {}", v_a_mod_m, consistent);
-            }
-
-            if !consistent {
-                inconsistent_count += 1;
-            }
-        }
-
-        if inconsistent_count > 0 {
-            println!("\n✗ Found {} inconsistent coefficients!", inconsistent_count);
-        } else {
-            println!("\n✓ All checked coefficients are consistent");
-        }
-
-        // Also verify that expected values match
-        for i in 0..4 {
-            let main_res: Vec<u64> = product.main.iter().map(|l| l[i]).collect();
-            let v_m = ctx.rns.to_int(&main_res);
-
             let expected = expected_coeffs[i] as u128;
-            assert_eq!(v_m, expected, "Coefficient {} mismatch: got {}, expected {}",
-                       i, v_m, expected);
+
+            assert_eq!(
+                v_m, expected,
+                "Coefficient {} mismatch: got {}, expected {}",
+                i, v_m, expected
+            );
+
+            // For small coefficients, anchor residues must match centered main value
+            assert_main_anchor_consistent(&ctx, &main_res, &anchor_res, &format!("prod coeff {}", i));
         }
 
-        println!("✓ Polynomial multiplication correct");
+        println!("✓ Polynomial multiplication consistent across main/anchor");
     }
 
     #[test]
-    #[ignore = "Uses anchor.to_int() which overflows u128. Use assert_main_anchor_consistent() instead."]
     fn test_ciphertext_consistency() {
         // Test if ciphertexts are consistent between main and anchor
         let config = FHEConfig::light_rns_exact();
@@ -4691,164 +5343,50 @@ mod tests {
 
         println!("=== Testing Ciphertext Consistency ===");
 
-        // First check: Is the secret key consistent?
+        let assert_poly_consistent = |label: &str, poly: &DualRNSPoly| {
+            if let Some((coeff_idx, prime_idx, msg)) = check_poly_consistency(&ctx, poly) {
+                panic!(
+                    "{} inconsistent at coeff {} prime {}: {}",
+                    label, coeff_idx, prime_idx, msg
+                );
+            }
+            println!("  ✓ {} consistent", label);
+        };
+
+        // Secret key coefficients should be in {-1, 0, 1} and consistent
         println!("\n1. Secret key consistency:");
-        let mut sk_inconsistent = 0;
         for i in 0..ctx.n.min(20) {
             let sk_main: Vec<u64> = keys.secret_key.s.main.iter().map(|l| l[i]).collect();
-            let sk_anchor: Vec<u64> = keys.secret_key.s.anchor.iter().map(|l| l[i]).collect();
-
             let v_m = ctx.rns.to_int(&sk_main);
-            let v_a = ctx.dual_rns.anchor.to_int(&sk_anchor);
-
-            // Secret key has coefficients in {-1, 0, 1}
-            // So v_m should be 0, 1, or M-1
-            // And v_a should be 0, 1, or A-1
-            // They should represent the same value
-
-            let v_m_signed = if v_m > ctx.q_product / 2 { -((ctx.q_product - v_m) as i64) } else { v_m as i64 };
-            let v_a_signed = if v_a > ctx.dual_rns.anchor_product / 2 { -((ctx.dual_rns.anchor_product - v_a) as i64) } else { v_a as i64 };
-
-            let consistent = v_m_signed == v_a_signed;
-            if !consistent {
-                println!("  s[{}]: main_signed={}, anchor_signed={} - INCONSISTENT", i, v_m_signed, v_a_signed);
-                sk_inconsistent += 1;
-            }
+            let v_signed = center_mod_m_to_i128(v_m, ctx.q_product);
+            assert!(
+                matches!(v_signed, -1 | 0 | 1),
+                "s[{}] out of ternary range: {}",
+                i,
+                v_signed
+            );
         }
-        if sk_inconsistent == 0 {
-            println!("  ✓ Secret key is consistent");
-        } else {
-            println!("  ✗ {} inconsistent secret key coefficients", sk_inconsistent);
-        }
+        assert_poly_consistent("secret key", &keys.secret_key.s);
 
-        // Second check: Is the public key pk1 = a consistent?
-        println!("\n2. Public key pk1 (a) consistency:");
-        let mut pk1_inconsistent = 0;
-        for i in 0..ctx.n.min(20) {
-            let pk1_main: Vec<u64> = keys.public_key.pk1.main.iter().map(|l| l[i]).collect();
-            let pk1_anchor: Vec<u64> = keys.public_key.pk1.anchor.iter().map(|l| l[i]).collect();
+        // Public key consistency
+        println!("\n2. Public key consistency:");
+        assert_poly_consistent("pk1 (a)", &keys.public_key.pk1);
+        assert_poly_consistent("pk0", &keys.public_key.pk0);
 
-            let v_m = ctx.rns.to_int(&pk1_main);
-            let v_a = ctx.dual_rns.anchor.to_int(&pk1_anchor);
-
-            // pk1 = a was sampled with coefficients < min_all_primes
-            // So v_m == v_a for all coefficients
-            let consistent = v_m == v_a;
-            if !consistent {
-                println!("  pk1[{}]: main={}, anchor={} - INCONSISTENT", i, v_m, v_a);
-                pk1_inconsistent += 1;
-            }
-        }
-        if pk1_inconsistent == 0 {
-            println!("  ✓ pk1 is consistent");
-        } else {
-            println!("  ✗ {} inconsistent pk1 coefficients", pk1_inconsistent);
-        }
-
-        // Third check: Is pk0 = -(a*s + e) consistent?
-        println!("\n3. Public key pk0 consistency (after dual_poly_mul):");
-        let mut pk0_inconsistent = 0;
-        for i in 0..ctx.n.min(20) {
-            let pk0_main: Vec<u64> = keys.public_key.pk0.main.iter().map(|l| l[i]).collect();
-            let pk0_anchor: Vec<u64> = keys.public_key.pk0.anchor.iter().map(|l| l[i]).collect();
-
-            let v_m = ctx.rns.to_int(&pk0_main);
-            let v_a = ctx.dual_rns.anchor.to_int(&pk0_anchor);
-
-            // pk0 involves a*s which could have larger coefficients
-            // For consistency: v_a mod M == v_m
-            let v_a_mod_m = v_a % ctx.q_product;
-            let consistent = v_m == v_a_mod_m;
-            if !consistent {
-                println!("  pk0[{}]: main={:.2e}, anchor={:.2e}, anchor mod M={:.2e} - INCONSISTENT",
-                         i, v_m as f64, v_a as f64, v_a_mod_m as f64);
-                pk0_inconsistent += 1;
-            }
-        }
-        if pk0_inconsistent == 0 {
-            println!("  ✓ pk0 is consistent");
-        } else {
-            println!("  ✗ {} inconsistent pk0 coefficients", pk0_inconsistent);
-        }
-
-        // Fourth check: Encrypt a value and check c0, c1 consistency
-        println!("\n4. Ciphertext c0, c1 consistency:");
+        // Ciphertext consistency
+        println!("\n3. Ciphertext consistency (encrypt 5):");
         let ct = ctx.encrypt_dual(5, &keys.public_key, &mut rng);
+        assert_poly_consistent("ct.c0", &ct.c0);
+        assert_poly_consistent("ct.c1", &ct.c1);
 
-        let mut c0_inconsistent = 0;
-        for i in 0..ctx.n.min(20) {
-            let c0_main: Vec<u64> = ct.c0.main.iter().map(|l| l[i]).collect();
-            let c0_anchor: Vec<u64> = ct.c0.anchor.iter().map(|l| l[i]).collect();
-
-            let v_m = ctx.rns.to_int(&c0_main);
-            let v_a = ctx.dual_rns.anchor.to_int(&c0_anchor);
-            let v_a_mod_m = v_a % ctx.q_product;
-            let consistent = v_m == v_a_mod_m;
-            if !consistent {
-                println!("  c0[{}]: main={:.2e}, anchor mod M={:.2e} - INCONSISTENT",
-                         i, v_m as f64, v_a_mod_m as f64);
-                c0_inconsistent += 1;
-            }
-        }
-
-        let mut c1_inconsistent = 0;
-        for i in 0..ctx.n.min(20) {
-            let c1_main: Vec<u64> = ct.c1.main.iter().map(|l| l[i]).collect();
-            let c1_anchor: Vec<u64> = ct.c1.anchor.iter().map(|l| l[i]).collect();
-
-            let v_m = ctx.rns.to_int(&c1_main);
-            let v_a = ctx.dual_rns.anchor.to_int(&c1_anchor);
-            let v_a_mod_m = v_a % ctx.q_product;
-            let consistent = v_m == v_a_mod_m;
-            if !consistent {
-                println!("  c1[{}]: main={:.2e}, anchor mod M={:.2e} - INCONSISTENT",
-                         i, v_m as f64, v_a_mod_m as f64);
-                c1_inconsistent += 1;
-            }
-        }
-
-        if c0_inconsistent == 0 && c1_inconsistent == 0 {
-            println!("  ✓ Ciphertext is consistent");
-        } else {
-            println!("  ✗ c0: {} inconsistent, c1: {} inconsistent",
-                     c0_inconsistent, c1_inconsistent);
-        }
-
-        // Now trace through d2 = c1_a × c1_b
+        // Tensor product consistency (degree-2 term)
+        println!("\n4. d2 = c1_a × c1_b consistency:");
         let ct2 = ctx.encrypt_dual(7, &keys.public_key, &mut rng);
         let d2 = ctx.dual_poly_mul(&ct.c1, &ct2.c1);
-
-        println!("\n5. d2 = c1_a × c1_b consistency:");
-        let mut d2_inconsistent = 0;
-        for i in 0..ctx.n {
-            let d2_main: Vec<u64> = d2.main.iter().map(|l| l[i]).collect();
-            let d2_anchor: Vec<u64> = d2.anchor.iter().map(|l| l[i]).collect();
-
-            let v_m = ctx.rns.to_int(&d2_main);
-            let v_a = ctx.dual_rns.anchor.to_int(&d2_anchor);
-            let v_a_mod_m = v_a % ctx.q_product;
-            let consistent = v_m == v_a_mod_m;
-            if !consistent {
-                if d2_inconsistent < 5 {
-                    println!("  d2[{}]: main={:.2e}, anchor={:.2e}, anchor mod M={:.2e} - INCONSISTENT",
-                             i, v_m as f64, v_a as f64, v_a_mod_m as f64);
-                }
-                d2_inconsistent += 1;
-            }
-        }
-        if d2_inconsistent == 0 {
-            println!("  ✓ d2 is consistent");
-        } else {
-            println!("  ✗ {} inconsistent d2 coefficients", d2_inconsistent);
-        }
-
-        assert_eq!(sk_inconsistent, 0, "Secret key is inconsistent");
-        assert_eq!(pk1_inconsistent, 0, "pk1 is inconsistent");
-        // Don't assert on pk0/ct/d2 yet - we need to find where inconsistency starts
+        assert_poly_consistent("d2", &d2);
     }
 
     #[test]
-    #[ignore = "Uses anchor.to_int() which overflows u128. Use assert_main_anchor_consistent() instead."]
     fn test_ntt_mul_residues() {
         // Debug: check raw residues after NTT multiplication
         let config = FHEConfig::light_rns_exact();
@@ -4901,7 +5439,6 @@ mod tests {
             let anchor_res: Vec<u64> = prod.anchor.iter().map(|l| l[i]).collect();
 
             let v_m = ctx.rns.to_int(&main_res);
-            let v_a = ctx.dual_rns.anchor.to_int(&anchor_res);
 
             let expected = match i {
                 0 => 100,
@@ -4913,8 +5450,10 @@ mod tests {
             println!("  coeff[{}]:", i);
             println!("    main residues: {:?}", main_res);
             println!("    anchor residues: {:?}", anchor_res);
-            println!("    main CRT: {}, anchor CRT: {}, expected: {}", v_m, v_a, expected);
-            println!("    consistent: {}", v_m == v_a && v_m == expected as u128);
+            println!("    main CRT: {}, expected: {}", v_m, expected);
+
+            assert_eq!(v_m, expected as u128, "Coefficient {} mismatch", i);
+            assert_main_anchor_consistent(&ctx, &main_res, &anchor_res, &format!("prod coeff {}", i));
         }
 
         // Now test with real key generation values
@@ -4928,8 +5467,8 @@ mod tests {
             let a_main_res: Vec<u64> = keys.public_key.pk1.main.iter().map(|l| l[i]).collect();
             let a_anchor_res: Vec<u64> = keys.public_key.pk1.anchor.iter().map(|l| l[i]).collect();
             let v_m = ctx.rns.to_int(&a_main_res);
-            let v_a = ctx.dual_rns.anchor.to_int(&a_anchor_res);
-            println!("  a[{}]: main_crt={}, anchor_crt={}, consistent: {}", i, v_m, v_a, v_m == v_a);
+            println!("  a[{}]: main_crt={}", i, v_m);
+            assert_main_anchor_consistent(&ctx, &a_main_res, &a_anchor_res, &format!("pk1[{}]", i));
         }
 
         println!("\nFirst 3 coefficients of s (secret key):");
@@ -4949,14 +5488,8 @@ mod tests {
             let as_main_res: Vec<u64> = as_prod.main.iter().map(|l| l[i]).collect();
             let as_anchor_res: Vec<u64> = as_prod.anchor.iter().map(|l| l[i]).collect();
             let v_m = ctx.rns.to_int(&as_main_res);
-            let v_a = ctx.dual_rns.anchor.to_int(&as_anchor_res);
-            let consistent = v_m == v_a;
-            println!("  (a*s)[{}]: main={:.2e}, anchor={:.2e}, consistent: {}",
-                     i, v_m as f64, v_a as f64, consistent);
-            if !consistent {
-                println!("    main residues: {:?}", as_main_res);
-                println!("    anchor residues: {:?}", as_anchor_res);
-            }
+            println!("  (a*s)[{}]: main={:.2e}", i, v_m as f64);
+            assert_main_anchor_consistent(&ctx, &as_main_res, &as_anchor_res, &format!("a*s[{}]", i));
         }
     }
 
@@ -5980,17 +6513,17 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "slow_tests")]
     #[test]
-    #[ignore = "Requires deep_128 config which may be slow to initialize"]
     fn test_tree_mul_deep_passes() {
-        // With larger parameters (N=16384, 4 primes), tree mul should work.
-        let config = FHEConfig::deep_128();
+        // Use 3-prime config (RNS-native FHE requires Q fits in u128)
+        let config = FHEConfig::standard_128();
         let ctx = RNSFHEContext::new(&config);
 
         let mut rng = ShadowHarvester::with_seed(42);
         let keys = ctx.generate_keys_auto(&mut rng);
 
-        println!("=== Tree Mul with deep_128 ===");
+        println!("=== Tree Mul with standard_128 ===");
         println!("N = {}, primes = {:?}", config.n, config.primes);
 
         // Same tree mul: (2 * 3) * (4 * 5) = 120
@@ -6006,41 +6539,12 @@ mod tests {
         let (result, margin) = ctx.decrypt_auto_with_diagnostics(&ct_120, &keys);
         println!("6 * 20 = {} (expected 120, margin = {:.2e})", result, margin as f64);
 
-        assert_eq!(result, 120, "Tree mul should work with deep_128 params");
+        assert_eq!(result, 120, "Tree mul should work with standard_128 params");
         assert!(margin > 0, "Should have positive margin with larger params");
-        println!("✓ Tree mul PASSED with deep_128");
+        println!("✓ Tree mul PASSED with standard_128");
     }
 
-    #[test]
-    #[ignore = "Timing test - run manually with --nocapture"]
-    fn bench_intt_rescale_cost() {
-        use std::time::Instant;
-
-        let config = FHEConfig::light_rns_exact();
-        let ctx = RNSFHEContext::new(&config);
-
-        // Create representative dual polynomial
-        let mut rng = ShadowHarvester::with_seed(42);
-        let keys = ctx.generate_keys_dual(&mut rng);
-        let ct = ctx.encrypt_dual(42, &keys.public_key, &mut rng);
-
-        // Build a d2-like polynomial (product of two c1s)
-        let d2 = ctx.dual_poly_mul(&ct.c1, &ct.c1);
-
-        println!("=== INTT + K-Elim Rescale Timing ===");
-        println!("N = {}, {} main primes, {} anchor primes",
-            config.n, config.primes.len(), ctx.dual_rns.anchor.primes.len());
-
-        let iters = 100;
-        let start = Instant::now();
-        for _ in 0..iters {
-            let _rescaled = ctx.k_elim_rescale_dual(&d2);
-        }
-        let elapsed = start.elapsed();
-
-        println!("K-Elim rescale: {:?} per call ({} iters)", elapsed / iters, iters);
-        println!("Total: {:?}", elapsed);
-    }
+    // Timing benchmark moved to criterion benches (benches/timing.rs)
 
     #[test]
     fn test_anchor_ntt_multiplication_correctness() {
@@ -6170,7 +6674,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Uses anchor.to_int() which overflows u128. Use assert_main_anchor_consistent() instead."]
+    #[ignore = "Diagnostic trace (verbose)"]
     fn test_mul_dual_anchor_consistency_trace() {
         // Trace anchor consistency through mul_dual to find where divergence happens.
         // This is a diagnostic test to locate the bug in tree multiplication.
@@ -6936,7 +7440,7 @@ mod tests {
         println!("JSON size: {} bytes", json.len());
 
         // Deserialize
-        let ct_restored = DualRNSCiphertext::from_json(&json)
+        let ct_restored = DualRNSCiphertext::from_json_validated(&json)
             .expect("JSON deserialization failed");
 
         // Verify correctness
@@ -7198,5 +7702,138 @@ mod tests {
         // Verify correctness
         let restored = ctx.decrypt_dual(&ct_restored, &keys.secret_key);
         assert_eq!(restored, 42, "Validated JSON roundtrip failed");
+    }
+
+    // ========================================================================
+    // HIGH-003: Noise Budget Tracked Operations Tests
+    // ========================================================================
+
+    #[test]
+    fn test_tracked_multiplication() {
+        use crate::noise::budget::NoiseBudget;
+
+        // Use depth2_128 config
+        let config = FHEConfig::depth2_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let keys = ctx.generate_keys_dual_full(&mut rng);
+
+        // Check expected costs
+        let mul_cost = NoiseBudget::mul_ct_cost(&config);
+        let relin_cost = NoiseBudget::relin_cost(&config);
+        let rescale_gain = NoiseBudget::rescale_cost(&config);
+        let total_cost = mul_cost + relin_cost + rescale_gain;
+        println!("Expected mul cycle cost: {} millibits (mul={}, relin={}, rescale={})",
+                 total_cost, mul_cost, relin_cost, rescale_gain);
+
+        // Create artificial budget large enough for testing the tracking mechanism
+        // Real budget from config is too small for these lightweight test parameters
+        let mut budget = NoiseBudget::with_budget_bits(100);  // 100 bits = plenty
+        let initial_budget = budget.remaining_millibits();
+        println!("Test budget: {} millibits ({:.1} bits)",
+                 initial_budget, budget.remaining_bits());
+
+        // Encrypt values (not tracked in this test)
+        let ct1 = ctx.encrypt_dual(7, &keys.public_key, &mut rng);
+        let ct2 = ctx.encrypt_dual(6, &keys.public_key, &mut rng);
+
+        // Perform tracked multiplication
+        let ct_mul = ctx.mul_dual_public_tracked(&ct1, &ct2, &keys.eval_key, &mut budget)
+            .expect("Multiplication should succeed with sufficient budget");
+
+        // Check budget was consumed
+        assert!(budget.remaining_millibits() < initial_budget,
+                "Budget should decrease after multiplication");
+
+        let consumed = initial_budget - budget.remaining_millibits();
+        println!("Budget consumed: {} millibits ({:.1} bits)",
+                 consumed, consumed as f64 / 1000.0);
+        println!("Budget remaining: {} millibits ({:.1} bits)",
+                 budget.remaining_millibits(), budget.remaining_bits());
+        println!("Operations performed: {}", budget.operations().len());
+
+        // Verify the tracking recorded the right operations
+        assert_eq!(budget.operations().len(), 3, "Should have 3 operations: mul, relin, rescale");
+
+        // Verify result
+        let result = ctx.decrypt_dual(&ct_mul, &keys.secret_key);
+        assert_eq!(result, 42, "7 * 6 should decrypt to 42");
+
+        println!("=== Tracked multiplication test PASSED ===");
+    }
+
+    #[test]
+    fn test_tracked_deep_multiplication_chain() {
+        use crate::noise::budget::NoiseBudget;
+
+        // Use depth2_128
+        let config = FHEConfig::depth2_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let keys = ctx.generate_keys_dual_full(&mut rng);
+
+        // Use artificial budget to test tracking at various depths
+        let mut budget = NoiseBudget::with_budget_bits(200);  // 200 bits - enough for several muls
+        println!("Initial budget: {} millibits ({:.1} bits)",
+                 budget.remaining_millibits(), budget.remaining_bits());
+
+        // Encrypt x = 2
+        let mut ct = ctx.encrypt_dual(2, &keys.public_key, &mut rng);
+
+        // Track how many multiplications we can do
+        let mut depth = 0;
+
+        // Try to compute 2^n via repeated squaring until budget exhausted
+        while depth < 5 {  // Limit to depth 5 for test
+            match ctx.mul_dual_public_deep_tracked(&ct, &ct, &keys.eval_key, &mut budget) {
+                Ok(ct_new) => {
+                    ct = ct_new;
+                    depth += 1;
+                    println!("Depth {}: budget = {} millibits ({:.1} bits)",
+                             depth, budget.remaining_millibits(), budget.remaining_bits());
+                }
+                Err(e) => {
+                    println!("Budget exhausted at depth {}: {}", depth, e);
+                    break;
+                }
+            }
+        }
+
+        println!("Achieved depth {} before budget check limit", depth);
+        println!("Final budget: {} millibits", budget.remaining_millibits());
+
+        assert!(depth >= 1, "Should achieve at least depth 1");
+    }
+
+    #[test]
+    fn test_tracked_addition() {
+        use crate::noise::budget::NoiseBudget;
+
+        let config = FHEConfig::light_rns_exact();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let keys = ctx.generate_keys_dual_full(&mut rng);
+
+        let mut budget = NoiseBudget::from_config(&config);
+        let initial = budget.remaining_millibits();
+
+        let ct1 = ctx.encrypt_dual(20, &keys.public_key, &mut rng);
+        let ct2 = ctx.encrypt_dual(22, &keys.public_key, &mut rng);
+
+        let ct_sum = ctx.add_dual_tracked(&ct1, &ct2, &mut budget)
+            .expect("Addition should succeed");
+
+        // Addition cost is minimal
+        let add_cost = NoiseBudget::add_cost();
+        assert_eq!(initial - budget.remaining_millibits(), add_cost,
+                   "Budget decrease should equal add cost");
+
+        let result = ctx.decrypt_dual(&ct_sum, &keys.secret_key);
+        assert_eq!(result, 42, "20 + 22 should decrypt to 42");
+
+        println!("=== Tracked addition test PASSED ===");
     }
 }

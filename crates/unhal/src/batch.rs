@@ -108,7 +108,7 @@ impl BatchProcessor {
         let mut current: Vec<ManaStream> = streams.to_vec();
 
         while current.len() > 1 {
-            let next_len = (current.len() + 1) / 2;
+            let next_len = current.len().div_ceil(2);
             let mut next = Vec::with_capacity(next_len);
 
             // Process pairs in parallel

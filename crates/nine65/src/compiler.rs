@@ -38,25 +38,13 @@ pub struct CircuitNode {
 }
 
 /// Complete circuit as directed acyclic graph
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Circuit {
     pub nodes: Vec<CircuitNode>,
     pub input_nodes: Vec<usize>,
     pub output_nodes: Vec<usize>,
     pub max_depth: usize,
     pub max_multiplicative_depth: usize,
-}
-
-impl Default for Circuit {
-    fn default() -> Self {
-        Self {
-            nodes: Vec::new(),
-            input_nodes: Vec::new(),
-            output_nodes: Vec::new(),
-            max_depth: 0,
-            max_multiplicative_depth: 0,
-        }
-    }
 }
 
 impl Circuit {
@@ -67,26 +55,25 @@ impl Circuit {
     pub fn add_node(&mut self, op_type: OpType, inputs: Vec<usize>) -> usize {
         let id = self.nodes.len();
         
-        // Calculate depth
-        // Note: inputs.is_empty() checked above ensures max() succeeds
-        let depth = if inputs.is_empty() {
-            0
-        } else {
-            inputs.iter().map(|&i| self.nodes[i].depth).max().expect("inputs non-empty, max() must succeed") + 1
-        };
+        // Calculate depth - use unwrap_or(0) to avoid panic paths
+        let depth = inputs.iter()
+            .map(|&i| self.nodes[i].depth)
+            .max()
+            .map(|d| d + 1)
+            .unwrap_or(0);
 
-        // Calculate multiplicative depth
-        // Note: inputs.is_empty() checked above ensures max() succeeds
+        // Calculate multiplicative depth - use unwrap_or(0) to avoid panic paths
         let mult_depth = if op_type == OpType::Multiply {
-            if inputs.is_empty() {
-                0
-            } else {
-                inputs.iter().map(|&i| self.nodes[i].multiplicative_depth).max().expect("inputs non-empty, max() must succeed") + 1
-            }
-        } else if inputs.is_empty() {
-            0
+            inputs.iter()
+                .map(|&i| self.nodes[i].multiplicative_depth)
+                .max()
+                .map(|d| d + 1)
+                .unwrap_or(0)
         } else {
-            inputs.iter().map(|&i| self.nodes[i].multiplicative_depth).max().expect("inputs non-empty, max() must succeed")
+            inputs.iter()
+                .map(|&i| self.nodes[i].multiplicative_depth)
+                .max()
+                .unwrap_or(0)
         };
         
         self.nodes.push(CircuitNode {
@@ -186,12 +173,10 @@ impl NoiseAnalyzer {
             let mut node_noise = if node.inputs.is_empty() {
                 3.2 // Initial encryption noise (std dev)
             } else {
-                // Max noise from inputs
-                // Note: inputs.is_empty() checked above ensures max_by() succeeds
+                // Max noise from inputs - use fold to avoid panic paths
                 node.inputs.iter()
                     .map(|&i| self.node_noise.get(&i).copied().unwrap_or(0.0))
-                    .max_by(|a, b| a.partial_cmp(b).expect("NaN not allowed in noise values"))
-                    .expect("inputs non-empty, max_by() must succeed")
+                    .fold(0.0_f64, f64::max)
             };
             
             // Add noise from this operation

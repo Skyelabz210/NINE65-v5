@@ -185,7 +185,7 @@ impl FHENeuralEvaluator {
         let mut pre_activation: Vec<MobiusInt> = Vec::with_capacity(output_dim);
         
         for i in 0..output_dim {
-            let mut sum = bias[i].clone();
+            let mut sum = bias[i];
             for (j, w) in weights[i].iter().enumerate() {
                 let prod = w.mul(&input[j]);
                 sum = sum.add(&prod);
@@ -204,7 +204,7 @@ impl FHENeuralEvaluator {
             
             ActivationType::ReLU => {
                 values.iter()
-                    .map(|m| if m.is_negative() { MobiusInt::zero() } else { m.clone() })
+                    .map(|m| if m.is_negative() { MobiusInt::zero() } else { *m })
                     .collect()
             }
             
@@ -215,7 +215,7 @@ impl FHENeuralEvaluator {
                             // 0.01 * x = x / 100
                             MobiusInt::from_unsigned(m.residue / 100, m.polarity)
                         } else {
-                            m.clone()
+                            *m
                         }
                     })
                     .collect()

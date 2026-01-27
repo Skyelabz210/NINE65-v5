@@ -405,10 +405,11 @@ mod tests {
     use crate::keys::KeySet;
     use crate::ops::encrypt::{BFVEncryptor, BFVDecryptor};
     use crate::params::FHEConfig;
+    use crate::params::secure_configs::SecureConfig;
     use crate::entropy::ShadowHarvester;
     
     fn setup() -> (FHEConfig, NTTEngine, KeySet, ShadowHarvester, BFVEncoder) {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let mut harvester = ShadowHarvester::with_seed(42);
         let keys = KeySet::generate(&config, &ntt, &mut harvester);
@@ -939,6 +940,7 @@ mod tests {
     }
     
     #[test]
+    #[allow(deprecated)]
     fn test_homomorphic_mul_diagnostic() {
         // Diagnostic test to trace ct×ct multiplication step by step
         let (config, ntt, keys, mut harvester, encoder) = setup();
@@ -1093,6 +1095,7 @@ mod tests {
     }
     
     #[test]
+    #[allow(deprecated)]
     fn test_homo_mul_benchmark() {
         let (config, ntt, keys, mut harvester, encoder) = setup();
 

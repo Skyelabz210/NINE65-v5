@@ -49,8 +49,8 @@ impl PadeEngine {
     /// Input: x in scaled integer form (x_actual = x / SCALE)
     /// Output: exp(x_actual) * SCALE
     pub fn exp_integer(&self, x: i128) -> i128 {
-        let p_val = self.horner_eval(&PADE_EXP_P.to_vec(), x);
-        let q_val = self.horner_eval(&PADE_EXP_Q.to_vec(), x);
+        let p_val = self.horner_eval(&PADE_EXP_P, x);
+        let q_val = self.horner_eval(&PADE_EXP_Q, x);
         
         if q_val == 0 {
             return i128::MAX;

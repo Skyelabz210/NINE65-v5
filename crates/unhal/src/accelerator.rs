@@ -16,10 +16,8 @@
 //! let result = accel.add_streams(&a, &b);
 //! ```
 
-use mana::stream::{ManaStream, StreamOps};
 
-#[cfg(feature = "simd")]
-use mana::simd::SimdLane;
+use mana::stream::{ManaStream, StreamOps};
 
 #[cfg(feature = "parallel")]
 use mana::parallel::ParallelStream;
@@ -274,42 +272,14 @@ impl Accelerator {
 
     #[cfg(feature = "simd")]
     fn add_simd(&self, a: &ManaStream, b: &ManaStream) -> ManaStream {
-        let lanes: Vec<Lane> = a
-            .lanes
-            .iter()
-            .zip(b.lanes.iter())
-            .map(|(la, lb)| {
-                let sa = SimdLane::from_lane(la);
-                let sb = SimdLane::from_lane(lb);
-                sa.add_simd(&sb).to_lane()
-            })
-            .collect();
-
-        ManaStream {
-            lanes,
-            primes: a.primes.clone(),
-            n: a.n,
-        }
+        // SIMD module removed, fallback to sequential
+        a.add(b)
     }
 
     #[cfg(feature = "simd")]
     fn sub_simd(&self, a: &ManaStream, b: &ManaStream) -> ManaStream {
-        let lanes: Vec<Lane> = a
-            .lanes
-            .iter()
-            .zip(b.lanes.iter())
-            .map(|(la, lb)| {
-                let sa = SimdLane::from_lane(la);
-                let sb = SimdLane::from_lane(lb);
-                sa.sub_simd(&sb).to_lane()
-            })
-            .collect();
-
-        ManaStream {
-            lanes,
-            primes: a.primes.clone(),
-            n: a.n,
-        }
+        // SIMD module removed, fallback to sequential
+        a.sub(b)
     }
 
     // ========================================================================
@@ -345,14 +315,14 @@ impl Accelerator {
     fn add_simd_parallel(&self, a: &ManaStream, b: &ManaStream) -> ManaStream {
         let pa = ParallelStream::new(a.clone());
         let pb = ParallelStream::new(b.clone());
-        pa.add_simd_par(&pb).into_inner()
+        pa.add_par(&pb).into_inner()
     }
 
     #[cfg(all(feature = "simd", feature = "parallel"))]
     fn sub_simd_parallel(&self, a: &ManaStream, b: &ManaStream) -> ManaStream {
         let pa = ParallelStream::new(a.clone());
         let pb = ParallelStream::new(b.clone());
-        pa.sub_simd_par(&pb).into_inner()
+        pa.sub_par(&pb).into_inner()
     }
 }
 

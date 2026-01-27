@@ -295,7 +295,7 @@ mod tests {
         // All coefficients should be -1, 0, or 1
         for i in 0..1024 {
             let signed = poly.get_signed(i);
-            assert!(signed >= -1 && signed <= 1, "Invalid ternary: {}", signed);
+            assert!((-1..=1).contains(&signed), "Invalid ternary: {}", signed);
         }
     }
 }

@@ -92,11 +92,7 @@ impl QbitState {
 
         // Move all weights toward mean
         for w in &mut self.weights {
-            if *w > mean {
-                *w = ((*w as u128 + mean as u128) / 2 % q) as u64;
-            } else {
-                *w = ((*w as u128 + mean as u128) / 2 % q) as u64;
-            }
+            *w = ((*w as u128 + mean as u128) / 2 % q) as u64;
         }
 
         self.norm_sq = self
@@ -391,7 +387,7 @@ mod tests {
 
         // Run a few iterations
         for _ in 0..10 {
-            swarm.tick(&fitness_fn);
+            swarm.tick(fitness_fn);
         }
 
         let stats = swarm.stats();

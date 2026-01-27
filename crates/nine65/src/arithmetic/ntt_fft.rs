@@ -71,7 +71,7 @@ impl NTTEngineFFT {
     /// Create a new FFT-based NTT engine
     pub fn new(q: u64, n: usize) -> Self {
         assert!(n.is_power_of_two(), "N must be power of 2");
-        assert!((q - 1) % (2 * n as u64) == 0, "q-1 must be divisible by 2N");
+        assert!((q - 1).is_multiple_of(2 * n as u64), "q-1 must be divisible by 2N");
         
         let log_n = n.trailing_zeros() as usize;
         let mont = MontgomeryContext::new(q);
@@ -537,53 +537,5 @@ mod tests {
         assert_eq!(result, expected, "FFT multiply doesn't match schoolbook");
     }
     
-    /// Benchmark test for 1024-point FFT NTT multiply
-    ///
-    /// Marked #[ignore] - timing depends on machine load.
-    /// Run manually: cargo test -p nine65 --lib -- ntt_fft::tests::test_benchmark_1024 --ignored --nocapture
-    #[test]
-    #[ignore]
-    fn test_benchmark_1024() {
-        let engine = NTTEngineFFT::new(TEST_PRIME, 1024);
-
-        let a: Vec<u64> = (0..1024).map(|i| i % TEST_PRIME).collect();
-        let b: Vec<u64> = (0..1024).map(|i| (i * 2) % TEST_PRIME).collect();
-
-        let start = std::time::Instant::now();
-        for _ in 0..1000 {
-            let _ = engine.multiply(&a, &b);
-        }
-        let elapsed = start.elapsed();
-
-        println!("FFT NTT 1024-point multiply x1000: {:?}", elapsed);
-        println!("Per multiply: {:?}", elapsed / 1000);
-
-        // Should be WAY faster than 13.5ms (current DFT)
-        assert!(elapsed.as_millis() < 5000, "FFT should complete 1000 muls in under 5s");
-    }
-
-    /// Benchmark test for 4096-point FFT NTT multiply
-    ///
-    /// Marked #[ignore] - timing depends on machine load.
-    /// Run manually: cargo test -p nine65 --lib -- ntt_fft::tests::test_benchmark_4096 --ignored --nocapture
-    #[test]
-    #[ignore]
-    fn test_benchmark_4096() {
-        let engine = NTTEngineFFT::new(TEST_PRIME, 4096);
-
-        let a: Vec<u64> = (0..4096).map(|i| i % TEST_PRIME).collect();
-        let b: Vec<u64> = (0..4096).map(|i| (i * 2) % TEST_PRIME).collect();
-
-        let start = std::time::Instant::now();
-        for _ in 0..100 {
-            let _ = engine.multiply(&a, &b);
-        }
-        let elapsed = start.elapsed();
-
-        println!("FFT NTT 4096-point multiply x100: {:?}", elapsed);
-        println!("Per multiply: {:?}", elapsed / 100);
-
-        // Should be WAY faster than 213ms (current DFT)
-        assert!(elapsed.as_millis() < 2000, "FFT should complete 100 muls in under 2s");
-    }
+    // Timing benchmarks moved to criterion benches (benches/timing.rs)
 }

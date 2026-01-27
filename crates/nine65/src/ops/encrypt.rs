@@ -493,14 +493,45 @@ impl<'a> BFVDecryptor<'a> {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// THREAD SAFETY ASSERTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Compile-time verification that key types are thread-safe.
+// These assertions fail at compile time if the types don't implement Send/Sync.
+const _: () = {
+    const fn assert_send<T: Send>() {}
+    const fn assert_sync<T: Sync>() {}
+
+    // Ciphertext can be safely sent between threads and shared
+    assert_send::<Ciphertext>();
+    assert_sync::<Ciphertext>();
+
+    // Encoder is immutable after construction
+    assert_send::<BFVEncoder>();
+    assert_sync::<BFVEncoder>();
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::keys::KeySet;
     use crate::entropy::FheRng;
+
+    fn test_config() -> FHEConfig {
+        FHEConfig {
+            name: "encrypt_test",
+            n: 1024,
+            q: 998244353,
+            t: 2053, // Chosen to avoid encode/decode precision issues
+            eta: 2,
+            primes: vec![998244353],
+            security_bits: 36,
+        }
+    }
     
     fn setup() -> (FHEConfig, NTTEngine, KeySet, ShadowHarvester, BFVEncoder) {
-        let config = FHEConfig::light();
+        let config = test_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let mut harvester = ShadowHarvester::with_seed(42);
         let keys = KeySet::generate(&config, &ntt, &mut harvester);
@@ -510,7 +541,7 @@ mod tests {
     
     #[test]
     fn test_encode_decode() {
-        let config = FHEConfig::light();
+        let config = test_config();
         let encoder = BFVEncoder::new(&config);
         
         for m in [0, 1, 100, config.t - 1] {
@@ -662,7 +693,7 @@ mod tests {
 
     #[test]
     fn test_try_encode_success() {
-        let config = FHEConfig::light();
+        let config = test_config();
         let encoder = BFVEncoder::new(&config);
 
         let result = encoder.try_encode(42);
@@ -673,7 +704,7 @@ mod tests {
     fn test_try_encode_message_out_of_bounds() {
         use crate::errors::Nine65Error;
 
-        let config = FHEConfig::light();
+        let config = test_config();
         let encoder = BFVEncoder::new(&config);
 
         // Message >= t should fail
@@ -691,7 +722,7 @@ mod tests {
 
     #[test]
     fn test_try_encode_vector_success() {
-        let config = FHEConfig::light();
+        let config = test_config();
         let encoder = BFVEncoder::new(&config);
 
         let result = encoder.try_encode_vector(&[1, 2, 3, 4]);
@@ -702,7 +733,7 @@ mod tests {
     fn test_try_encode_vector_message_out_of_bounds() {
         use crate::errors::Nine65Error;
 
-        let config = FHEConfig::light();
+        let config = test_config();
         let encoder = BFVEncoder::new(&config);
 
         // One message out of bounds

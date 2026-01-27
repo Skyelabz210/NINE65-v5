@@ -1,10 +1,17 @@
-//! Security Estimation Module
+//! Security Module
 //!
-//! Provides LWE-based security estimates for QMNF FHE parameters.
+//! Provides security-related functionality:
+//! - LWE-based security estimates for QMNF FHE parameters
+//! - Secret data marker traits for constant-time enforcement
+//!
 //! Based on HomomorphicEncryption.org Security Standard v1.1 tables.
 //!
 //! For precise estimates, run the external LWE Estimator:
 //! `sage -python scripts/lwe_estimate.py`
+
+pub mod secret_data;
+
+pub use secret_data::{SecretData, SecretPoly, SecretScalar};
 
 use crate::params::FHEConfig;
 
@@ -269,31 +276,32 @@ impl std::fmt::Display for SecurityEstimate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::params::SecureConfig;
+
     #[test]
     fn test_lwe_params_from_config() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let params = LWEParams::from_config(&config);
         
-        assert_eq!(params.n, 1024);
+        assert_eq!(params.n, 4096); // SecureConfig::secure_128() uses N=4096
         assert!(params.log_q > 0);
         assert!(params.sigma > 0.0);
         
-        println!("Light config: N={}, log(q)={}, σ={:.3}",
+        println!("Secure 128 config: N={}, log(q)={}, σ={:.3}",
                  params.n, params.log_q, params.sigma);
     }
     
     #[test]
     fn test_he_standard_estimate() {
-        let config = FHEConfig::he_standard_128();
+        let config = SecureConfig::secure_128().into_config();
         let params = LWEParams::from_config(&config);
         let estimate = params.he_standard_estimate();
         
         println!("HE Standard 128 estimate: {}", estimate);
-        println!("{}", params.security_rationale("he_standard_128"));
+        println!("{}", params.security_rationale("secure_128"));
         
         assert!(estimate.classical_bits >= 128,
-                "HE Standard config should provide 128-bit security");
+                "Secure 128 config should provide 128-bit security");
         assert!(params.meets_he_standard(128),
                 "Should meet HE Standard for 128-bit");
     }
@@ -337,10 +345,10 @@ mod tests {
     #[test]
     fn test_all_configs_security() {
         let configs = [
-            ("light", FHEConfig::light()),
-            ("he_standard_128", FHEConfig::he_standard_128()),
-            ("standard_128", FHEConfig::standard_128()),
-            ("high_192", FHEConfig::high_192()),
+            ("secure_128", SecureConfig::secure_128().into_config()),
+            ("secure_192", SecureConfig::secure_192().into_config()),
+            ("standard_128", FHEConfig::standard_128()), // Keep this one for now, it's not deprecated
+            ("high_192", FHEConfig::high_192()), // Keep this one for now, it's not deprecated
         ];
         
         for (name, config) in configs {

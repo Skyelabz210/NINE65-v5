@@ -263,10 +263,11 @@ impl AcceleratedRNS {
 #[cfg(all(test, feature = "accelerated"))]
 mod tests {
     use super::*;
+    use crate::params::SecureConfig;
 
     #[test]
     fn test_rns_stream_roundtrip() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let accel_fhe = AcceleratedFHE::new(&config);
 
         // Create a simple RNS polynomial
@@ -287,7 +288,7 @@ mod tests {
     #[test]
     fn test_accelerated_add() {
         // Use light config which has n=512 (minimum for security)
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let primes = config.primes.clone();
         let n = config.n;
 

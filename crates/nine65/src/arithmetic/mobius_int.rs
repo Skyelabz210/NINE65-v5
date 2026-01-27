@@ -306,26 +306,6 @@ impl MobiusInt {
         self.residue.cmp(&other.residue)
     }
     
-    /// Full comparison (-5 < 3, 3 < 10, etc.)
-    pub fn cmp(&self, other: &Self) -> Ordering {
-        if self.is_zero() && other.is_zero() {
-            return Ordering::Equal;
-        }
-        if self.is_zero() {
-            return if other.is_positive() { Ordering::Less } else { Ordering::Greater };
-        }
-        if other.is_zero() {
-            return if self.is_positive() { Ordering::Greater } else { Ordering::Less };
-        }
-        
-        match (self.polarity, other.polarity) {
-            (Polarity::Plus, Polarity::Minus) => Ordering::Greater,  // + > -
-            (Polarity::Minus, Polarity::Plus) => Ordering::Less,     // - < +
-            (Polarity::Plus, Polarity::Plus) => self.residue.cmp(&other.residue),
-            (Polarity::Minus, Polarity::Minus) => other.residue.cmp(&self.residue), // -3 > -5
-        }
-    }
-    
     /// Min of two values
     pub fn min(&self, other: &Self) -> Self {
         match self.cmp(other) {
@@ -379,13 +359,28 @@ impl Eq for MobiusInt {}
 
 impl PartialOrd for MobiusInt {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
+        Some(std::cmp::Ord::cmp(self, other))
     }
 }
 
 impl Ord for MobiusInt {
     fn cmp(&self, other: &Self) -> Ordering {
-        MobiusInt::cmp(self, other)
+        if self.is_zero() && other.is_zero() {
+            return Ordering::Equal;
+        }
+        if self.is_zero() {
+            return if other.is_positive() { Ordering::Less } else { Ordering::Greater };
+        }
+        if other.is_zero() {
+            return if self.is_positive() { Ordering::Greater } else { Ordering::Less };
+        }
+        
+        match (self.polarity, other.polarity) {
+            (Polarity::Plus, Polarity::Minus) => Ordering::Greater,  // + > -
+            (Polarity::Minus, Polarity::Plus) => Ordering::Less,     // - < +
+            (Polarity::Plus, Polarity::Plus) => self.residue.cmp(&other.residue),
+            (Polarity::Minus, Polarity::Minus) => other.residue.cmp(&self.residue), // -3 > -5
+        }
     }
 }
 

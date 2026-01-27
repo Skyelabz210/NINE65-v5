@@ -23,6 +23,7 @@
 use super::encrypt::Ciphertext;
 use crate::ring::RingPolynomial;
 use crate::entropy::FheRng;
+use crate::errors::{Nine65Error, Nine65Result};
 
 #[cfg(test)]
 use crate::entropy::ShadowHarvester;
@@ -47,6 +48,97 @@ pub struct GaloisKey {
     pub key_switch_b: Vec<RingPolynomial>,
 }
 
+impl GaloisKey {
+    /// Validate Galois key structure and bounds
+    ///
+    /// Checks:
+    /// - Exponent is odd (required for valid automorphism)
+    /// - key_switch_a and key_switch_b have the same length
+    /// - All polynomials have the expected degree N
+    /// - All coefficients are < q
+    ///
+    /// This should be called after deserialization to ensure key integrity.
+    pub fn validate(&self, expected_n: usize, expected_q: u64) -> Nine65Result<()> {
+        // Check exponent is odd (required for valid automorphism in X^N + 1)
+        if self.exponent.is_multiple_of(2) {
+            return Err(Nine65Error::ConfigError {
+                message: format!(
+                    "Galois exponent {} is even; must be odd for X^N + 1 ring",
+                    self.exponent
+                ),
+            });
+        }
+
+        // Check key switch matrices have matching lengths
+        if self.key_switch_a.len() != self.key_switch_b.len() {
+            return Err(Nine65Error::ConfigError {
+                message: format!(
+                    "Key switch matrix size mismatch: a={}, b={}",
+                    self.key_switch_a.len(),
+                    self.key_switch_b.len()
+                ),
+            });
+        }
+
+        // Check all polynomials have correct degree and coefficients in range
+        for (i, poly) in self.key_switch_a.iter().enumerate() {
+            if poly.coeffs.len() != expected_n {
+                return Err(Nine65Error::InvalidPolynomialDegree {
+                    got: poly.coeffs.len(),
+                    expected: expected_n,
+                });
+            }
+            if poly.q != expected_q {
+                return Err(Nine65Error::ConfigError {
+                    message: format!(
+                        "key_switch_a[{}] modulus {} != expected {}",
+                        i, poly.q, expected_q
+                    ),
+                });
+            }
+            for (j, &coeff) in poly.coeffs.iter().enumerate() {
+                if coeff >= expected_q {
+                    return Err(Nine65Error::ConfigError {
+                        message: format!(
+                            "key_switch_a[{}][{}] = {} >= q (out of bounds)",
+                            i, j, coeff
+                        ),
+                    });
+                }
+            }
+        }
+
+        for (i, poly) in self.key_switch_b.iter().enumerate() {
+            if poly.coeffs.len() != expected_n {
+                return Err(Nine65Error::InvalidPolynomialDegree {
+                    got: poly.coeffs.len(),
+                    expected: expected_n,
+                });
+            }
+            if poly.q != expected_q {
+                return Err(Nine65Error::ConfigError {
+                    message: format!(
+                        "key_switch_b[{}] modulus {} != expected {}",
+                        i, poly.q, expected_q
+                    ),
+                });
+            }
+            for (j, &coeff) in poly.coeffs.iter().enumerate() {
+                if coeff >= expected_q {
+                    return Err(Nine65Error::ConfigError {
+                        message: format!(
+                            "key_switch_b[{}][{}] = {} >= q (out of bounds)",
+                            i, j, coeff
+                        ),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
 /// Collection of Galois keys for supported rotations
 #[derive(Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -62,17 +154,56 @@ impl GaloisKey {
         serde_json::to_string(self)
     }
 
-    /// Deserialize from JSON string
-    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(s)
-    }
-
     /// Serialize to bincode bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
     }
 
-    /// Deserialize from bincode bytes
+    /// Deserialize from JSON with validation
+    ///
+    /// This is the **recommended** deserialization method for production use.
+    /// It validates structural integrity and bounds before returning the key.
+    pub fn from_json_validated(s: &str, expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let key: Self = serde_json::from_str(s)
+            .map_err(|e| Nine65Error::ConfigError { message: e.to_string() })?;
+        key.validate(expected_n, expected_q)?;
+        Ok(key)
+    }
+
+    /// Deserialize from bytes with validation
+    ///
+    /// This is the **recommended** deserialization method for production use.
+    /// It validates structural integrity and bounds before returning the key.
+    pub fn from_bytes_validated(bytes: &[u8], expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let key: Self = bincode::deserialize(bytes)
+            .map_err(|e| Nine65Error::ConfigError { message: e.to_string() })?;
+        key.validate(expected_n, expected_q)?;
+        Ok(key)
+    }
+}
+
+/// Unvalidated deserialization methods - gated behind `allow_insecure` feature.
+///
+/// These methods do NOT validate the deserialized data and should only be used
+/// for trusted input or testing. For production, use `from_*_validated()`.
+#[cfg(all(feature = "serde", feature = "allow_insecure"))]
+impl GaloisKey {
+    /// Deserialize from JSON string (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key.
+    /// Only use for trusted input. For untrusted input, use `from_json_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
+
+    /// Deserialize from bincode bytes (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key.
+    /// Only use for trusted input. For untrusted input, use `from_bytes_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
@@ -85,17 +216,53 @@ impl GaloisKeySet {
         serde_json::to_string(self)
     }
 
-    /// Deserialize from JSON string
-    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(s)
-    }
-
     /// Serialize to bincode bytes
     pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
         bincode::serialize(self)
     }
 
-    /// Deserialize from bincode bytes
+    /// Deserialize from JSON with validation
+    ///
+    /// This is the **recommended** deserialization method for production use.
+    /// It validates structural integrity and bounds of all keys before returning.
+    pub fn from_json_validated(s: &str, expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let keys: Self = serde_json::from_str(s)
+            .map_err(|e| Nine65Error::ConfigError { message: e.to_string() })?;
+        keys.validate(expected_n, expected_q)?;
+        Ok(keys)
+    }
+
+    /// Deserialize from bytes with validation
+    ///
+    /// This is the **recommended** deserialization method for production use.
+    /// It validates structural integrity and bounds of all keys before returning.
+    pub fn from_bytes_validated(bytes: &[u8], expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let keys: Self = bincode::deserialize(bytes)
+            .map_err(|e| Nine65Error::ConfigError { message: e.to_string() })?;
+        keys.validate(expected_n, expected_q)?;
+        Ok(keys)
+    }
+}
+
+/// Unvalidated deserialization methods - gated behind `allow_insecure` feature.
+#[cfg(all(feature = "serde", feature = "allow_insecure"))]
+impl GaloisKeySet {
+    /// Deserialize from JSON string (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key set.
+    /// Only use for trusted input. For untrusted input, use `from_json_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
+
+    /// Deserialize from bincode bytes (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key set.
+    /// Only use for trusted input. For untrusted input, use `from_bytes_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
@@ -107,6 +274,24 @@ impl GaloisKeySet {
         Self {
             keys: std::collections::HashMap::new(),
         }
+    }
+
+    /// Validate all Galois keys in the set
+    ///
+    /// Checks each key for:
+    /// - Valid automorphism exponent (odd)
+    /// - Correct polynomial degree N
+    /// - All coefficients < q
+    ///
+    /// This should be called after deserialization to ensure key set integrity.
+    pub fn validate(&self, expected_n: usize, expected_q: u64) -> Nine65Result<()> {
+        for (exponent, key) in &self.keys {
+            key.validate(expected_n, expected_q)
+                .map_err(|e| Nine65Error::ConfigError {
+                    message: format!("GaloisKey for exponent {}: {}", exponent, e),
+                })?;
+        }
+        Ok(())
     }
 
     /// Add a Galois key for a specific exponent
@@ -430,6 +615,29 @@ impl<'a> GaloisEvaluator<'a> {
         result
     }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// THREAD SAFETY ASSERTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Compile-time verification that Galois types are thread-safe.
+// These assertions fail at compile time if the types don't implement Send/Sync.
+const _: () = {
+    const fn assert_send<T: Send>() {}
+    const fn assert_sync<T: Sync>() {}
+
+    // GaloisKey contains polynomials which are Send + Sync
+    assert_send::<GaloisKey>();
+    assert_sync::<GaloisKey>();
+
+    // GaloisKeySet is a collection of GaloisKeys
+    assert_send::<GaloisKeySet>();
+    assert_sync::<GaloisKeySet>();
+
+    // GaloisEngine is immutable after construction
+    assert_send::<GaloisEngine>();
+    assert_sync::<GaloisEngine>();
+};
 
 #[cfg(test)]
 mod tests {

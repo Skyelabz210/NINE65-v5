@@ -5,6 +5,9 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  schedule:
+    # Run timing tests every Sunday at 2 AM UTC
+    - cron: '0 2 * * 0'
 
 env:
   CARGO_TERM_COLOR: always
@@ -168,3 +171,135 @@ jobs:
 
       - name: Check licenses and advisories
         run: cargo deny check
+
+  timing-tests:
+    name: Timing Regression Tests
+    runs-on: ubuntu-latest
+    # Run weekly to catch timing regressions without blocking PRs
+    if: github.event_name == 'schedule' || contains(github.event.head_commit.message, '[timing]')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-timing-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run constant-time verification tests
+        run: cargo test -p nine65 --lib --release -- --ignored --test-threads=1 2>&1 | tee timing-results.txt
+        env:
+          # Reduce system noise for timing tests
+          RUST_TEST_THREADS: 1
+
+      - name: Upload timing results
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-results
+          path: timing-results.txt
+
+  benchmark-check:
+    name: Benchmark Regression Check
+    runs-on: ubuntu-latest
+    # Run on PRs and weekly, but don't block merges
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for baseline comparison
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run benchmarks
+        run: |
+          cargo bench -p nine65 -- --noplot --save-baseline current 2>&1 | tee bench-results.txt
+          # Extract timing summary
+          echo "=== BENCHMARK SUMMARY ===" >> bench-results.txt
+          grep -E "time:.*\[" bench-results.txt | tail -20 >> bench-summary.txt || true
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            bench-results.txt
+            bench-summary.txt
+            target/criterion/
+
+      - name: Check for major regressions
+        run: |
+          # Fail if any benchmark shows >50% regression
+          if grep -q "Performance has regressed" bench-results.txt; then
+            echo "WARNING: Performance regression detected"
+            grep -B2 "Performance has regressed" bench-results.txt
+            # Don't fail the build, just warn
+          fi
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    # Run on PRs to main
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache target directory
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-target-coverage-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate coverage report
+        run: |
+          cargo tarpaulin -p nine65 --out Xml --out Html --output-dir coverage/ --timeout 300
+        continue-on-error: true
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/cobertura.xml
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/

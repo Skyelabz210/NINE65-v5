@@ -81,7 +81,7 @@ impl BatchEncoder {
     /// to split into independent slots. Coefficient batching works regardless.
     pub fn supports_simd_slots(config: &FHEConfig) -> bool {
         let m = 2 * config.n;
-        (config.t - 1) % (m as u64) == 0
+        (config.t - 1).is_multiple_of(m as u64)
     }
 
     /// Get maximum number of values that can be packed
@@ -316,8 +316,8 @@ mod tests {
 
     #[test]
     fn test_light_config() {
-        // Test with standard light config
-        let config = FHEConfig::light();
+        // Test with deterministic local config
+        let config = test_config();
         let encoder = BatchEncoder::new(&config).unwrap();
 
         let values = vec![10u64, 20, 30];

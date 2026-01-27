@@ -10,10 +10,10 @@
 //! in realistic usage scenarios.
 
 use nine65::entropy::{FheRng, SecureRng, ShadowHarvester};
-use nine65::errors::{Nine65Error, Nine65Result};
+use nine65::errors::Nine65Error;
 use nine65::keys::KeySet;
 use nine65::ops::encrypt::{BFVDecryptor, BFVEncoder, BFVEncryptor, Ciphertext};
-use nine65::params::secure_configs::{SecureConfig, ProductionSafe};
+use nine65::params::secure_configs::SecureConfig;
 use nine65::params::FHEConfig;
 
 #[cfg(feature = "ntt_fft")]
@@ -66,7 +66,7 @@ fn test_secure_config_security_levels() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 fn setup_fhe() -> (FHEConfig, NTTEngine, KeySet, BFVEncoder) {
-    let config = FHEConfig::light();
+    let config = FHEConfig::light_rns();
     let ntt = NTTEngine::new(config.q, config.n);
     let mut harvester = ShadowHarvester::with_seed(42);
     let keys = KeySet::generate(&config, &ntt, &mut harvester);
@@ -129,7 +129,7 @@ fn test_rng_trait_secure_vs_deterministic() {
 
 #[test]
 fn test_fallible_encoding_success() {
-    let config = FHEConfig::light();
+    let config = FHEConfig::light_rns();
     let encoder = BFVEncoder::new(&config);
 
     let result = encoder.try_encode(42);
@@ -138,7 +138,7 @@ fn test_fallible_encoding_success() {
 
 #[test]
 fn test_fallible_encoding_out_of_bounds() {
-    let config = FHEConfig::light();
+    let config = FHEConfig::light_rns();
     let encoder = BFVEncoder::new(&config);
 
     // Message >= t should fail
@@ -234,10 +234,13 @@ fn test_k_elimination_ct_matches_vartime() {
         let v_alpha = v % ke.alpha_cap;
         let v_beta = v % ke.beta_cap;
 
-        let k_vartime = ke.extract_k(v_alpha, v_beta);
-        let k_ct = ke.extract_k_ct(v_alpha, v_beta);
+        // extract_k is the CT (constant-time) version - it's the default
+        let k_ct = ke.extract_k(v_alpha, v_beta);
+        // extract_k_vartime is the variable-time version (deprecated)
+        #[allow(deprecated)]
+        let k_vartime = ke.extract_k_vartime(v_alpha, v_beta);
 
-        assert_eq!(k_vartime, k_ct, "CT and vartime extract_k differ for v={}", v);
+        assert_eq!(k_ct, k_vartime, "CT and vartime extract_k differ for v={}", v);
     }
 }
 
@@ -254,7 +257,7 @@ fn test_full_secure_pipeline() {
     // 4. Perform homomorphic operations
     // 5. Decrypt correctly
 
-    let config = FHEConfig::light(); // Using light for test speed
+    let config = FHEConfig::light_rns(); // Using light_rns for test speed
     let ntt = NTTEngine::new(config.q, config.n);
 
     // Key generation with secure entropy
@@ -339,4 +342,114 @@ fn test_deterministic_encryption_is_reproducible() {
 
     assert_eq!(ct1.c0.coeffs, ct2.c0.coeffs,
                "Seeded encryption should be reproducible");
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ADVERSARIAL DESERIALIZATION TESTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[cfg(feature = "serde")]
+mod adversarial_tests {
+    use super::*;
+
+    #[test]
+    fn test_ciphertext_validation_rejects_wrong_degree() {
+        let config = FHEConfig::light_rns();
+
+        // Create a ciphertext with wrong polynomial degree
+        let wrong_n = config.n / 2;  // Half the expected size
+        let ct = Ciphertext {
+            c0: nine65::ring::RingPolynomial::from_coeffs(
+                vec![1u64; wrong_n], config.q
+            ),
+            c1: nine65::ring::RingPolynomial::from_coeffs(
+                vec![2u64; wrong_n], config.q
+            ),
+        };
+
+        let result = ct.validate(config.n, config.q);
+        assert!(result.is_err(), "Should reject ciphertext with wrong degree");
+    }
+
+    #[test]
+    fn test_ciphertext_validation_rejects_coefficient_overflow() {
+        let config = FHEConfig::light_rns();
+
+        // Note: RingPolynomial::from_coeffs reduces coefficients mod q,
+        // which is safe-by-design. This test verifies that malformed JSON
+        // with coefficients >= q is rejected by validated deserialization.
+        //
+        // We craft JSON with an out-of-bounds coefficient manually.
+        let malformed_json = format!(
+            r#"{{"c0":{{"coeffs":[{}],"q":{}}},"c1":{{"coeffs":[{}],"q":{}}}}}"#,
+            // First coefficient is q+1 (invalid!)
+            std::iter::once(config.q + 1)
+                .chain(std::iter::repeat(1).take(config.n - 1))
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            config.q,
+            std::iter::repeat(1).take(config.n)
+                .map(|x| x.to_string())
+                .collect::<Vec<_>>()
+                .join(","),
+            config.q
+        );
+
+        let result = Ciphertext::from_json_validated(&malformed_json, config.n, config.q);
+        assert!(result.is_err(), "Should reject ciphertext with overflow coefficient via JSON");
+    }
+
+    #[test]
+    fn test_ciphertext_validation_rejects_modulus_mismatch() {
+        let config = FHEConfig::light_rns();
+        let wrong_q = config.q - 1;
+
+        let ct = Ciphertext {
+            c0: nine65::ring::RingPolynomial::from_coeffs(
+                vec![1u64; config.n], wrong_q
+            ),
+            c1: nine65::ring::RingPolynomial::from_coeffs(
+                vec![2u64; config.n], config.q
+            ),
+        };
+
+        let result = ct.validate(config.n, config.q);
+        assert!(result.is_err(), "Should reject ciphertext with modulus mismatch");
+    }
+
+    #[test]
+    fn test_ciphertext_roundtrip_with_validation() {
+        let (config, ntt, keys, encoder) = super::setup_fhe();
+        let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
+        let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
+
+        // Encrypt a value
+        let ct = encryptor.encrypt_secure(42);
+
+        // Serialize and deserialize with validation
+        let json = ct.to_json().expect("Serialization should work");
+        let ct_restored = Ciphertext::from_json_validated(&json, config.n, config.q)
+            .expect("Validated deserialization should work for valid ciphertext");
+
+        // Verify decryption still works
+        assert_eq!(decryptor.decrypt(&ct_restored), 42);
+    }
+
+    #[test]
+    fn test_malformed_json_rejected() {
+        let config = FHEConfig::light();
+
+        // Completely malformed JSON
+        let result = Ciphertext::from_json_validated("{}", config.n, config.q);
+        assert!(result.is_err(), "Should reject malformed JSON");
+
+        // Partially valid JSON but wrong structure
+        let result2 = Ciphertext::from_json_validated(
+            r#"{"c0": [], "c1": []}"#,
+            config.n,
+            config.q
+        );
+        assert!(result2.is_err(), "Should reject JSON with missing fields");
+    }
 }

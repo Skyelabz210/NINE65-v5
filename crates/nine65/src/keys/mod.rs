@@ -273,10 +273,11 @@ impl KeySet {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::params::secure_configs::SecureConfig;
     
     #[test]
     fn test_keygen_basic() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let mut harvester = ShadowHarvester::with_seed(42);
         
         let sk = SecretKey::generate(&config, &mut harvester);
@@ -284,13 +285,13 @@ mod tests {
         // Secret key should be ternary
         for i in 0..config.n {
             let coeff = sk.s.get_signed(i);
-            assert!(coeff >= -1 && coeff <= 1, "Non-ternary coefficient: {}", coeff);
+            assert!((-1..=1).contains(&coeff), "Non-ternary coefficient: {}", coeff);
         }
     }
     
     #[test]
     fn test_keygen_deterministic() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         
         let mut h1 = ShadowHarvester::with_seed(12345);
@@ -307,7 +308,7 @@ mod tests {
     
     #[test]
     fn test_keygen_secure() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         
         let keys1 = KeySet::generate_secure(&config, &ntt);
@@ -320,21 +321,21 @@ mod tests {
     
     #[test]
     fn test_secure_key_is_ternary() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         
         let sk = SecretKey::generate_secure(&config);
         
         // Secret key should still be ternary
         for i in 0..config.n {
             let coeff = sk.s.get_signed(i);
-            assert!(coeff >= -1 && coeff <= 1, 
+            assert!((-1..=1).contains(&coeff), 
                     "Secure key has non-ternary coefficient at {}: {}", i, coeff);
         }
     }
     
     #[test]
     fn test_keygen_benchmark() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let mut harvester = ShadowHarvester::with_seed(999);
         
@@ -349,7 +350,7 @@ mod tests {
     
     #[test]
     fn test_keygen_secure_benchmark() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         
         let start = std::time::Instant::now();
@@ -366,7 +367,7 @@ mod tests {
         // Integration test: verify secure keys work with FHE operations
         use crate::ops::encrypt::{BFVEncoder, BFVEncryptor, BFVDecryptor};
         
-        let config = FHEConfig::light();
+        let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let keys = KeySet::generate_secure(&config, &ntt);
         

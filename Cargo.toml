@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/*"]
+exclude = ["fuzz"]
 resolver = "2"
 
 [workspace.package]
@@ -20,6 +21,8 @@ getrandom = "0.2"
 subtle = "2.5"
 sha2 = "0.10"
 thiserror = "1.0"
+rand_core = "0.6"
+rand_chacha = "0.3"
 
 # Dev
 criterion = "0.5"

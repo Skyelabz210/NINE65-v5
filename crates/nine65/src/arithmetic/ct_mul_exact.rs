@@ -56,7 +56,11 @@ pub struct ExactFHEContext {
     pub anchor_psi_inv: u64,
     pub anchor_psi_powers: Vec<u64>,
     pub anchor_psi_inv_powers: Vec<u64>,
+    /// True if anchor modulus supports NTT for this n
+    pub anchor_ntt_supported: bool,
 }
+
+type AnchorRoots = (u64, u64, Vec<u64>, Vec<u64>, Vec<u64>, Vec<u64>, u64);
 
 impl ExactFHEContext {
     /// Create from standard FHE parameters
@@ -76,6 +80,7 @@ impl ExactFHEContext {
         
         let anchor_omega_inv = mod_inverse(anchor_omega, a);
         let anchor_psi_inv = mod_inverse(anchor_psi, a);
+        let anchor_ntt_supported = (a - 1).is_multiple_of(2 * n as u64) && anchor_omega != 1;
         
         Self {
             exact_ctx,
@@ -91,13 +96,14 @@ impl ExactFHEContext {
             anchor_psi_inv,
             anchor_psi_powers,
             anchor_psi_inv_powers,
+            anchor_ntt_supported,
         }
     }
     
     /// Compute primitive roots for anchor modulus
-    fn compute_anchor_roots(a: u64, n: usize) -> (u64, u64, Vec<u64>, Vec<u64>, Vec<u64>, Vec<u64>, u64) {
+    fn compute_anchor_roots(a: u64, n: usize) -> AnchorRoots {
         // Check if A supports 2N-th roots
-        if (a - 1) % (2 * n as u64) != 0 {
+        if !(a - 1).is_multiple_of(2 * n as u64) {
             // A doesn't support NTT - use naive convolution for anchor track
             // Return dummy values; we'll handle this in the NTT functions
             return (1, 1, vec![1; n], vec![1; n], vec![1; n], vec![1; n], 
@@ -173,7 +179,17 @@ impl ExactFHEContext {
                                            &a_ntt_anchor, &b_ntt_anchor);
         
         // Step 5: Inverse NTT on both tracks
-        let c_twisted = self.ntt_inverse(&c_ntt);
+        // If anchor modulus doesn't support NTT, compute anchor A track by
+        // naive cyclic convolution on the twisted coefficients.
+        let anchor_a_override = if self.anchor_ntt_supported {
+            None
+        } else {
+            let a_vals: Vec<u64> = a_twisted.coeffs.iter().map(|c| c.anchor.a_res).collect();
+            let b_vals: Vec<u64> = b_twisted.coeffs.iter().map(|c| c.anchor.a_res).collect();
+            Some(self.cyclic_convolution_mod(&a_vals, &b_vals, self.exact_ctx.a))
+        };
+
+        let c_twisted = self.ntt_inverse(&c_ntt, anchor_a_override.as_deref());
         
         // Step 6: Remove ψ-twist
         self.remove_psi_twist(&c_twisted)
@@ -245,9 +261,13 @@ impl ExactFHEContext {
         let m_vals: Vec<u64> = poly.coeffs.iter().map(|c| c.anchor.m_res).collect();
         let m_ntt = self.ntt_generic_with_omega(&m_vals, m, &self.ntt.omega_powers);
         
-        // NTT in A (use anchor omega)
-        let a_vals: Vec<u64> = poly.coeffs.iter().map(|c| c.anchor.a_res).collect();
-        let a_ntt = self.ntt_generic_with_omega(&a_vals, a, &self.anchor_omega_powers);
+        // NTT in A (use anchor omega if supported)
+        let a_ntt = if self.anchor_ntt_supported {
+            let a_vals: Vec<u64> = poly.coeffs.iter().map(|c| c.anchor.a_res).collect();
+            self.ntt_generic_with_omega(&a_vals, a, &self.anchor_omega_powers)
+        } else {
+            vec![0u64; m_ntt.len()]
+        };
         
         m_ntt.into_iter().zip(a_ntt)
             .map(|(m_res, a_res)| AnchorTrack { m_res, a_res })
@@ -298,7 +318,7 @@ impl ExactFHEContext {
     }
     
     /// Inverse NTT on both tracks
-    fn ntt_inverse(&self, ntt_coeffs: &[ExactCoeff]) -> ExactPoly {
+    fn ntt_inverse(&self, ntt_coeffs: &[ExactCoeff], anchor_a_override: Option<&[u64]>) -> ExactPoly {
         let _n = self.exact_ctx.n;
         let _q = self.exact_ctx.m;
         let m = self.exact_ctx.m;
@@ -314,9 +334,13 @@ impl ExactFHEContext {
         let m_vals: Vec<u64> = ntt_coeffs.iter().map(|c| c.anchor.m_res).collect();
         let m_intt = self.intt_generic_with_omega(&m_vals, m, &self.ntt.omega_inv_powers, n_inv_q);
         
-        // Anchor A track INTT (use anchor omega_inv)
-        let a_vals: Vec<u64> = ntt_coeffs.iter().map(|c| c.anchor.a_res).collect();
-        let a_intt = self.intt_generic_with_omega(&a_vals, a_mod, &self.anchor_omega_inv_powers, n_inv_a);
+        // Anchor A track INTT (use anchor omega_inv) or override if provided
+        let a_intt = if let Some(override_vals) = anchor_a_override {
+            override_vals.to_vec()
+        } else {
+            let a_vals: Vec<u64> = ntt_coeffs.iter().map(|c| c.anchor.a_res).collect();
+            self.intt_generic_with_omega(&a_vals, a_mod, &self.anchor_omega_inv_powers, n_inv_a)
+        };
         
         let coeffs = inner_intt.into_iter()
             .zip(m_intt)
@@ -346,6 +370,23 @@ impl ExactFHEContext {
             result[k] = scaled as u64;
         }
         result
+    }
+
+    /// Naive cyclic convolution modulo `modulus` (O(n^2)).
+    fn cyclic_convolution_mod(&self, a: &[u64], b: &[u64], modulus: u64) -> Vec<u64> {
+        let n = a.len();
+        let mut out = vec![0u64; n];
+
+        for i in 0..n {
+            let ai = a[i] as u128;
+            for j in 0..n {
+                let idx = (i + j) % n;
+                let acc = out[idx] as u128 + ai * b[j] as u128;
+                out[idx] = (acc % modulus as u128) as u64;
+            }
+        }
+
+        out
     }
     
     /// Tensor product: compute degree-2 ciphertext from two degree-1 ciphertexts
@@ -396,7 +437,7 @@ impl ExactFHEContext {
                 let x = self.exact_ctx.reconstruct(c);
                 
                 // Exact division (or rounded if not exact)
-                let quotient = if x % (d as u128) == 0 {
+                let quotient = if x.is_multiple_of(d as u128) {
                     x / (d as u128)
                 } else {
                     // Round to nearest
@@ -459,7 +500,6 @@ mod tests {
     use super::*;
     
     #[test]
-    #[ignore] // Anchor track NTT needs proper primitive root selection for general poly mul
     fn test_exact_poly_mul_constant() {
         // Test: (5, 0, ...) × (7, 0, ...) = (35, 0, ...)
         let q = 998244353u64;

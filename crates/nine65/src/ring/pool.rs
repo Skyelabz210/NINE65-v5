@@ -101,8 +101,7 @@ impl PolynomialPool {
             *c = 0;
         }
 
-        let cache = self.cache.entry(n).or_insert_with(Vec::new);
-
+        let cache = self.cache.entry(n).or_default();
         if cache.len() < self.max_per_size {
             cache.push(poly.coeffs);
         }
@@ -112,7 +111,7 @@ impl PolynomialPool {
     /// Pre-warm the pool with a specified number of buffers per size
     pub fn prewarm(&mut self, sizes: &[usize], count: usize) {
         for &n in sizes {
-            let cache = self.cache.entry(n).or_insert_with(Vec::new);
+            let cache = self.cache.entry(n).or_default();
             while cache.len() < count.min(self.max_per_size) {
                 cache.push(vec![0u64; n]);
             }
@@ -220,22 +219,22 @@ impl<'a> PoolGuard<'a> {
         }
     }
 
-    /// Access the polynomial
-    pub fn as_ref(&self) -> &PooledPolynomial {
-        // SAFETY: PoolGuard always contains Some until Drop takes it
-        self.poly.as_ref().expect("PoolGuard invariant: poly is always Some until drop")
-    }
-
-    /// Access the polynomial mutably
-    pub fn as_mut(&mut self) -> &mut PooledPolynomial {
-        // SAFETY: PoolGuard always contains Some until Drop takes it
-        self.poly.as_mut().expect("PoolGuard invariant: poly is always Some until drop")
-    }
-
     /// Take ownership of the polynomial (prevents auto-release)
     pub fn take(mut self) -> PooledPolynomial {
         // SAFETY: PoolGuard always contains Some until Drop takes it
         self.poly.take().expect("PoolGuard invariant: poly is always Some until drop")
+    }
+}
+
+impl<'a> AsRef<PooledPolynomial> for PoolGuard<'a> {
+    fn as_ref(&self) -> &PooledPolynomial {
+        self.poly.as_ref().expect("PoolGuard invariant: poly is always Some until drop")
+    }
+}
+
+impl<'a> AsMut<PooledPolynomial> for PoolGuard<'a> {
+    fn as_mut(&mut self) -> &mut PooledPolynomial {
+        self.poly.as_mut().expect("PoolGuard invariant: poly is always Some until drop")
     }
 }
 

@@ -77,6 +77,11 @@ impl FHEConfig {
     /// # Security Warning
     /// This configuration provides only ~36-bit security and is NOT safe for production.
     /// Use ONLY for unit tests, benchmarks, or development debugging.
+    ///
+    /// # Feature Gate
+    /// This function is only available when the `allow_insecure` feature is enabled,
+    /// or in test builds. Production builds cannot access this config.
+    #[cfg(any(test, feature = "allow_insecure"))]
     #[deprecated(
         since = "5.0.0",
         note = "INSECURE: light() has only ~36-bit security. Use SecureConfig::secure_128() for production."
@@ -216,6 +221,10 @@ impl FHEConfig {
     ///
     /// NOTE: This config requires K-Elimination rescaling in RNSFHEContext.
     /// Standard Bajard rescaling will fail because Δ² > Q.
+    #[deprecated(
+        since = "5.0.0",
+        note = "INSECURE: light_rns_exact() has only ~80-bit security (n=1024). Use SecureConfig::secure_128() for production."
+    )]
     pub fn light_rns_exact() -> Self {
         Self {
             n: 1024,
@@ -344,6 +353,11 @@ impl FHEConfig {
     ///
     /// This configuration provides only ~56-bit security with ternary secrets.
     /// This is NOT safe for production use. Kept for backward compatibility only.
+    ///
+    /// # Feature Gate
+    /// This function is only available when the `allow_insecure` feature is enabled,
+    /// or in test builds. Production builds cannot access this config.
+    #[cfg(any(test, feature = "allow_insecure"))]
     #[deprecated(
         since = "5.0.0",
         note = "INSECURE: he_standard_128() has only ~56-bit security with ternary secrets. Use SecureConfig::secure_128()."
@@ -480,6 +494,124 @@ impl FHEConfig {
             0
         }
     }
+
+    // ========================================================================
+    // DEPTH-AWARE CONFIGURATIONS
+    // ========================================================================
+
+    /// Create configuration for target multiplicative depth with modulus switching
+    ///
+    /// # Parameters
+    /// - `depth`: Target multiplicative depth (number of sequential multiplications)
+    /// - `n`: Polynomial degree (must be power of 2, min 1024)
+    /// - `security_bits`: Minimum security level
+    ///
+    /// # Formula
+    /// `primes_needed = depth + 2` (min 2 primes at final level for correct decryption)
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Depth-2 circuit: (a*b) * (c*d)
+    /// let config = FHEConfig::for_depth(2, 4096, 128);
+    /// assert_eq!(config.primes.len(), 4);  // 4 primes for depth-2
+    /// ```
+    pub fn for_depth(depth: usize, n: usize, security_bits: usize) -> Self {
+        assert!(n.is_power_of_two() && n >= 1024, "N must be power of 2 >= 1024");
+        assert!(depth >= 1, "Depth must be at least 1");
+
+        let primes_needed = depth + 2;  // Need 2 primes at final level
+
+        // Select appropriate pre-defined primes based on N
+        let available_primes: &[u64] = match n {
+            1024 => &PRIMES_1024,
+            4096 => &PRIMES_4096,
+            8192 | 16384 => &PRIMES_8192,
+            _ => &PRIMES_4096,  // Default to 4096 primes for unknown N
+        };
+
+        // Use as many primes as needed, up to available
+        let primes: Vec<u64> = if primes_needed <= available_primes.len() {
+            available_primes[..primes_needed].to_vec()
+        } else {
+            // Need more primes - find additional NTT-compatible primes
+            let mut primes = available_primes.to_vec();
+            let additional = find_ntt_primes(n, primes_needed - primes.len(), 28);
+            for p in additional {
+                if !primes.contains(&p) {
+                    primes.push(p);
+                }
+                if primes.len() >= primes_needed {
+                    break;
+                }
+            }
+            primes
+        };
+
+        let eta = if n <= 2048 { 2 } else { 3 };
+
+        Self {
+            n,
+            primes: primes.clone(),
+            q: primes[0],
+            t: 65537,
+            eta,
+            security_bits,
+            name: "depth_aware",
+        }
+    }
+
+    /// 4-prime configuration for depth-2 circuits
+    ///
+    /// Supports: fresh → mul+mod_switch → mul+mod_switch → decrypt
+    /// Prime chain: 4 → 3 → 2 (final level)
+    pub fn depth2_128() -> Self {
+        Self {
+            n: 4096,
+            primes: vec![998244353, 985661441, 754974721, 469762049],
+            q: 998244353,
+            t: 65537,
+            eta: 3,
+            security_bits: 96,
+            name: "depth2_128",
+        }
+    }
+
+    /// 5-prime configuration for depth-3 circuits
+    pub fn depth3_128() -> Self {
+        Self {
+            n: 8192,
+            primes: vec![998244353, 985661441, 754974721, 469762049, 1638350849],
+            q: 998244353,
+            t: 65537,
+            eta: 3,
+            security_bits: 128,
+            name: "depth3_128",
+        }
+    }
+
+    /// 8-prime configuration for depth-6 circuits (uses all PRIMES_8192)
+    pub fn deep_circuit() -> Self {
+        Self {
+            n: 8192,
+            primes: PRIMES_8192.to_vec(),
+            q: PRIMES_8192[0],
+            t: 65537,
+            eta: 3,
+            security_bits: 176,
+            name: "deep_circuit",
+        }
+    }
+
+    /// Maximum multiplicative depth supported by this config with mod-switch
+    ///
+    /// Formula: `max_depth = num_primes - 2` (need 2 primes at final level)
+    pub fn max_mod_switch_depth(&self) -> usize {
+        if self.primes.len() >= 2 {
+            self.primes.len() - 2
+        } else {
+            0
+        }
+    }
 }
 
 /// Estimate security level based on LWE hardness
@@ -502,18 +634,19 @@ fn estimate_security(n: usize, q: u64) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::params::secure_configs::SecureConfig;
     
     #[test]
     fn test_all_configs_valid() {
         let configs = [
-            FHEConfig::light(),
+            SecureConfig::test_fast().into_config(),
+            SecureConfig::test_medium().into_config(),
             FHEConfig::light_mul(),
             FHEConfig::light_rns(),
             FHEConfig::standard_128(),
             FHEConfig::high_192(),
             FHEConfig::deep_128(),
             FHEConfig::batched(),
-            FHEConfig::he_standard_128(),
             FHEConfig::he_standard_128_deep(),
         ];
         
@@ -539,6 +672,7 @@ mod tests {
     }
     
     #[test]
+    #[allow(deprecated)]
     fn test_he_standard_compliance() {
         let config = FHEConfig::he_standard_128();
         
@@ -583,7 +717,7 @@ mod tests {
     
     #[test]
     fn test_estimated_depth() {
-        let light = FHEConfig::light();
+        let light = FHEConfig::standard_128();
         let deep = FHEConfig::deep_128();
         
         // Deep config should have more depth
