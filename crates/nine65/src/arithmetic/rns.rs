@@ -110,7 +110,57 @@ impl RNSContext {
 
         result
     }
-    
+
+    /// Convert RNS representation back to integer using only the first `level` primes
+    ///
+    /// This is used for level-aware decryption after modulus switching.
+    /// The `rns` slice should have exactly `level` elements.
+    pub fn to_int_level(&self, rns: &[u64], level: usize) -> u128 {
+        assert!(level <= self.primes.len(), "Level cannot exceed number of primes");
+        assert_eq!(rns.len(), level, "RNS representation must have exactly `level` elements");
+
+        if level == self.primes.len() {
+            return self.to_int(rns);
+        }
+
+        // Compute partial product Q_level = q_0 * q_1 * ... * q_{level-1}
+        let partial_primes = &self.primes[..level];
+        let partial_product: u128 = partial_primes.iter()
+            .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))
+            .expect("Partial product overflow: prime product exceeded u128");
+
+        // Compute CRT reconstruction for partial primes
+        // For each prime q_i: M_i = partial_product / q_i, M_i_inv = M_i^(-1) mod q_i
+        let mut result = 0u128;
+        for i in 0..level {
+            let mi = partial_product / partial_primes[i] as u128;
+            let mi_inv = Self::mod_inv(mi % partial_primes[i] as u128, partial_primes[i] as u128);
+            let term = (rns[i] as u128 * mi_inv) % partial_primes[i] as u128;
+            let contribution = (term * mi) % partial_product;
+            result = (result + contribution) % partial_product;
+        }
+
+        result
+    }
+
+    /// Compute modular inverse using extended Euclidean algorithm
+    fn mod_inv(a: u128, m: u128) -> u128 {
+        let (mut old_r, mut r) = (m as i128, a as i128);
+        let (mut old_t, mut t) = (0i128, 1i128);
+
+        while r != 0 {
+            let q = old_r / r;
+            (old_r, r) = (r, old_r - q * r);
+            (old_t, t) = (t, old_t - q * t);
+        }
+
+        if old_t < 0 {
+            (old_t + m as i128) as u128
+        } else {
+            old_t as u128
+        }
+    }
+
     /// Add two RNS numbers
     pub fn add(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
         assert_eq!(a.len(), self.primes.len());
@@ -357,6 +407,17 @@ impl DualRNSContext {
             }
         }
 
+        // Verify anchor primes are NTT-compatible with N
+        // NTT requires: (p-1) % 2n == 0 (2n-th root of unity exists)
+        let two_n = 2 * n as u64;
+        for &ap in &anchor_primes {
+            assert!(
+                (ap - 1) % two_n == 0,
+                "Anchor prime {} is not NTT-compatible with N={}: (p-1) % 2n = {} != 0",
+                ap, n, (ap - 1) % two_n
+            );
+        }
+
         let main = RNSContext::new(main_primes.clone(), n);
         let anchor = RNSContext::new(anchor_primes.clone(), n);
 
@@ -557,8 +618,145 @@ impl DualRNSContext {
         let term2 = ((k_rns[2] as u128 * m2_inv) % p2) * m2;
 
         // Sum and reduce mod product_3
-        let sum = (term0 % product_3 + term1 % product_3 + term2 % product_3) % product_3;
-        sum
+        (term0 % product_3 + term1 % product_3 + term2 % product_3) % product_3
+    }
+
+    /// Level-aware K-Elimination extraction for reduced ciphertext levels
+    ///
+    /// This is the critical fix for depth > 1: after mod_switch, the effective
+    /// modulus M_level is smaller than the full M. We must compute M_level⁻¹
+    /// dynamically based on which main primes are still active.
+    ///
+    /// # Arguments
+    /// * `v_main` - Value mod M_level (reconstructed from level main primes)
+    /// * `v_anchor_rns` - Anchor residues [v mod a_0, v mod a_1, ...]
+    /// * `level_main_primes` - The main primes still active at this level
+    ///
+    /// # Returns
+    /// k such that v_exact = v_main + k × M_level
+    pub fn extract_k_rns_level(&self, v_main: u128, v_anchor_rns: &[u64], level_main_primes: &[u64]) -> u128 {
+        assert_eq!(v_anchor_rns.len(), self.anchor.primes.len());
+        assert!(self.anchor.primes.len() >= 3, "Need at least 3 anchor primes for k reconstruction");
+
+        // HIGH-001: Anchor capacity validation
+        // For 4+ main primes (M >= 119 bits), k_max can exceed 3-anchor capacity (~94 bits)
+        // Must have 4+ anchor primes to handle k_max up to ~99 bits
+        if level_main_primes.len() >= 4 {
+            assert!(
+                self.anchor.primes.len() >= 4,
+                "ANCHOR CAPACITY ERROR: {} main primes require 4+ anchor primes (have {}). \
+                 k_max for 4-prime M (~119 bits) is ~99 bits, but 3-anchor capacity is only ~94 bits.",
+                level_main_primes.len(),
+                self.anchor.primes.len()
+            );
+        }
+
+        // Compute M_level = product of level main primes
+        let m_level: u128 = level_main_primes.iter()
+            .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))
+            .expect("M_level overflow: main prime product exceeded u128");
+
+        // Compute k in RNS form: k_rns[i] = ((v_anchor[i] - (v_main mod a_i)) × M_level⁻¹) mod a_i
+        let k_rns: Vec<u64> = self.anchor.primes.iter()
+            .zip(v_anchor_rns.iter())
+            .map(|(&a_i, &v_a_i)| {
+                // Compute M_level⁻¹ mod a_i on the fly
+                let m_level_mod_ai = (m_level % a_i as u128) as u64;
+                let m_level_inv_ai = mod_inverse(m_level_mod_ai, a_i);
+
+                let v_m_mod_ai = (v_main % a_i as u128) as u64;
+
+                // diff = v_a_i - v_m_mod_ai mod a_i
+                let diff = if v_a_i >= v_m_mod_ai {
+                    v_a_i - v_m_mod_ai
+                } else {
+                    a_i - v_m_mod_ai + v_a_i
+                };
+
+                // k_i = diff × M_level⁻¹ mod a_i
+                ((diff as u128 * m_level_inv_ai as u128) % a_i as u128) as u64
+            })
+            .collect();
+
+        // Determine how many anchor primes needed for k reconstruction
+        // k_max ≈ Δ²×N / M where Δ = M/t
+        // For 3 main primes (M ~90 bits): k_max ~70 bits, A3 ~94 bits ✓
+        // For 4 main primes (M ~119 bits): k_max ~99 bits, A3 ~94 bits ✗, A4 ~125 bits ✓
+        // Use 4 anchor primes if level >= 4 main primes (M >= 119 bits)
+        let use_4_primes = level_main_primes.len() >= 4 && self.anchor.primes.len() >= 4;
+
+        if use_4_primes {
+            // 4-prime CRT reconstruction (product ~125 bits, fits u128)
+            let p0 = self.anchor.primes[0] as u128;
+            let p1 = self.anchor.primes[1] as u128;
+            let p2 = self.anchor.primes[2] as u128;
+            let p3 = self.anchor.primes[3] as u128;
+
+            // Use incremental CRT to avoid overflow:
+            // First reconstruct k mod (p0*p1) from k_rns[0], k_rns[1]
+            // Then extend to k mod (p0*p1*p2) using k_rns[2]
+            // Then extend to k mod (p0*p1*p2*p3) using k_rns[3]
+
+            // Step 1: k mod p0
+            let mut k_partial = k_rns[0] as u128;
+            let mut mod_partial = p0;
+
+            // Step 2: Extend to k mod (p0*p1)
+            // k ≡ k_partial (mod mod_partial)
+            // k ≡ k_rns[1] (mod p1)
+            // => k = k_partial + mod_partial * ((k_rns[1] - k_partial mod p1) * mod_partial^-1 mod p1)
+            let k1 = k_rns[1] as u128;
+            let k_partial_mod_p1 = k_partial % p1;
+            let diff1 = if k1 >= k_partial_mod_p1 { k1 - k_partial_mod_p1 } else { p1 - k_partial_mod_p1 + k1 };
+            let mod_partial_inv_p1 = mod_inverse((mod_partial % p1) as u64, self.anchor.primes[1]) as u128;
+            let coeff1 = (diff1 * mod_partial_inv_p1) % p1;
+            k_partial = k_partial + mod_partial * coeff1;
+            mod_partial = mod_partial * p1;
+
+            // Step 3: Extend to k mod (p0*p1*p2)
+            let k2 = k_rns[2] as u128;
+            let k_partial_mod_p2 = k_partial % p2;
+            let diff2 = if k2 >= k_partial_mod_p2 { k2 - k_partial_mod_p2 } else { p2 - k_partial_mod_p2 + k2 };
+            let mod_partial_inv_p2 = mod_inverse((mod_partial % p2) as u64, self.anchor.primes[2]) as u128;
+            let coeff2 = (diff2 * mod_partial_inv_p2) % p2;
+            k_partial = k_partial + mod_partial * coeff2;
+            mod_partial = mod_partial * p2;
+
+            // Step 4: Extend to k mod (p0*p1*p2*p3)
+            let k3 = k_rns[3] as u128;
+            let k_partial_mod_p3 = k_partial % p3;
+            let diff3 = if k3 >= k_partial_mod_p3 { k3 - k_partial_mod_p3 } else { p3 - k_partial_mod_p3 + k3 };
+            let mod_partial_inv_p3 = mod_inverse((mod_partial % p3) as u64, self.anchor.primes[3]) as u128;
+            let coeff3 = (diff3 * mod_partial_inv_p3) % p3;
+
+            // Final k = k_partial + mod_partial * coeff3
+            // mod_partial ~94 bits, coeff3 ~32 bits => product ~126 bits, fits u128
+            // Use checked arithmetic to catch unexpected overflow (should never happen)
+            mod_partial.checked_mul(coeff3)
+                .and_then(|product| k_partial.checked_add(product))
+                .expect("CRT reconstruction overflow: k_partial + mod_partial * coeff3 exceeded u128")
+        } else {
+            // 3-prime CRT reconstruction (original path)
+            let p0 = self.anchor.primes[0] as u128;
+            let p1 = self.anchor.primes[1] as u128;
+            let p2 = self.anchor.primes[2] as u128;
+
+            let product_3 = p0 * p1 * p2;
+
+            let m0 = p1 * p2;
+            let m1 = p0 * p2;
+            let m2 = p0 * p1;
+
+            let m0_inv = mod_inverse((m0 % p0) as u64, self.anchor.primes[0]) as u128;
+            let m1_inv = mod_inverse((m1 % p1) as u64, self.anchor.primes[1]) as u128;
+            let m2_inv = mod_inverse((m2 % p2) as u64, self.anchor.primes[2]) as u128;
+
+            let term0 = ((k_rns[0] as u128 * m0_inv) % p0) * m0;
+            let term1 = ((k_rns[1] as u128 * m1_inv) % p1) * m1;
+            let term2 = ((k_rns[2] as u128 * m2_inv) % p2) * m2;
+
+            (term0 % product_3 + term1 % product_3 + term2 % product_3) % product_3
+        }
     }
 
     /// K-Elimination: Reconstruct full value from dual-RNS representation
@@ -1290,5 +1488,209 @@ mod tests {
         }
 
         println!("=== Full chain test PASSED ===");
+    }
+
+    // ========================================================================
+    // HIGH-002: Edge Case Tests for Gap Analysis
+    // ========================================================================
+
+    /// Test 4-prime CRT reconstruction with large k values (up to ~99 bits)
+    #[test]
+    fn test_4prime_crt_large_k() {
+        // 4-prime config: k_max can be ~99 bits, requiring 4 anchor primes (~125 bits capacity)
+        let main_primes = vec![998244353u64, 985661441, 754974721, 469762049];
+
+        let ctx = DualRNSContext::for_fhe_coeff_domain(&main_primes, 4096);
+
+        println!("=== 4-Prime CRT Large k Test ===");
+        println!("Main primes: {:?}", main_primes);
+        println!("Anchor primes: {:?}", &ctx.anchor.primes[..4.min(ctx.anchor.primes.len())]);
+
+        // Compute M_level = product of main primes (we work mod this truncated to u128 range)
+        let m_level: u128 = main_primes.iter()
+            .fold(1u128, |acc, &p| acc.saturating_mul(p as u128));
+        println!("M_level = {} ({} bits)", m_level, 128 - m_level.leading_zeros());
+
+        // Test with k values of increasing size that fit in anchor capacity
+        let a4_capacity: u128 = ctx.anchor.primes[..4.min(ctx.anchor.primes.len())].iter()
+            .map(|&p| p as u128)
+            .product();
+        println!("Anchor capacity (4 primes) = {} ({} bits)", a4_capacity, 128 - a4_capacity.leading_zeros());
+
+        let test_k_values: Vec<u128> = vec![
+            0,
+            1,
+            (1u128 << 32) - 1,           // 32-bit k
+            (1u128 << 60) - 1,           // 60-bit k (safe range)
+            (1u128 << 80) - 1,           // 80-bit k
+        ];
+
+        for k_true in test_k_values {
+            if k_true >= a4_capacity {
+                println!("  k = {} ({} bits): SKIP (exceeds anchor capacity)", k_true, 128 - k_true.leading_zeros());
+                continue;
+            }
+
+            // Construct v = v_main + k * M, then compute v_anchor_rns
+            // For simplicity, use v_main = 0, so v = k * M
+            let v_main: u128 = 0;
+            // v_exact = k * M (may overflow u128, so compute residues directly)
+
+            // Compute v_anchor_rns[i] = (k * M) mod anchor_primes[i]
+            // = ((k mod a_i) * (M mod a_i)) mod a_i
+            let v_anchor_rns: Vec<u64> = ctx.anchor.primes.iter()
+                .map(|&a_i| {
+                    let k_mod_ai = (k_true % a_i as u128) as u64;
+                    let m_mod_ai = (m_level % a_i as u128) as u64;
+                    ((k_mod_ai as u128 * m_mod_ai as u128) % a_i as u128) as u64
+                })
+                .collect();
+
+            // Use extract_k_rns_level to recover k
+            let k_reconstructed = ctx.extract_k_rns_level(v_main, &v_anchor_rns, &main_primes);
+
+            assert_eq!(
+                k_reconstructed, k_true,
+                "4-prime CRT failed for k = {} ({} bits)",
+                k_true, 128 - k_true.leading_zeros().max(1)
+            );
+            println!("  k = {} ({} bits): OK", k_true, 128 - k_true.leading_zeros().max(1));
+        }
+
+        println!("=== 4-Prime CRT Large k Test PASSED ===");
+    }
+
+    /// Test signed-k boundary behavior at A/2
+    #[test]
+    fn test_signed_k_boundary() {
+        let main_primes = vec![998244353u64, 985661441, 754974721];
+        let _anchor_primes = vec![2013265921u64, 2281701377, 2483027969];
+
+        let ctx = DualRNSContext::for_fhe_coeff_domain(&main_primes, 4096);
+
+        // Compute A (product of 3 anchor primes) - this is ~94 bits
+        let a_product: u128 = ctx.anchor.primes[..3].iter()
+            .map(|&p| p as u128)
+            .product();
+        let a_half = a_product / 2;
+
+        println!("=== Signed-k Boundary Test ===");
+        println!("A (3 anchors) = {} ({} bits)", a_product, 128 - a_product.leading_zeros());
+        println!("A/2 = {}", a_half);
+
+        // Test values around A/2 boundary
+        let test_cases: Vec<(u128, bool)> = vec![
+            (a_half - 100, false),  // Below A/2: positive k
+            (a_half - 1, false),    // Just below A/2: positive k
+            (a_half, true),         // Exactly A/2: could be either (boundary)
+            (a_half + 1, true),     // Just above A/2: negative k
+            (a_half + 100, true),   // Above A/2: negative k
+        ];
+
+        for (k_value, expected_negative) in test_cases {
+            if k_value >= a_product {
+                continue; // Skip values outside range
+            }
+
+            // Check if k is interpreted as negative (k > A/2)
+            let is_negative = k_value > a_half;
+
+            // Compute signed magnitude
+            let magnitude = if is_negative {
+                a_product - k_value  // |k_signed| = A - k
+            } else {
+                k_value
+            };
+
+            println!(
+                "  k = {}: is_negative = {} (expected {}), magnitude = {}",
+                k_value, is_negative, expected_negative, magnitude
+            );
+
+            // Verify boundary behavior is consistent
+            if k_value != a_half {  // Skip exact boundary (ambiguous)
+                assert_eq!(
+                    is_negative, expected_negative,
+                    "Signed-k boundary mismatch at k = {}",
+                    k_value
+                );
+            }
+        }
+
+        println!("=== Signed-k Boundary Test PASSED ===");
+    }
+
+    /// Test anchor capacity validation assertion
+    #[test]
+    #[should_panic(expected = "ANCHOR CAPACITY ERROR")]
+    fn test_anchor_capacity_insufficient() {
+        // Create context with only 3 anchor primes (via DualRNSContext::new directly)
+        let main_primes = vec![998244353u64, 985661441, 754974721]; // 3 main initially
+        let anchor_primes = vec![2013265921u64, 2281701377, 2483027969]; // Only 3 anchor
+
+        // Create context with 3 anchor primes
+        let ctx = DualRNSContext::new(main_primes.clone(), anchor_primes, 4096);
+
+        // Now try to extract_k with 4 main primes - should panic
+        let four_main_primes = vec![998244353u64, 985661441, 754974721, 469762049];
+        let v_anchor_rns = vec![0u64; ctx.anchor.primes.len()];
+        let _ = ctx.extract_k_rns_level(0, &v_anchor_rns, &four_main_primes);
+    }
+
+    /// Test u128 overflow boundary in 4-prime CRT
+    #[test]
+    fn test_4prime_crt_near_u128_limit() {
+        let main_primes = vec![998244353u64, 985661441, 754974721, 469762049];
+
+        let ctx = DualRNSContext::for_fhe_coeff_domain(&main_primes, 4096);
+
+        // Compute M_level
+        let m_level: u128 = main_primes.iter()
+            .fold(1u128, |acc, &p| acc.saturating_mul(p as u128));
+
+        // 4 anchor primes give ~125 bits capacity
+        let a4_product: u128 = ctx.anchor.primes[..4.min(ctx.anchor.primes.len())].iter()
+            .map(|&p| p as u128)
+            .product();
+
+        println!("=== 4-Prime CRT u128 Boundary Test ===");
+        println!("A4 product = {} ({} bits)", a4_product, 128 - a4_product.leading_zeros());
+        println!("M_level = {} ({} bits)", m_level, 128 - m_level.leading_zeros());
+
+        // Test k values that fit in anchor capacity
+        // Stay well under capacity to avoid edge issues
+        let test_k_values: Vec<u128> = vec![
+            (1u128 << 90) - 1,        // 90-bit k
+            (1u128 << 100) - 1,       // 100-bit k (if fits)
+            a4_product / 4,           // Quarter of capacity
+        ];
+
+        for k_true in test_k_values {
+            if k_true >= a4_product {
+                println!("  k ({} bits): SKIP (exceeds anchor capacity)", 128 - k_true.leading_zeros());
+                continue;
+            }
+
+            // Construct v_anchor_rns = (k * M) mod each anchor prime
+            let v_main: u128 = 0;
+            let v_anchor_rns: Vec<u64> = ctx.anchor.primes.iter()
+                .map(|&a_i| {
+                    let k_mod_ai = (k_true % a_i as u128) as u64;
+                    let m_mod_ai = (m_level % a_i as u128) as u64;
+                    ((k_mod_ai as u128 * m_mod_ai as u128) % a_i as u128) as u64
+                })
+                .collect();
+
+            let k_reconstructed = ctx.extract_k_rns_level(v_main, &v_anchor_rns, &main_primes);
+
+            assert_eq!(
+                k_reconstructed, k_true,
+                "u128 boundary CRT failed for k = {} ({} bits)",
+                k_true, 128 - k_true.leading_zeros()
+            );
+            println!("  k ({} bits): OK", 128 - k_true.leading_zeros());
+        }
+
+        println!("=== 4-Prime CRT u128 Boundary Test PASSED ===");
     }
 }

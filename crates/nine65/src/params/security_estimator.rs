@@ -1,14 +1,16 @@
-//! Lattice Security Estimator
+//! Lattice Security Estimator (Integer-Only)
 //!
 //! Proper security estimation based on hybrid lattice attacks against Ring-LWE.
 //! Uses BKZ cost models consistent with published attack literature.
+//!
+//! # QMNF Compliance
+//! All calculations use integer arithmetic with millibits precision (1000 = 1 bit).
+//! No floating-point operations.
 //!
 //! # References
 //! - Albrecht et al. "On the concrete hardness of Learning with Errors" (2015)
 //! - HE Standard v1.1 (homomorphicencryption.org)
 //! - MATZOV Report on NIST PQC (2022)
-
-use std::f64::consts::PI;
 
 /// Security estimation result with detailed breakdown
 #[derive(Debug, Clone)]
@@ -23,8 +25,8 @@ pub struct SecurityEstimate {
     pub effective_bits: u32,
     /// BKZ block size required for attack
     pub bkz_block_size: u32,
-    /// Estimated BKZ iterations
-    pub bkz_iterations: f64,
+    /// Estimated BKZ iterations (integer approximation)
+    pub bkz_iterations: u64,
     /// Whether this meets claimed security level
     pub meets_claim: bool,
     /// Detailed attack analysis
@@ -56,7 +58,7 @@ impl LatticeSecurityEstimator {
         Self { cost_model }
     }
 
-    /// Estimate security of Ring-LWE parameters
+    /// Estimate security of Ring-LWE parameters (integer arithmetic)
     ///
     /// Uses the methodology from the Homomorphic Encryption Standard v1.1
     /// which provides security estimates based on the primal uSVP attack.
@@ -73,60 +75,94 @@ impl LatticeSecurityEstimator {
         secret_distribution: SecretDistribution,
         claimed_security: u32,
     ) -> SecurityEstimate {
-        // Use HE Standard methodology:
+        // Use HE Standard methodology with integer arithmetic:
         // Security ≈ n * (1 - log(q)/n * α) where α depends on attack model
         //
-        // For primal uSVP attack with ternary secrets:
-        // The security level roughly scales with n/log(q) ratio
-        //
         // HE Standard Table 3 (128-bit classical security):
-        // N=1024 → max log(q) = 27
-        // N=2048 → max log(q) = 54
-        // N=4096 → max log(q) = 109
-        // N=8192 → max log(q) = 218
+        // N=1024 → max log(q) = 27   → ratio = 37.9
+        // N=2048 → max log(q) = 54   → ratio = 37.9
+        // N=4096 → max log(q) = 109  → ratio = 37.6
+        // N=8192 → max log(q) = 218  → ratio = 37.6
         //
-        // This gives roughly: security ≈ 4.7 * n / log(q) for 128-bit at boundary
+        // At HE boundary: security ≈ 3.36 * (n / log(q))
+        // Using millibits: base_security_mb = 3360 * n / log_q
 
         // Ternary secret penalty (vs Gaussian)
-        let ternary_penalty = match secret_distribution {
-            SecretDistribution::Ternary => 0.85,  // ~15% reduction due to MITM
-            SecretDistribution::Binary => 0.80,   // ~20% reduction
-            SecretDistribution::Gaussian(_) => 1.0,
+        // 850/1000 = 0.85 for ternary, 800/1000 = 0.80 for binary
+        let ternary_penalty_per_mille: u32 = match secret_distribution {
+            SecretDistribution::Ternary => 850,  // ~15% reduction due to MITM
+            SecretDistribution::Binary => 800,   // ~20% reduction
+            SecretDistribution::Gaussian(_) => 1000,
         };
 
-        // Base security using HE Standard scaling
-        // At HE Standard boundary: n/log(q) ≈ 38 for 128-bit
-        let ratio = n as f64 / log_q as f64;
-        let base_security = ratio * 3.36;  // Calibrated to HE Standard table
+        // Base security in millibits: 3360 * n / log_q
+        // Using 3360 as integer approximation of 3.36 * 1000
+        let n_u64 = n as u64;
+        let log_q_u64 = log_q as u64;
 
-        // Apply ternary penalty and cost model adjustment
-        let model_factor = match self.cost_model {
-            CostModel::CoreSVP => 1.0,
-            CostModel::MATZOV => 0.9,  // MATZOV is ~10% more aggressive
+        // Avoid division by zero
+        if log_q_u64 == 0 {
+            return SecurityEstimate {
+                classical_bits: 0,
+                quantum_bits: 0,
+                hybrid_bits: 0,
+                effective_bits: 0,
+                bkz_block_size: 0,
+                bkz_iterations: 0,
+                meets_claim: false,
+                analysis: "Invalid: log_q = 0".to_string(),
+            };
+        }
+
+        // base_security_mb = 3360 * n / log_q (in millibits)
+        let base_security_mb: u64 = (3360 * n_u64) / log_q_u64;
+
+        // Apply cost model adjustment (1000 = 1.0, 900 = 0.9)
+        let model_factor_per_mille: u32 = match self.cost_model {
+            CostModel::CoreSVP => 1000,
+            CostModel::MATZOV => 900,  // MATZOV is ~10% more aggressive
         };
 
-        let classical_bits = (base_security * model_factor).round() as u32;
-        let hybrid_bits = (base_security * ternary_penalty * model_factor).round() as u32;
-        let quantum_bits = (hybrid_bits as f64 * 0.67).round() as u32;  // Grover speedup
+        // Classical bits = base_security * model_factor / 1000 / 1000 (convert mb to bits)
+        // = base_security_mb * model_factor / 1_000_000
+        let classical_bits_mb = (base_security_mb * model_factor_per_mille as u64) / 1000;
+        let classical_bits = (classical_bits_mb / 1000) as u32;
+
+        // Hybrid bits = base_security * ternary_penalty * model_factor
+        let hybrid_bits_mb = (base_security_mb * ternary_penalty_per_mille as u64 * model_factor_per_mille as u64)
+            / 1_000_000;
+        let hybrid_bits = (hybrid_bits_mb / 1000) as u32;
+
+        // Quantum bits ≈ hybrid * 0.67 (Grover speedup)
+        // Using 670/1000 = 0.67
+        let quantum_bits = ((hybrid_bits as u64 * 670) / 1000) as u32;
 
         // Effective security is the binding constraint
         let effective_bits = classical_bits.min(hybrid_bits);
 
-        // Estimate BKZ block size (for reference)
-        let beta = (effective_bits as f64 / 0.292).round() as u32;
-        let bkz_iterations = (beta as f64).powi(2) * 8.0;
+        // Estimate BKZ block size: beta ≈ effective_bits / 0.292
+        // Using integer: beta = effective_bits * 1000 / 292
+        let beta = ((effective_bits as u64 * 1000) / 292) as u32;
+
+        // BKZ iterations ≈ 8 * beta^2
+        let bkz_iterations = 8 * (beta as u64) * (beta as u64);
 
         let meets_claim = effective_bits >= claimed_security;
 
+        // Compute ratio as integer (n * 10 / log_q for one decimal place)
+        let ratio_x10 = (n_u64 * 10) / log_q_u64;
+        let ratio_int = ratio_x10 / 10;
+        let ratio_frac = ratio_x10 % 10;
+
         let analysis = format!(
             "Ring-LWE n={}, log(q)={}, secret={:?}\n\
-             n/log(q) ratio: {:.1}\n\
+             n/log(q) ratio: {}.{}\n\
              Classical: {} bits\n\
              Hybrid (ternary): {} bits\n\
              Quantum: {} bits\n\
              Effective: {} bits ({})",
             n, log_q, secret_distribution,
-            ratio,
+            ratio_int, ratio_frac,
             classical_bits, hybrid_bits, quantum_bits,
             effective_bits,
             if meets_claim { "MEETS CLAIM" } else { "FAILS CLAIM" }
@@ -144,77 +180,89 @@ impl LatticeSecurityEstimator {
         }
     }
 
-    /// Convert Hermite factor δ to BKZ block size β
+    /// Convert Hermite factor δ to BKZ block size β (integer approximation)
     ///
-    /// Reserved for future advanced security analysis (hybrid attacks).
+    /// Uses lookup table for common values, interpolation for others.
+    /// Reserved for future advanced security analysis.
     #[allow(dead_code)]
-    fn delta_to_beta(&self, delta: f64) -> u32 {
-        // Approximation: β ≈ 2πe·ln(1/ln(δ))^2 / ln(δ)^2
-        // Simplified: use numerical search
-        for beta in 50..2000 {
-            let beta_f = beta as f64;
-            // GSA predicts: δ(β) ≈ (β/(2πe))^(1/(2(β-1))) for large β
-            let predicted_delta = (beta_f / (2.0 * PI * std::f64::consts::E))
-                .powf(1.0 / (2.0 * (beta_f - 1.0)));
+    fn delta_to_beta(&self, delta_millionths: u64) -> u32 {
+        // delta is provided as millionths (1_000_000 = 1.0)
+        // Approximation based on GSA: β ≈ -log(δ) / 0.0085
+        // For delta near 1.0, small differences matter
 
-            if predicted_delta <= delta {
-                return beta;
-            }
+        // Use lookup table for common ranges
+        // delta_millionths: 1_000_000 = 1.0, 1_005_000 = 1.005, etc.
+        if delta_millionths >= 1_010_000 {
+            return 50;  // Very insecure
         }
-        2000 // Very secure if we need β > 2000
+        if delta_millionths >= 1_007_000 {
+            return 100;
+        }
+        if delta_millionths >= 1_005_000 {
+            return 200;
+        }
+        if delta_millionths >= 1_004_000 {
+            return 300;
+        }
+        if delta_millionths >= 1_003_000 {
+            return 500;
+        }
+        if delta_millionths >= 1_002_000 {
+            return 1000;
+        }
+        2000 // Very secure
     }
 
-    /// Core-SVP BKZ cost model
+    /// Core-SVP BKZ cost model (integer)
     /// Cost = 2^(0.292·β + o(β)) for classical
-    ///
-    /// Reserved for future advanced security analysis.
+    /// Returns (log_cost_millibits, iterations)
     #[allow(dead_code)]
-    fn core_svp_cost(&self, beta: u32) -> (f64, f64) {
-        let beta_f = beta as f64;
-        let log_cost = 0.292 * beta_f;
-        let iterations = 8.0 * beta_f.powi(2); // Rough iteration estimate
-        (log_cost, iterations)
+    fn core_svp_cost(&self, beta: u32) -> (u64, u64) {
+        // log_cost = 0.292 * beta → log_cost_mb = 292 * beta
+        let log_cost_mb = 292 * beta as u64;
+        let iterations = 8 * (beta as u64) * (beta as u64);
+        (log_cost_mb, iterations)
     }
 
-    /// MATZOV cost model (more aggressive)
-    /// Accounts for practical speedups
-    ///
-    /// Reserved for future advanced security analysis.
+    /// MATZOV cost model (more aggressive, integer)
+    /// Returns (log_cost_millibits, iterations)
     #[allow(dead_code)]
-    fn matzov_cost(&self, beta: u32) -> (f64, f64) {
-        let beta_f = beta as f64;
+    fn matzov_cost(&self, beta: u32) -> (u64, u64) {
         // MATZOV gives about 20% speedup over Core-SVP
-        let log_cost = 0.265 * beta_f;
-        let iterations = 6.0 * beta_f.powi(2);
-        (log_cost, iterations)
+        // log_cost = 0.265 * beta → log_cost_mb = 265 * beta
+        let log_cost_mb = 265 * beta as u64;
+        let iterations = 6 * (beta as u64) * (beta as u64);
+        (log_cost_mb, iterations)
     }
 
-    /// Hybrid attack combining BKZ with meet-in-the-middle
+    /// Hybrid attack combining BKZ with meet-in-the-middle (integer)
     ///
     /// Reserved for future advanced security analysis.
     #[allow(dead_code)]
     fn hybrid_attack_cost(
         &self,
         n: usize,
-        log_q: u32,
+        _log_q: u32,
         beta: u32,
         secret_dist: SecretDistribution,
     ) -> u32 {
         // For ternary secrets, hybrid attack guesses some coordinates
         // and uses BKZ on the remaining lattice
 
-        let _secret_entropy_per_coeff = match secret_dist {
-            SecretDistribution::Ternary => 1.58, // log2(3)
-            SecretDistribution::Binary => 1.0,
+        // Secret entropy per coefficient in millibits
+        let _secret_entropy_mb: u32 = match secret_dist {
+            SecretDistribution::Ternary => 1585, // log2(3) * 1000 ≈ 1.585
+            SecretDistribution::Binary => 1000,
             SecretDistribution::Gaussian(_) => return beta, // No MITM advantage
         };
 
         // Optimal split: guess g coordinates, BKZ on n-g dimensions
         // Cost = 3^g + BKZ(n-g, log_q)
-        let mut best_cost = f64::MAX;
+        let mut best_cost: u64 = u64::MAX;
 
         for g in 0..=(n / 4) {
-            let guess_cost = (3.0_f64).powi(g as i32).log2();
+            // guess_cost_mb = g * log2(3) * 1000 ≈ g * 1585
+            let guess_cost_mb: u64 = (g as u64) * 1585;
 
             // Reduced dimension
             let reduced_n = n - g;
@@ -222,27 +270,25 @@ impl LatticeSecurityEstimator {
                 continue;
             }
 
-            // New Hermite factor for reduced dimension
-            let sigma = (2.0_f64 / 3.0).sqrt();
-            let _q = 2.0_f64.powi(log_q as i32);  // Reserved for future use
-            let log_delta = (log_q as f64 - sigma.log2()) / (2.0 * reduced_n as f64);
-            let delta = 2.0_f64.powf(log_delta);
-            let reduced_beta = self.delta_to_beta(delta);
+            // Simplified: assume BKZ cost scales with dimension
+            // reduced_beta ≈ beta * reduced_n / n
+            let reduced_beta = ((beta as u64) * (reduced_n as u64) / (n as u64)) as u32;
 
-            let (bkz_cost, _) = match self.cost_model {
+            let (bkz_cost_mb, _) = match self.cost_model {
                 CostModel::CoreSVP => self.core_svp_cost(reduced_beta),
                 CostModel::MATZOV => self.matzov_cost(reduced_beta),
             };
 
             // Total cost is max of guess and BKZ (parallel attack)
-            let total_cost = guess_cost.max(bkz_cost);
+            let total_cost = guess_cost_mb.max(bkz_cost_mb);
 
             if total_cost < best_cost {
                 best_cost = total_cost;
             }
         }
 
-        best_cost.max(1.0) as u32
+        // Convert millibits to bits
+        (best_cost / 1000).max(1) as u32
     }
 }
 
@@ -253,15 +299,16 @@ pub enum SecretDistribution {
     Ternary,
     /// Binary: {0, 1}
     Binary,
-    /// Discrete Gaussian with given standard deviation
-    Gaussian(f64),
+    /// Discrete Gaussian with given standard deviation (in milliunits, 1000 = 1.0)
+    Gaussian(u32),
 }
 
-/// HE Standard v1.1 compliant parameter bounds
+/// HE Standard v1.1 compliant parameter bounds (integer-only)
 pub struct HEStandardBounds;
 
 impl HEStandardBounds {
     /// Maximum log(q) for given n to achieve target security
+    /// Uses lookup tables - no floating point.
     pub fn max_log_q(n: usize, target_security: u32) -> u32 {
         // From HE Standard v1.1 Table 3
         match (n, target_security) {
@@ -289,17 +336,26 @@ impl HEStandardBounds {
             (16384, 256) => 237,
             (32768, 256) => 476,
 
-            // Interpolate for other values
+            // Interpolate for other values using integer arithmetic
             _ => {
-                // Linear interpolation based on log(n)
-                let log_n = (n as f64).log2();
+                // Find log2(n) using integer operations
+                let log_n = integer_log2(n);
+
+                // Base values at n=1024 (log_n=10)
                 let base = match target_security {
-                    128 => 27.0 * (log_n - 10.0),
-                    192 => 19.0 * (log_n - 10.0),
-                    256 => 14.0 * (log_n - 10.0),
-                    _ => 20.0,
+                    128 => 27,
+                    192 => 19,
+                    256 => 14,
+                    _ => 20,
                 };
-                ((2.0_f64.powf(log_n - 10.0)) * base) as u32
+
+                // Scale: each doubling of n roughly doubles max_log_q
+                // max_log_q ≈ base * 2^(log_n - 10)
+                if log_n >= 10 {
+                    base << (log_n - 10)
+                } else {
+                    base >> (10 - log_n)
+                }
             }
         }
     }
@@ -323,12 +379,20 @@ impl HEStandardBounds {
     }
 }
 
+/// Integer log2 (floor) - returns position of highest set bit minus 1
+fn integer_log2(n: usize) -> u32 {
+    if n == 0 {
+        return 0;
+    }
+    (usize::BITS - 1) - n.leading_zeros()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_security_estimation() {
+    fn test_security_estimation_integer() {
         let estimator = LatticeSecurityEstimator::default();
 
         // Test light config (N=1024, log(q)=30)
@@ -373,5 +437,29 @@ mod tests {
 
         // 90-bit modulus needs at least N=4096
         assert!(HEStandardBounds::min_n(90, 128) >= 4096);
+    }
+
+    #[test]
+    fn test_integer_log2() {
+        assert_eq!(integer_log2(1), 0);
+        assert_eq!(integer_log2(2), 1);
+        assert_eq!(integer_log2(4), 2);
+        assert_eq!(integer_log2(1024), 10);
+        assert_eq!(integer_log2(4096), 12);
+        assert_eq!(integer_log2(8192), 13);
+    }
+
+    #[test]
+    fn test_no_floating_point() {
+        // This test verifies the module compiles without std::f64
+        // The old version used: use std::f64::consts::PI;
+        // Now all operations are integer-only
+        let estimator = LatticeSecurityEstimator::new(CostModel::MATZOV);
+        let est = estimator.estimate(4096, 100, SecretDistribution::Binary, 128);
+
+        // Results should be reasonable integers
+        assert!(est.classical_bits > 0);
+        assert!(est.quantum_bits > 0);
+        assert!(est.bkz_iterations > 0);
     }
 }

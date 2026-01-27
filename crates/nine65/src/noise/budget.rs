@@ -16,6 +16,16 @@
 //! ```
 //!
 //! This prevents drift in noise estimates over deep circuits.
+//!
+//! # Precision Analysis
+//!
+//! Millibits precision (1000/bit) is sufficient for all practical circuits:
+//! - Depth 20: max cumulative error = 20 × 0.5 = 10 millibits = 0.01 bits
+//! - Depth 50: max cumulative error = 50 × 0.5 = 25 millibits = 0.025 bits
+//! - Depth 100: max cumulative error = 100 × 0.5 = 50 millibits = 0.05 bits
+//!
+//! With typical 30-bit budgets, relative error is < 0.2% even for extreme depths.
+//! Microbits (1M/bit) is unnecessary and would only add computational overhead.
 
 use crate::params::FHEConfig;
 
@@ -192,7 +202,28 @@ impl NoiseBudget {
         let n_bits = config.n.trailing_zeros();
         (n_bits as i64) * 1000
     }
-    
+
+    /// Estimate cost of K-Elimination rescaling
+    ///
+    /// K-Elimination rescaling divides by the plaintext modulus t,
+    /// which REDUCES noise instead of adding it. Returns negative cost.
+    pub fn rescale_cost(config: &FHEConfig) -> i64 {
+        // Rescaling divides by t, reducing noise by log2(t) bits
+        // This is a GAIN (negative cost)
+        let t_bits = 64 - config.t.leading_zeros();
+        -((t_bits as i64) * 1000)  // Negative = gives back budget
+    }
+
+    /// Estimate net cost of one multiplication cycle (mul + relin + rescale)
+    ///
+    /// This is the typical cost when doing depth-d circuits.
+    pub fn multiplication_cycle_cost(config: &FHEConfig) -> i64 {
+        let mul_cost = Self::mul_ct_cost(config);
+        let relin_cost = Self::relin_cost(config);
+        let rescale_gain = Self::rescale_cost(config);  // Negative
+        mul_cost + relin_cost + rescale_gain
+    }
+
     /// Get remaining budget in millibits
     pub fn remaining_millibits(&self) -> i64 {
         self.remaining_mb
@@ -250,10 +281,11 @@ impl std::fmt::Display for NoiseBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+    use crate::params::SecureConfig;
+
     #[test]
     fn test_noise_budget_creation() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let budget = NoiseBudget::from_config(&config);
         
         println!("Light config budget: {}", budget);
@@ -262,7 +294,7 @@ mod tests {
     
     #[test]
     fn test_noise_budget_consumption() {
-        let config = FHEConfig::light();
+        let config = SecureConfig::secure_128().into_config();
         let mut budget = NoiseBudget::from_config(&config);
         
         let initial = budget.remaining_bits();
@@ -316,7 +348,7 @@ mod tests {
     
     #[test]
     fn test_remaining_multiplications() {
-        let config = FHEConfig::light_mul();
+        let config = SecureConfig::secure_128().into_config();
         let budget = NoiseBudget::from_config(&config);
         
         let remaining_muls = budget.remaining_multiplications(&config);
@@ -325,12 +357,40 @@ mod tests {
     
     #[test]
     fn test_he_standard_budget() {
-        let config = FHEConfig::he_standard_128();
+        let config = SecureConfig::secure_128().into_config();
         let budget = NoiseBudget::from_config(&config);
-        
+
         println!("HE Standard 128 budget: {}", budget);
         println!("Remaining multiplications: {}", budget.remaining_multiplications(&config));
-        
+
         assert!(budget.remaining_bits() > 0.0, "HE Standard should have positive budget");
+    }
+
+    #[test]
+    fn test_deep_circuit_precision() {
+        // Verify millibits precision is sufficient for depth-100 circuits
+        let mut budget = NoiseBudget::with_budget_bits(50);  // 50,000 millibits
+
+        // Simulate 100 operations with varying costs
+        for i in 0..100 {
+            let cost = 100 + (i % 10) * 10;  // 100-190 millibits per op
+            let _ = budget.consume(NoiseOpType::Add, cost);
+        }
+
+        // Total consumed: 100 ops × avg 145 millibits = 14,500 millibits
+        // Remaining: 50,000 - 14,500 = 35,500 millibits = 35.5 bits
+        // Max rounding error: 100 × 0.5 = 50 millibits = 0.05 bits
+        // Relative error: 50 / 35,500 = 0.14%
+
+        let remaining = budget.remaining_millibits();
+        assert!(remaining > 35000, "Should have ~35.5 bits remaining");
+        assert!(remaining < 36000, "Should have ~35.5 bits remaining");
+
+        // Verify operation count
+        assert_eq!(budget.operations().len(), 100);
+
+        println!("Depth-100 precision test: {} millibits remaining ({:.3} bits)",
+                 remaining, remaining as f64 / 1000.0);
+        println!("Max cumulative rounding error: 50 millibits (0.05 bits)");
     }
 }

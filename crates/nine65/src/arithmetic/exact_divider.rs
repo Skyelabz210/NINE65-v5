@@ -120,7 +120,7 @@ impl ExactDivider {
     /// Panics if X is not exactly divisible by d
     pub fn exact_divide(&self, m_res: u64, a_res: u64, d: u64) -> u128 {
         let x = self.reconstruct_exact(m_res, a_res);
-        assert!(x % (d as u128) == 0, 
+        assert!(x.is_multiple_of(d as u128), 
                 "exact_divide: {} is not divisible by {}", x, d);
         x / (d as u128)
     }

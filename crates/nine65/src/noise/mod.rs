@@ -412,6 +412,10 @@ impl NoiseWindow {
     pub fn len(&self) -> usize {
         self.values.len()
     }
+    
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
 }
 
 // =============================================================================
@@ -454,7 +458,7 @@ pub struct P2QuantileEstimator {
 impl P2QuantileEstimator {
     /// Create estimator for given quantile (0.0 to 1.0)
     pub fn new_f64(p: f64) -> Self {
-        assert!(p >= 0.0 && p <= 1.0, "p must be 0.0-1.0");
+        assert!((0.0..=1.0).contains(&p), "p must be 0.0-1.0");
         
         Self {
             p,

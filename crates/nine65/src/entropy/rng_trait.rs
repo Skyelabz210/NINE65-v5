@@ -9,7 +9,7 @@
 //! |-----------|-----------------|
 //! | Key generation | `SecureRng` (MANDATORY) |
 //! | Encryption randomness | `SecureRng` (production) or `ShadowHarvester` (testing) |
-//! | Testing/benchmarks | `ShadowHarvester` |
+//! | Testing/benchmarks | `DeterministicRng` or `ShadowHarvester` |
 //!
 //! # Example
 //!
@@ -27,6 +27,8 @@
 
 use super::shadow::ShadowHarvester;
 use super::secure::SecureRng;
+#[cfg(any(test, feature = "deterministic_rng"))]
+use super::deterministic::DeterministicRng;
 
 /// Trait for FHE-compatible random number generators
 ///
@@ -109,6 +111,29 @@ impl FheRng for SecureRng {
     }
 }
 
+#[cfg(any(test, feature = "deterministic_rng"))]
+impl FheRng for DeterministicRng {
+    fn next_u64(&mut self) -> u64 {
+        DeterministicRng::next_u64(self)
+    }
+
+    fn uniform(&mut self, bound: u64) -> u64 {
+        DeterministicRng::uniform(self, bound)
+    }
+
+    fn ternary(&mut self) -> i64 {
+        DeterministicRng::ternary(self)
+    }
+
+    fn cbd(&mut self, eta: usize) -> i64 {
+        DeterministicRng::cbd(self, eta)
+    }
+
+    fn is_secure(&self) -> bool {
+        false // Deterministic RNG is test-only
+    }
+}
+
 /// Wrapper that enforces secure RNG usage in production
 ///
 /// In release builds without `allow_insecure` feature, this will
@@ -145,7 +170,7 @@ mod tests {
         assert!(bounded < 100);
 
         let tern = rng.ternary();
-        assert!(tern >= -1 && tern <= 1);
+        assert!((-1..=1).contains(&tern));
     }
 
     #[test]
@@ -160,7 +185,7 @@ mod tests {
         assert!(bounded < 100);
 
         let tern = rng.ternary();
-        assert!(tern >= -1 && tern <= 1);
+        assert!((-1..=1).contains(&tern));
     }
 
     #[test]
@@ -168,6 +193,21 @@ mod tests {
         let mut rng = ShadowHarvester::with_seed(123);
         let vec = rng.ternary_vector(100);
         assert_eq!(vec.len(), 100);
-        assert!(vec.iter().all(|&v| v >= -1 && v <= 1));
+        assert!(vec.iter().all(|&v| (-1..=1).contains(&v)));
+    }
+
+    #[test]
+    fn test_deterministic_rng() {
+        let mut rng = DeterministicRng::with_seed(42);
+        assert!(!rng.is_secure());
+
+        let val = rng.next_u64();
+        assert!(val > 0 || val == 0);
+
+        let bounded = rng.uniform(100);
+        assert!(bounded < 100);
+
+        let tern = rng.ternary();
+        assert!((-1..=1).contains(&tern));
     }
 }

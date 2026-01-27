@@ -13,7 +13,7 @@ NINE65 provides TWO security modes:
 | Mode | API | Security Model | Circuit Depth |
 |------|-----|----------------|---------------|
 | **Symmetric** | `mul_dual_symmetric(ct1, ct2, sk)` | Single-party (holder of sk) | Deep (50+ muls tested) |
-| **Public** | `mul_dual_public(ct1, ct2, evk)` | Multi-party IND-CPA | Shallow (1 mul confirmed) |
+| **Public** | `mul_dual_public(ct1, ct2, evk)` | Multi-party IND-CPA | Shallow by default; deeper with smaller decomposition base (public_deep/with_base) |
 
 ### Key Insight
 The symmetric mode achieves deep circuits because it uses `s²` directly for relinearization,

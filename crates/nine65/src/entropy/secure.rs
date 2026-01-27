@@ -253,7 +253,7 @@ mod tests {
         
         // All values should be in {-1, 0, 1}
         for &s in &samples {
-            assert!(s >= -1 && s <= 1, "Ternary out of range: {}", s);
+            assert!((-1..=1).contains(&s), "Ternary out of range: {}", s);
         }
         
         // Check rough uniformity (each should be ~3333)
@@ -300,10 +300,10 @@ mod tests {
         
         let ternary = secure_ternary_vector(n);
         assert_eq!(ternary.len(), n);
-        assert!(ternary.iter().all(|&v| v >= -1 && v <= 1));
+        assert!(ternary.iter().all(|&v| (-1..=1).contains(&v)));
         
         let cbd = secure_cbd_vector(n, 3);
         assert_eq!(cbd.len(), n);
-        assert!(cbd.iter().all(|&v| v >= -3 && v <= 3));
+        assert!(cbd.iter().all(|&v| (-3..=3).contains(&v)));
     }
 }

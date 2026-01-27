@@ -90,6 +90,7 @@ impl WassanNoiseField {
 
     /// Parallel initialization - each band gets independent LFSR state
     #[cfg(feature = "parallel")]
+    #[allow(clippy::needless_range_loop)] // Loop variable used for indexing and state updates
     fn from_shadow_seed_parallel(seed: u64) -> Self {
         // Generate all bands in parallel with independent RNG per band
         let pattern: Vec<Vec<u64>> = (0..NUM_BANDS)

@@ -68,18 +68,13 @@ impl Divisibility {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum Unfactored {
+    #[default]
     None,
     Zero,
     Value(u64),
     Unknown,
-}
-
-impl Default for Unfactored {
-    fn default() -> Self {
-        Unfactored::None
-    }
 }
 
 /// Multi-valuation oracle for tracking p-adic valuations.
@@ -163,7 +158,7 @@ impl ValuationTracker {
                 break;
             }
             let mut exp = 0u32;
-            while n % p == 0 {
+            while n.is_multiple_of(p) {
                 n /= p;
                 exp += 1;
             }
@@ -176,7 +171,7 @@ impl ValuationTracker {
         let mut p = TRACKED_PRIMES.last().copied().unwrap_or(2) + 2;
         while p <= MAX_FACTOR_PRIME && p * p <= n {
             let mut exp = 0u32;
-            while n % p == 0 {
+            while n.is_multiple_of(p) {
                 n /= p;
                 exp += 1;
             }

@@ -15,7 +15,9 @@ fn print_usage() {
          Options:\n\
            --a <u64>           First plaintext (default: 17)\n\
            --b <u64>           Second plaintext (default: 25)\n\
-           --config <name>     he_standard_128 | standard_128 | high_192 | light (default: he_standard_128)\n\
+           --config <name>     Config name (default: standard_128)\n\
+                               SECURE: standard_128, high_192\n\
+                               INSECURE (test only): light (~36-bit), he_standard_128 (~56-bit)\n\
            --seed <u64>        Deterministic RNG seed (default: 42)\n\
            --os-seed           Use OS entropy for RNG\n\
            -h, --help          Show this help\n"
@@ -32,7 +34,7 @@ fn parse_u64(value: &str, flag: &str) -> u64 {
 fn main() {
     let mut a = 17u64;
     let mut b = 25u64;
-    let mut config_name = String::from("he_standard_128");
+    let mut config_name = String::from("standard_128"); // Default to secure config
     let mut seed: Option<u64> = Some(42);
     let mut use_os_seed = false;
 
@@ -99,8 +101,28 @@ fn main() {
     }
 
     let config = match config_name.as_str() {
-        "light" => FHEConfig::light(),
-        "he_standard_128" | "he-standard-128" => FHEConfig::he_standard_128(),
+        #[cfg(feature = "allow_insecure")]
+        "light" => {
+            eprintln!("WARNING: 'light' config has only ~36-bit security - NOT for production use!");
+            #[allow(deprecated)]
+            {
+                FHEConfig::light()
+            }
+        },
+        #[cfg(feature = "allow_insecure")]
+        "he_standard_128" | "he-standard-128" => {
+            eprintln!("WARNING: 'he_standard_128' has only ~56-bit security - NOT for production use!");
+            #[allow(deprecated)]
+            {
+                FHEConfig::he_standard_128()
+            }
+        },
+        #[cfg(not(feature = "allow_insecure"))]
+        "light" | "he_standard_128" | "he-standard-128" => {
+            eprintln!("ERROR: Insecure configs (light, he_standard_128) require --features allow_insecure");
+            eprintln!("Build with: cargo build --release --features allow_insecure");
+            std::process::exit(3);
+        },
         "standard_128" | "standard-128" => FHEConfig::standard_128(),
         "high_192" | "high-192" => FHEConfig::high_192(),
         other => {

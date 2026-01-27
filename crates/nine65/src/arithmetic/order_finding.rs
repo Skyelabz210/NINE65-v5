@@ -261,10 +261,10 @@ fn find_coprime_reference(n: u64, min_bound: u64) -> u64 {
 fn is_probably_prime(n: u64) -> bool {
     if n < 2 { return false; }
     if n == 2 { return true; }
-    if n % 2 == 0 { return false; }
+    if n.is_multiple_of(2) { return false; }
     let mut d = 3;
     while d * d <= n {
-        if n % d == 0 { return false; }
+        if n.is_multiple_of(d) { return false; }
         d += 2;
     }
     true
@@ -290,9 +290,9 @@ fn small_prime_factors(mut n: u64) -> Vec<u64> {
     let mut factors = Vec::new();
 
     // Check 2
-    if n % 2 == 0 {
+    if n.is_multiple_of(2) {
         factors.push(2);
-        while n % 2 == 0 {
+        while n.is_multiple_of(2) {
             n /= 2;
         }
     }
@@ -300,9 +300,9 @@ fn small_prime_factors(mut n: u64) -> Vec<u64> {
     // Check odd numbers up to √n
     let mut i = 3u64;
     while i * i <= n {
-        if n % i == 0 {
+        if n.is_multiple_of(i) {
             factors.push(i);
-            while n % i == 0 {
+            while n.is_multiple_of(i) {
                 n /= i;
             }
         }
@@ -430,7 +430,7 @@ fn minimize_order(a: u64, mut r: u64, n: u64) -> u64 {
 
     // For each prime factor, try dividing it out
     for &p in &primes {
-        while r % p == 0 {
+        while r.is_multiple_of(p) {
             let candidate = r / p;
             if mod_pow(a, candidate, n) == 1 {
                 r = candidate;
@@ -453,7 +453,7 @@ fn minimize_order(a: u64, mut r: u64, n: u64) -> u64 {
 /// `FactorResult` containing the factor if found
 pub fn factor_via_order(n: u64, base: u64, order: u64) -> FactorResult {
     // Order must be even for this to work
-    if order % 2 != 0 {
+    if !order.is_multiple_of(2) {
         return FactorResult {
             n,
             factor: None,

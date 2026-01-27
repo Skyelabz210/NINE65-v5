@@ -263,6 +263,28 @@ let result = ctx.decrypt(&ct_prod, &keys.secret_key);
 assert_eq!(result, 42 * 7);
 ```
 
+### Public Mode (Multi-Party, Deeper Circuits)
+
+```rust
+use nine65::params::FHEConfig;
+use nine65::ops::rns_fhe::RNSFHEContext;
+use nine65::entropy::ShadowHarvester;
+
+let config = FHEConfig::high_192();
+let ctx = RNSFHEContext::new_coeff_domain(&config);
+let mut rng = ShadowHarvester::from_os_seed();
+
+// Smaller decomposition base reduces relin noise for deeper public circuits
+let keys = ctx.generate_keys_dual_full_public_deep(&mut rng);
+
+let ct_a = ctx.encrypt_dual(2, &keys.public_key, &mut rng);
+let ct_b = ctx.encrypt_dual(3, &keys.public_key, &mut rng);
+let ct_prod = ctx.mul_dual_public(&ct_a, &ct_b, &keys.eval_key);
+let result = ctx.decrypt_dual(&ct_prod, &keys.secret_key);
+
+assert_eq!(result, 6);
+```
+
 ---
 
 ## Security Notes

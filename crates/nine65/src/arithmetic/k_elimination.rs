@@ -212,12 +212,24 @@ impl KElimination {
     /// Create K-Elimination context with given moduli
     ///
     /// # Panics
-    /// Panics if alpha_cap and beta_cap are not coprime.
-    /// Use `try_new()` for fallible construction.
+    ///
+    /// This is a **panicking constructor**. It will panic if:
+    /// - `alpha_cap` and `beta_cap` are not coprime (GCD != 1)
+    ///
+    /// For fallible construction, use [`try_new()`](Self::try_new) instead.
     ///
     /// # Requirements
     /// - All primes must be coprime
     /// - beta_cap must be > largest value to divide
+    ///
+    /// # Example
+    /// ```ignore
+    /// // This may panic if primes share common factors
+    /// let ke = KElimination::new(&[17, 19], &[23, 29]);
+    ///
+    /// // Prefer try_new for error handling
+    /// let ke = KElimination::try_new(&[17, 19], &[23, 29])?;
+    /// ```
     pub fn new(alpha_primes: &[u64], beta_primes: &[u64]) -> Self {
         Self::try_new(alpha_primes, beta_primes)
             .expect("alpha_cap and beta_cap must be coprime")
@@ -225,7 +237,13 @@ impl KElimination {
 
     /// Fallible constructor for K-Elimination context
     ///
-    /// Returns error if moduli are not coprime.
+    /// Returns error if moduli are not coprime. Prefer this over [`new()`](Self::new)
+    /// when handling untrusted input or in library code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Nine65Error::NotCoprime`] if alpha_cap and beta_cap share a common factor.
+    #[must_use = "this returns a Result that must be handled"]
     pub fn try_new(alpha_primes: &[u64], beta_primes: &[u64]) -> Nine65Result<Self> {
         let alpha_cap: u128 = alpha_primes.iter()
             .map(|&p| p as u128)
@@ -367,7 +385,7 @@ impl KElimination {
         let k = self.extract_k(v_alpha, v_beta);
         let v_full = v_alpha + k * self.alpha_cap;
 
-        if v_full % (divisor as u128) == 0 {
+        if v_full.is_multiple_of(divisor as u128) {
             Some(v_full / (divisor as u128))
         } else {
             None
@@ -601,6 +619,17 @@ fn mul_mod_u128_ct(a: u128, b: u128, m: u128) -> u128 {
     }
 
     result
+}
+
+// Bench-only wrappers (keep internal functions private in normal builds)
+#[cfg(feature = "benchmarks")]
+pub fn bench_mul_mod_u128_ct(a: u128, b: u128, m: u128) -> u128 {
+    mul_mod_u128_ct(a, b, m)
+}
+
+#[cfg(feature = "benchmarks")]
+pub fn bench_sub_mod_u128_ct(a: u128, b: u128, m: u128) -> u128 {
+    sub_mod_u128_ct(a, b, m)
 }
 
 #[cfg(test)]
@@ -955,233 +984,5 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // TIMING ATTACK REGRESSION TESTS
-    // =========================================================================
-
-    /// Helper to compute timing variance (coefficient of variation)
-    fn timing_variance(times: &[u128]) -> f64 {
-        let n = times.len() as f64;
-        let mean = times.iter().sum::<u128>() as f64 / n;
-        let variance = times.iter()
-            .map(|&t| {
-                let diff = t as f64 - mean;
-                diff * diff
-            })
-            .sum::<f64>() / n;
-        let std_dev = variance.sqrt();
-        std_dev / mean // CV = coefficient of variation
-    }
-
-    /// Test that extract_k CT has consistent timing regardless of input values
-    ///
-    /// This is a timing regression test - marked #[ignore] because:
-    /// 1. Timing tests are inherently noisy
-    /// 2. They shouldn't run in CI (causes flaky failures)
-    /// 3. Run manually: cargo test -p nine65 --lib -- k_elimination::tests::test_extract_k_ct_timing --ignored --nocapture
-    #[test]
-    #[ignore]
-    fn test_extract_k_ct_timing() {
-        use std::time::Instant;
-
-        let ke = KElimination::from_config(KElimConfig::Standard);
-        let iterations = 1000;
-
-        // Test 1: Small values (minimal computation path in variable-time code)
-        let small_v: u128 = 1;
-        let small_alpha = small_v % ke.alpha_cap;
-        let small_beta = small_v % ke.beta_cap;
-
-        // Test 2: Large values that would take different path in variable-time code
-        // Choose values where v_beta < v_alpha (triggers wrap-around in VT code)
-        let large_v: u128 = ke.alpha_cap * 1000 + 50; // Ensures wrap-around case
-        let large_alpha = large_v % ke.alpha_cap; // = 50
-        let large_beta = large_v % ke.beta_cap;   // Much larger
-
-        // Also test edge case: v_alpha close to beta_cap
-        let edge_v: u128 = ke.beta_cap - 1;
-        let edge_alpha = edge_v % ke.alpha_cap;
-        let edge_beta = edge_v % ke.beta_cap;
-
-        // Warmup
-        for _ in 0..100 {
-            let _ = ke.extract_k(small_alpha, small_beta);
-            let _ = ke.extract_k(large_alpha, large_beta);
-            let _ = ke.extract_k(edge_alpha, edge_beta);
-        }
-
-        // Measure small values
-        let mut small_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = ke.extract_k(small_alpha, small_beta);
-            small_times.push(start.elapsed().as_nanos());
-        }
-
-        // Measure large values (wrap-around case)
-        let mut large_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = ke.extract_k(large_alpha, large_beta);
-            large_times.push(start.elapsed().as_nanos());
-        }
-
-        // Measure edge case
-        let mut edge_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = ke.extract_k(edge_alpha, edge_beta);
-            edge_times.push(start.elapsed().as_nanos());
-        }
-
-        let small_mean: u128 = small_times.iter().sum::<u128>() / iterations as u128;
-        let large_mean: u128 = large_times.iter().sum::<u128>() / iterations as u128;
-        let edge_mean: u128 = edge_times.iter().sum::<u128>() / iterations as u128;
-
-        let ratio_large = large_mean as f64 / small_mean as f64;
-        let ratio_edge = edge_mean as f64 / small_mean as f64;
-
-        let small_cv = timing_variance(&small_times);
-        let large_cv = timing_variance(&large_times);
-        let edge_cv = timing_variance(&edge_times);
-
-        println!("K-Elimination extract_k CT timing analysis:");
-        println!("  Small values: mean={}ns, CV={:.4}", small_mean, small_cv);
-        println!("  Large values (wrap): mean={}ns, CV={:.4}", large_mean, large_cv);
-        println!("  Edge values: mean={}ns, CV={:.4}", edge_mean, edge_cv);
-        println!("  Ratio (large/small): {:.4}", ratio_large);
-        println!("  Ratio (edge/small): {:.4}", ratio_edge);
-
-        // CT should have ratio close to 1.0 (allow 0.7-1.4 due to noise)
-        assert!(
-            ratio_large > 0.7 && ratio_large < 1.4,
-            "extract_k CT timing varies (large vs small): ratio={:.4} (expected 0.7-1.4)",
-            ratio_large
-        );
-
-        assert!(
-            ratio_edge > 0.7 && ratio_edge < 1.4,
-            "extract_k CT timing varies (edge vs small): ratio={:.4} (expected 0.7-1.4)",
-            ratio_edge
-        );
-    }
-
-    /// Test that mul_mod_u128_ct has consistent timing
-    #[test]
-    #[ignore]
-    fn test_mul_mod_u128_ct_timing() {
-        use std::time::Instant;
-
-        let m = 4611686018427387847u128; // 62-bit prime (Standard config beta)
-        let iterations = 500;
-
-        // Test with values that would take different paths in variable-time mul
-        let small_a = 1u128;
-        let small_b = 1u128;
-
-        // Large values (all 64 bits set in each operand)
-        let large_a = m - 1;
-        let large_b = m - 1;
-
-        // Warmup
-        for _ in 0..50 {
-            let _ = super::mul_mod_u128_ct(small_a, small_b, m);
-            let _ = super::mul_mod_u128_ct(large_a, large_b, m);
-        }
-
-        // Measure small values
-        let mut small_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = super::mul_mod_u128_ct(small_a, small_b, m);
-            small_times.push(start.elapsed().as_nanos());
-        }
-
-        // Measure large values
-        let mut large_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = super::mul_mod_u128_ct(large_a, large_b, m);
-            large_times.push(start.elapsed().as_nanos());
-        }
-
-        let small_mean: u128 = small_times.iter().sum::<u128>() / iterations as u128;
-        let large_mean: u128 = large_times.iter().sum::<u128>() / iterations as u128;
-        let ratio = large_mean as f64 / small_mean as f64;
-
-        let small_cv = timing_variance(&small_times);
-        let large_cv = timing_variance(&large_times);
-
-        println!("mul_mod_u128_ct timing analysis:");
-        println!("  Small values (1*1): mean={}ns, CV={:.4}", small_mean, small_cv);
-        println!("  Large values ((m-1)*(m-1)): mean={}ns, CV={:.4}", large_mean, large_cv);
-        println!("  Ratio (large/small): {:.4}", ratio);
-
-        // CT implementation should have ratio close to 1.0
-        // Allow wider range (0.6-1.5) since mul_mod is more complex
-        assert!(
-            ratio > 0.6 && ratio < 1.5,
-            "mul_mod_u128_ct timing varies with input: ratio={:.4} (expected 0.6-1.5)",
-            ratio
-        );
-    }
-
-    /// Test that sub_mod_u128_ct has consistent timing for borrow vs no-borrow
-    #[test]
-    #[ignore]
-    fn test_sub_mod_u128_ct_timing() {
-        use std::time::Instant;
-
-        let m = 667u128;
-        let iterations = 5000; // More iterations since individual ops are fast
-
-        // No borrow case: a > b
-        let no_borrow_a = 500u128;
-        let no_borrow_b = 100u128;
-
-        // Borrow case: a < b
-        let borrow_a = 100u128;
-        let borrow_b = 500u128;
-
-        // Warmup
-        for _ in 0..100 {
-            let _ = super::sub_mod_u128_ct(no_borrow_a, no_borrow_b, m);
-            let _ = super::sub_mod_u128_ct(borrow_a, borrow_b, m);
-        }
-
-        // Measure no-borrow case
-        let mut no_borrow_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = super::sub_mod_u128_ct(no_borrow_a, no_borrow_b, m);
-            no_borrow_times.push(start.elapsed().as_nanos());
-        }
-
-        // Measure borrow case
-        let mut borrow_times = Vec::with_capacity(iterations);
-        for _ in 0..iterations {
-            let start = Instant::now();
-            let _ = super::sub_mod_u128_ct(borrow_a, borrow_b, m);
-            borrow_times.push(start.elapsed().as_nanos());
-        }
-
-        let no_borrow_mean: u128 = no_borrow_times.iter().sum::<u128>() / iterations as u128;
-        let borrow_mean: u128 = borrow_times.iter().sum::<u128>() / iterations as u128;
-        let ratio = borrow_mean as f64 / no_borrow_mean as f64;
-
-        let no_borrow_cv = timing_variance(&no_borrow_times);
-        let borrow_cv = timing_variance(&borrow_times);
-
-        println!("sub_mod_u128_ct timing analysis:");
-        println!("  No borrow (500-100): mean={}ns, CV={:.4}", no_borrow_mean, no_borrow_cv);
-        println!("  Borrow (100-500): mean={}ns, CV={:.4}", borrow_mean, borrow_cv);
-        println!("  Ratio (borrow/no_borrow): {:.4}", ratio);
-
-        // CT should have ratio close to 1.0
-        assert!(
-            ratio > 0.7 && ratio < 1.4,
-            "sub_mod_u128_ct timing varies with borrow condition: ratio={:.4} (expected 0.7-1.4)",
-            ratio
-        );
-    }
+    // Timing regression tests moved to criterion benches (benches/timing.rs)
 }

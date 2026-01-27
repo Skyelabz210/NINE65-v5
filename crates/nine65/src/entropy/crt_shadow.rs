@@ -276,9 +276,9 @@ impl CRTShadowContext {
         assert_eq!(rns.len(), self.primes.len());
 
         let mut result = 0u128;
-        for i in 0..self.primes.len() {
+        for (i, &p) in self.primes.iter().enumerate() {
             let (mi, mi_inv) = self.crt_values[i];
-            let term = (rns[i] as u128 * mi_inv as u128) % self.primes[i] as u128;
+            let term = (rns[i] as u128 * mi_inv as u128) % p as u128;
             let contribution = mulmod_u128(term, mi, self.product);
             result = addmod_u128(result, contribution, self.product);
         }
@@ -297,9 +297,9 @@ impl CRTShadowContext {
         let mut results = Vec::with_capacity(self.primes.len());
         let mut shadows = Vec::with_capacity(self.primes.len());
 
-        for i in 0..self.primes.len() {
+        for (i, &p) in self.primes.iter().enumerate() {
             let sum = a[i] as u128 + b[i] as u128;
-            let p = self.primes[i] as u128;
+            let p = p as u128;
 
             // Shadow: did we wrap?
             let wrap = if sum >= p { 1u64 } else { 0u64 };
@@ -1099,16 +1099,16 @@ mod tests {
         // Check bit distribution (each bit should be ~50% 1s)
         let mut bit_counts = [0u32; 64];
         for &v in &vals {
-            for bit in 0..64 {
+            for (bit, count) in bit_counts.iter_mut().enumerate() {
                 if (v >> bit) & 1 == 1 {
-                    bit_counts[bit] += 1;
+                    *count += 1;
                 }
             }
         }
 
         // With 10 samples, expect 3-7 ones per bit position (loose bounds)
         for (bit, &count) in bit_counts.iter().enumerate() {
-            assert!(count >= 1 && count <= 9,
+            assert!((1..=9).contains(&count),
                     "Bit {} has count {} (expected 3-7)", bit, count);
         }
     }

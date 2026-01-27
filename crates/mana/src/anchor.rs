@@ -106,7 +106,7 @@ impl KAnchor {
         let k = self.extract_k(v_alpha, v_beta);
         let v_full = v_alpha + k * self.alpha_cap;
 
-        if v_full % (divisor as u128) == 0 {
+        if v_full.is_multiple_of(divisor as u128) {
             Some(v_full / (divisor as u128))
         } else {
             None

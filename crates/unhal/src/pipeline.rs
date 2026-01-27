@@ -47,7 +47,7 @@ impl PipelineBuilder {
     }
 
     /// Add a stage
-    pub fn add(mut self, stage: Stage) -> Self {
+    pub fn add_stage(mut self, stage: Stage) -> Self {
         self.stages.push(stage);
         self
     }
@@ -84,7 +84,7 @@ pub struct Pipeline {
 
 impl Pipeline {
     /// Create new pipeline builder
-    pub fn new() -> PipelineBuilder {
+    pub fn builder() -> PipelineBuilder {
         PipelineBuilder::new()
     }
 
@@ -135,8 +135,8 @@ impl Pipeline {
 #[macro_export]
 macro_rules! pipeline {
     ($($stage:expr),+ $(,)?) => {
-        Pipeline::new()
-            $(.add($stage))+
+        Pipeline::builder()
+            $(.add_stage($stage))+
             .build()
     };
 }
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_add() {
-        let pipeline = Pipeline::new().add(Stage::Add).build();
+        let pipeline = Pipeline::builder().add_stage(Stage::Add).build();
 
         let a = ManaStream::from_ints(&[1, 2, 3], &PRIMES);
         let b = ManaStream::from_ints(&[4, 5, 6], &PRIMES);
@@ -163,9 +163,9 @@ mod tests {
 
     #[test]
     fn test_pipeline_chain() {
-        let pipeline = Pipeline::new()
-            .add(Stage::Add)
-            .add(Stage::ScalarMul(2))
+        let pipeline = Pipeline::builder()
+            .add_stage(Stage::Add)
+            .add_stage(Stage::ScalarMul(2))
             .build();
 
         let a = ManaStream::from_ints(&[1, 2], &PRIMES);
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn test_pipeline_negate() {
-        let pipeline = Pipeline::new().add(Stage::Negate).build();
+        let pipeline = Pipeline::builder().add_stage(Stage::Negate).build();
 
         let a = ManaStream::from_ints(&[1, 2], &PRIMES);
         let b = ManaStream::from_ints(&[0, 0], &PRIMES);
