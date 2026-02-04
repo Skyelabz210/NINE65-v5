@@ -112,17 +112,18 @@ impl PublicKey {
         let e = RingPolynomial::random_cbd(config.n, config.q, config.eta, harvester);
         
         // pk0 = -a*s + e = -(a*s) + e
-        let as_prod = a.mul(&sk.s, ntt);
+        // Use constant-time multiplication to protect secret key
+        let as_prod = a.mul_ct(&sk.s, ntt);
         let neg_as = as_prod.neg(ntt);
         let pk0 = neg_as.add(&e, ntt);
-        
+
         Self { pk0, pk1: a }
     }
-    
+
     /// Generate public key from secret key using OS CSPRNG (PRODUCTION)
     ///
     /// Uses cryptographically secure randomness for the 'a' polynomial
-    /// and error term.
+    /// and error term. Uses constant-time operations for secret key.
     pub fn generate_secure(
         sk: &SecretKey,
         config: &FHEConfig,
@@ -131,7 +132,7 @@ impl PublicKey {
         // a ← uniform random (CSPRNG)
         let a_coeffs = secure_uniform_vector(config.n, config.q);
         let a = RingPolynomial::from_coeffs(a_coeffs, config.q);
-        
+
         // e ← CBD error distribution (CSPRNG)
         let e_signed = secure_cbd_vector(config.n, config.eta);
         let e_coeffs: Vec<u64> = e_signed.iter()
@@ -144,12 +145,13 @@ impl PublicKey {
             })
             .collect();
         let e = RingPolynomial::from_coeffs(e_coeffs, config.q);
-        
+
         // pk0 = -a*s + e
-        let as_prod = a.mul(&sk.s, ntt);
+        // Use constant-time multiplication to protect secret key
+        let as_prod = a.mul_ct(&sk.s, ntt);
         let neg_as = as_prod.neg(ntt);
         let pk0 = neg_as.add(&e, ntt);
-        
+
         Self { pk0, pk1: a }
     }
 }
@@ -181,17 +183,19 @@ impl EvaluationKey {
         let q_bits = 64 - config.q.leading_zeros() as usize;
         let levels = q_bits.div_ceil(16);
         
-        let s_squared = sk.s.mul(&sk.s, ntt);
-        
+        // Use constant-time multiplication to protect secret key
+        let s_squared = sk.s.mul_ct(&sk.s, ntt);
+
         let mut rlk = Vec::with_capacity(levels);
         let mut power_of_t = 1u64;
-        
+
         for _ in 0..levels {
             let a_i = RingPolynomial::random_uniform(config.n, config.q, harvester);
             let e_i = RingPolynomial::random_cbd(config.n, config.q, config.eta, harvester);
-            
+
             let s2_ti = s_squared.scalar_mul(power_of_t, ntt);
-            let as_prod = a_i.mul(&sk.s, ntt);
+            // Use constant-time multiplication to protect secret key
+            let as_prod = a_i.mul_ct(&sk.s, ntt);
             let neg_as = as_prod.neg(ntt);
             let b_i = neg_as.add(&e_i, ntt).add(&s2_ti, ntt);
             

@@ -344,9 +344,19 @@ impl NTTEngineFFT {
         
         a_work
     }
-    
+
+    /// Constant-time polynomial multiplication using NTT
+    ///
+    /// This is equivalent to `multiply()` since the FFT NTT engine uses
+    /// Montgomery multiplication internally, which is already constant-time.
+    /// Provided for API compatibility with the non-FFT NTT engine.
+    pub fn multiply_ct(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
+        // Montgomery multiplication is constant-time, so multiply() is already CT
+        self.multiply(a, b)
+    }
+
     /// Multiply staying entirely in Montgomery form (for chained operations)
-    /// 
+    ///
     /// Use this when doing multiple multiplications - convert once at start/end
     pub fn multiply_persistent(&self, a_mont: &[u64], b_mont: &[u64]) -> Vec<u64> {
         debug_assert_eq!(a_mont.len(), self.n);
