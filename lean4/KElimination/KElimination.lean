@@ -407,9 +407,53 @@ theorem fourPrime_crt_unique (cfg : FourPrimeConfig) (k1 k2 : ℕ)
         _ = k2 % cfg.a2 := h2
         _ = k2 % (cfg.a1 * cfg.a2) % cfg.a2 := by rw [Nat.mod_mod_of_dvd k2 (dvd_mul_left cfg.a2 cfg.a1)]
     · exact h12_coprime
-  -- Then extend to 3 primes, then 4 primes (full proof requires iterated CRT)
-  -- For now, we use the structure that k < A and residues match implies equality
-  sorry  -- Requires full iterated CRT lemma
+  -- Extend to 3 primes using coprime_123
+  have h123_coprime : Nat.Coprime (cfg.a1 * cfg.a2) cfg.a3 := cfg.coprime_123
+  have h123 : k1 % (cfg.a1 * cfg.a2 * cfg.a3) = k2 % (cfg.a1 * cfg.a2 * cfg.a3) := by
+    apply Nat.eq_of_lt_of_mod_eq_mod
+    · exact Nat.mod_lt k1 (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos)
+    · exact Nat.mod_lt k2 (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos)
+    · constructor
+      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3) % (cfg.a1 * cfg.a2)
+            = k1 % (cfg.a1 * cfg.a2) := by
+              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_right (cfg.a1 * cfg.a2) cfg.a3
+          _ = k2 % (cfg.a1 * cfg.a2) := h12
+          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3) % (cfg.a1 * cfg.a2) := by
+              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_right (cfg.a1 * cfg.a2) cfg.a3
+      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3) % cfg.a3
+            = k1 % cfg.a3 := by
+              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_left cfg.a3 (cfg.a1 * cfg.a2)
+          _ = k2 % cfg.a3 := h3
+          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3) % cfg.a3 := by
+              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_left cfg.a3 (cfg.a1 * cfg.a2)
+    · exact h123_coprime
+  -- Extend to 4 primes using coprime_1234
+  have h1234_coprime : Nat.Coprime (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4 := cfg.coprime_1234
+  have h1234 : k1 % A_total cfg = k2 % A_total cfg := by
+    unfold A_total
+    apply Nat.eq_of_lt_of_mod_eq_mod
+    · exact Nat.mod_lt k1 (Nat.mul_pos (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos) cfg.a4_pos)
+    · exact Nat.mod_lt k2 (Nat.mul_pos (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos) cfg.a4_pos)
+    · constructor
+      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % (cfg.a1 * cfg.a2 * cfg.a3)
+            = k1 % (cfg.a1 * cfg.a2 * cfg.a3) := by
+              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_right (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4
+          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3) := h123
+          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % (cfg.a1 * cfg.a2 * cfg.a3) := by
+              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_right (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4
+      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % cfg.a4
+            = k1 % cfg.a4 := by
+              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_left cfg.a4 (cfg.a1 * cfg.a2 * cfg.a3)
+          _ = k2 % cfg.a4 := h4
+          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % cfg.a4 := by
+              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_left cfg.a4 (cfg.a1 * cfg.a2 * cfg.a3)
+    · exact h1234_coprime
+  -- Finally, k1 < A and k2 < A with k1 % A = k2 % A implies k1 = k2
+  have hk1_mod : k1 % A_total cfg = k1 := Nat.mod_eq_of_lt hk1
+  have hk2_mod : k2 % A_total cfg = k2 := Nat.mod_eq_of_lt hk2
+  calc k1 = k1 % A_total cfg := hk1_mod.symm
+    _ = k2 % A_total cfg := h1234
+    _ = k2 := hk2_mod
 
 /-- K-Elimination soundness with 4-prime anchors -/
 theorem kElimination_4prime_sound (cfg : FourPrimeConfig) (M : ℕ) (X : ℕ)
@@ -418,7 +462,11 @@ theorem kElimination_4prime_sound (cfg : FourPrimeConfig) (M : ℕ) (X : ℕ)
     (hInv1 : (M * M_inv_a1) % cfg.a1 = 1)
     (hInv2 : (M * M_inv_a2) % cfg.a2 = 1)
     (hInv3 : (M * M_inv_a3) % cfg.a3 = 1)
-    (hInv4 : (M * M_inv_a4) % cfg.a4 = 1) :
+    (hInv4 : (M * M_inv_a4) % cfg.a4 = 1)
+    (hCop1 : Nat.Coprime M cfg.a1)
+    (hCop2 : Nat.Coprime M cfg.a2)
+    (hCop3 : Nat.Coprime M cfg.a3)
+    (hCop4 : Nat.Coprime M cfg.a4) :
     let k_true := X / M
     let v_M := X % M
     -- Compute k residues mod each anchor
@@ -434,17 +482,67 @@ theorem kElimination_4prime_sound (cfg : FourPrimeConfig) (M : ℕ) (X : ℕ)
   intro k_true v_M k_a1 k_a2 k_a3 k_a4
   -- Each follows from standard K-Elimination soundness applied per-anchor
   -- The key insight: X % ai gives k*M + vM mod ai, phase extraction yields k mod ai
+
+  -- Helper lemma: per-anchor K-Elimination
+  have per_anchor_sound : ∀ (A : ℕ) (hA_pos : A > 0) (M_inv : ℕ) (hInv : (M * M_inv) % A = 1)
+      (hCop : Nat.Coprime M A),
+      ((X % A + A - X % M % A) % A * M_inv) % A = X / M % A := by
+    intro A hA_pos M_inv hInv hCop
+    -- Use the existing Soundness.k_elimination_sound
+    have hX_A : X < M * (A_total cfg) := hRange
+    -- k < A_total implies k mod A = k mod A (just mod)
+    -- The key is that the phase computation works mod A
+    have hAne : NeZero A := ⟨Nat.pos_iff_ne_zero.mp hA_pos⟩
+    -- Division identity: X = vM + k * M
+    have h_div : X = X % M + X / M * M := (Nat.mod_add_div' X M).symm
+    -- Cast to ZMod A
+    have h_cast : (X : ZMod A) = (X % M : ZMod A) + (X / M : ZMod A) * (M : ZMod A) := by
+      conv_lhs => rw [h_div]; push_cast; ring
+    have h_X_mod : (X % A : ZMod A) = (X : ZMod A) := ZMod.natCast_mod X A
+    have h_vM_mod : (X % M % A : ZMod A) = (X % M : ZMod A) := ZMod.natCast_mod (X % M) A
+    -- M * M_inv = 1 in ZMod A
+    have hMinvZMod : (M : ZMod A) * (M_inv : ZMod A) = 1 := by
+      have h : ((M * M_inv : ℕ) : ZMod A) = (1 : ZMod A) := by
+        have mod_eq : ((M * M_inv : ℕ) : ZMod A) = ((M * M_inv) % A : ZMod A) := by
+          rw [ZMod.natCast_mod]
+        simp only [mod_eq, hInv, Nat.cast_one]
+      rw [← Nat.cast_mul]; exact h
+    -- Phase = k * M in ZMod A
+    have hsub : X % M % A ≤ X % A + A := by
+      have h : X % M % A < A := Nat.mod_lt _ hA_pos; omega
+    have hphase : ((X % A + A - X % M % A) % A : ZMod A) = (X / M : ZMod A) * (M : ZMod A) := by
+      rw [ZMod.natCast_mod, Nat.cast_sub hsub]
+      push_cast
+      rw [h_X_mod, h_vM_mod, ZMod.natCast_self, add_zero, h_cast]
+      ring
+    -- Phase * M_inv = k
+    have hresult : ((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A) = (X / M : ZMod A) := by
+      rw [hphase]
+      calc (X / M : ZMod A) * (M : ZMod A) * (M_inv : ZMod A)
+          = (X / M : ZMod A) * ((M : ZMod A) * (M_inv : ZMod A)) := by ring
+        _ = (X / M : ZMod A) * 1 := by rw [hMinvZMod]
+        _ = (X / M : ZMod A) := by ring
+    -- Convert to Nat using ZMod.val
+    have lhs_val : ((X % A + A - X % M % A) % A * M_inv) % A
+                 = ZMod.val (((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A)) := by
+      have cast_eq : (((X % A + A - X % M % A) % A * M_inv : ℕ) : ZMod A)
+                   = ((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A) := by
+        push_cast; ring
+      rw [← cast_eq, ZMod.val_natCast]
+    have rhs_val : (X / M) % A = ZMod.val (X / M : ZMod A) := by rw [ZMod.val_natCast]
+    rw [lhs_val, rhs_val, hresult]
+
   constructor
   · -- k_a1 = k_true % a1
-    sorry  -- Follows from k_elimination_sound applied to (M, a1)
+    exact per_anchor_sound cfg.a1 cfg.a1_pos M_inv_a1 hInv1 hCop1
   constructor
   · -- k_a2 = k_true % a2
-    sorry
+    exact per_anchor_sound cfg.a2 cfg.a2_pos M_inv_a2 hInv2 hCop2
   constructor
   · -- k_a3 = k_true % a3
-    sorry
+    exact per_anchor_sound cfg.a3 cfg.a3_pos M_inv_a3 hInv3 hCop3
   · -- k_a4 = k_true % a4
-    sorry
+    exact per_anchor_sound cfg.a4 cfg.a4_pos M_inv_a4 hInv4 hCop4
 
 end FourPrimeCRT
 
@@ -518,13 +616,36 @@ namespace LevelAware
 def listProduct (primes : List ℕ) (level : ℕ) : ℕ :=
   (primes.take level).foldl (· * ·) 1
 
+/-- Helper: foldl product divisibility for list append -/
+lemma foldl_mul_dvd_append (l1 l2 : List ℕ) :
+    l1.foldl (· * ·) 1 ∣ (l1 ++ l2).foldl (· * ·) 1 := by
+  induction l2 with
+  | nil => simp
+  | cons x xs ih =>
+    simp only [List.append_assoc, List.singleton_append, List.foldl_append, List.foldl_cons,
+               List.foldl_nil]
+    -- (l1 ++ [x] ++ xs).foldl = (l1 ++ [x]).foldl ... with xs
+    -- The product over l1 divides product over l1 ++ [x] ++ xs
+    have h1 : l1.foldl (· * ·) 1 ∣ (l1 ++ [x]).foldl (· * ·) 1 := by
+      simp only [List.foldl_append, List.foldl_cons, List.foldl_nil]
+      exact Dvd.intro x rfl
+    calc l1.foldl (· * ·) 1
+        ∣ (l1 ++ [x]).foldl (· * ·) 1 := h1
+      _ ∣ ((l1 ++ [x]) ++ xs).foldl (· * ·) 1 := by
+          rw [← List.append_assoc]
+          exact foldl_mul_dvd_append (l1 ++ [x]) xs
+
 /-- M_level with fewer primes is a divisor of full M -/
 theorem level_divides_full (primes : List ℕ) (level : ℕ) (hLevel : level ≤ primes.length) :
     listProduct primes level ∣ listProduct primes primes.length := by
   unfold listProduct
   -- take level is a prefix of take length = full list
-  -- Product of prefix divides product of full list
-  sorry  -- Requires list product divisibility lemma
+  -- primes = (primes.take level) ++ (primes.drop level)
+  have h_split : primes = primes.take level ++ primes.drop level := (List.take_append_drop level primes).symm
+  have h_full : primes.take primes.length = primes := List.take_length primes
+  rw [h_full]
+  conv_rhs => rw [h_split]
+  exact foldl_mul_dvd_append (primes.take level) (primes.drop level)
 
 /-- Modular inverse exists at any level when coprime to anchor -/
 theorem level_inv_exists (M_level A : ℕ) (hA : A > 1) (hCoprime : Nat.Coprime M_level A) :
