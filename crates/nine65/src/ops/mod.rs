@@ -18,8 +18,6 @@ pub mod rns_mul;
 pub mod rns_fhe;
 pub mod neural;
 pub mod galois;
-
-#[cfg(feature = "gso")]
 pub mod gso_fhe;
 
 pub use batch::BatchEncoder;
@@ -30,6 +28,4 @@ pub use rns_mul::RNSEvaluator;
 pub use rns_fhe::{RNSFHEContext, RNSCiphertext, RNSKeySet, RNSSecretKey, RNSPublicKey, RNSEvalKey};
 pub use neural::{FHENeuralEvaluator, ActivationType, DenseLayer, NeuralNetwork};
 pub use galois::{GaloisEngine, GaloisKey, GaloisKeySet, GaloisEvaluator};
-
-#[cfg(feature = "gso")]
 pub use gso_fhe::{GSOFHEContext, GSOCiphertext, NoiseEstimate, NoiseStats, AttractorBasin, GSOSwarm};

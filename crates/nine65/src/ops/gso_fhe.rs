@@ -19,7 +19,16 @@
 
 use super::rns_fhe::{RNSFHEContext, DualRNSCiphertext, DualRNSSecretKey,
                      DualRNSPublicKey, DualRNSEvalKey, DualRNSKeySet, DualRNSFullKeySet};
+use crate::arithmetic::U256;
 use crate::entropy::ShadowHarvester;
+
+fn u256_to_u64_saturating(value: U256) -> u64 {
+    if value.hi != 0 || value.lo > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        value.lo as u64
+    }
+}
 
 // ============================================================================
 // NOISE TRACKING
@@ -252,11 +261,15 @@ impl GSOFHEContext {
     pub fn new(inner: RNSFHEContext) -> Self {
         // GSO parameters tuned for FHE
         let n_agents = 64;
-        let delta = inner.q_product / inner.t as u128;
-
-        // Basin radius should be < delta/2 for correct decryption
-        // Use delta/4 for safety margin
-        let basin_radius = (delta / 4) as u64;
+        let (basin_radius, coeff_bound) = if inner.q_product == 0 {
+            let q = U256::product_u64s(&inner.config.primes);
+            let (delta, _) = q.div_mod_u64(inner.t);
+            let basin_radius = u256_to_u64_saturating(delta.shr1().shr1());
+            (basin_radius, u64::MAX)
+        } else {
+            let delta = inner.q_product / inner.t as u128;
+            ((delta / 4) as u64, (inner.q_product.isqrt()) as u64)
+        };
 
         // Create basins for plaintext space (up to 1024 basins)
         let num_basins = (inner.t as usize).min(1024);
@@ -264,9 +277,6 @@ impl GSOFHEContext {
         let basins: Vec<AttractorBasin> = (0..num_basins)
             .map(|id| AttractorBasin::new(id as u32, basin_radius, basin_scale))
             .collect();
-
-        // Coefficient bound for noise growth estimation
-        let coeff_bound = (inner.q_product.isqrt()) as u64;
 
         Self {
             inner,
@@ -285,7 +295,11 @@ impl GSOFHEContext {
         let basins: Vec<AttractorBasin> = (0..num_basins)
             .map(|id| AttractorBasin::new(id as u32, basin_radius, basin_scale))
             .collect();
-        let coeff_bound = (inner.q_product.isqrt()) as u64;
+        let coeff_bound = if inner.q_product == 0 {
+            u64::MAX
+        } else {
+            (inner.q_product.isqrt()) as u64
+        };
 
         Self {
             inner,
@@ -470,6 +484,7 @@ impl std::fmt::Display for NoiseStats {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::params::FHEConfig;
@@ -679,14 +694,15 @@ mod tests {
 // ============================================================================
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod depth_benchmarks {
     use super::*;
     use crate::params::FHEConfig;
+    use crate::params::secure_configs::SecureConfig;
     use crate::entropy::ShadowHarvester;
     use std::time::Instant;
 
-    fn bench_ctx() -> GSOFHEContext {
-        let config = FHEConfig::light_rns_exact();
+    fn bench_ctx(config: FHEConfig) -> GSOFHEContext {
         let inner = RNSFHEContext::new_coeff_domain(&config);
         GSOFHEContext::new(inner)
     }
@@ -698,7 +714,7 @@ mod depth_benchmarks {
         println!("║        GSO-FHE SYMMETRIC MODE - MAX DEPTH BENCHMARK          ║");
         println!("╚══════════════════════════════════════════════════════════════╝\n");
 
-        let mut ctx = bench_ctx();
+        let mut ctx = bench_ctx(FHEConfig::light_rns_exact());
         let mut rng = ShadowHarvester::new();
         let keys = ctx.generate_keys(&mut rng);
 
@@ -743,7 +759,64 @@ mod depth_benchmarks {
         assert!(depth >= 10, "Should achieve at least depth 10 in symmetric mode");
     }
 
+    #[test]
+    #[ignore = "Secure config baseline (secure_128)"]
+    fn benchmark_symmetric_max_depth_secure_128() {
+        let mut ctx = bench_ctx(SecureConfig::secure_128().into_config());
+        let mut rng = ShadowHarvester::new();
+        let keys = ctx.generate_keys(&mut rng);
+
+        let mut ct = ctx.encrypt(2, &keys.public_key, &mut rng);
+        let mut depth = 0u32;
+        let mut collapses = 0u32;
+        let max_test_depth = 50;
+
+        let start = Instant::now();
+        for d in 1..=max_test_depth {
+            let ct_clone = ct.clone();
+            ct = ctx.mul_symmetric(&ct, &ct_clone, &keys.secret_key);
+            depth = d;
+            let stats = ctx.noise_stats(&ct);
+            collapses = stats.collapses;
+        }
+
+        let total_time = start.elapsed();
+        println!("SECURE_128 MAX DEPTH: {} multiplicative levels", depth);
+        println!("Total collapses: {}", collapses);
+        println!("Total time: {:?}", total_time);
+        println!("Avg time/mul: {:.2}ms", total_time.as_secs_f64() * 1000.0 / depth as f64);
+    }
+
+    #[test]
+    #[ignore = "Secure config baseline (secure_192)"]
+    fn benchmark_symmetric_max_depth_secure_192() {
+        let mut ctx = bench_ctx(SecureConfig::secure_192().into_config());
+        let mut rng = ShadowHarvester::new();
+        let keys = ctx.generate_keys(&mut rng);
+
+        let mut ct = ctx.encrypt(2, &keys.public_key, &mut rng);
+        let mut depth = 0u32;
+        let mut collapses = 0u32;
+        let max_test_depth = 50;
+
+        let start = Instant::now();
+        for d in 1..=max_test_depth {
+            let ct_clone = ct.clone();
+            ct = ctx.mul_symmetric(&ct, &ct_clone, &keys.secret_key);
+            depth = d;
+            let stats = ctx.noise_stats(&ct);
+            collapses = stats.collapses;
+        }
+
+        let total_time = start.elapsed();
+        println!("SECURE_192 MAX DEPTH: {} multiplicative levels", depth);
+        println!("Total collapses: {}", collapses);
+        println!("Total time: {:?}", total_time);
+        println!("Avg time/mul: {:.2}ms", total_time.as_secs_f64() * 1000.0 / depth as f64);
+    }
+
     /// Benchmark entropy throughput during FHE operations
+    #[cfg(feature = "shadow-entropy")]
     #[test]
     fn benchmark_entropy_during_fhe() {
         use crate::entropy::{CRTShadowContext, ShadowAccumulator, QuotientSignature};
@@ -789,6 +862,7 @@ mod depth_benchmarks {
     }
 
     /// Combined FHE + entropy benchmark
+    #[cfg(feature = "shadow-entropy")]
     #[test]
     fn benchmark_full_system_integration() {
         use crate::entropy::IntegratedShadowRNS;
@@ -798,7 +872,7 @@ mod depth_benchmarks {
         println!("╚══════════════════════════════════════════════════════════════╝\n");
 
         // FHE Context
-        let mut ctx = bench_ctx();
+        let mut ctx = bench_ctx(FHEConfig::light_rns_exact());
         let mut rng = ShadowHarvester::new();
         let keys = ctx.generate_keys(&mut rng);
 
@@ -849,10 +923,12 @@ mod depth_benchmarks {
 // FULL ARITHMETIC BENCHMARKS
 // ============================================================================
 
-#[cfg(test)]
+#[cfg(all(test, feature = "shadow-entropy"))]
+#[allow(deprecated)]
 mod arithmetic_benchmarks {
     use super::*;
     use crate::params::FHEConfig;
+    use crate::params::secure_configs::SecureConfig;
     use crate::entropy::ShadowHarvester;
     use crate::arithmetic::exact_divider::ExactDivider;
     use crate::arithmetic::exact_coeff::ExactContext;
@@ -1151,5 +1227,78 @@ mod arithmetic_benchmarks {
         println!("║    DECRYPT:    {:>8.2} ms                                    ║",
                  fhe_dec_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
         println!("╚══════════════════════════════════════════════════════════════╝\n");
+    }
+
+    fn benchmark_fhe_ops(label: &str, config: FHEConfig, fhe_ops: u64) {
+        println!("\n┌────────────────────────────────────────────────────────────┐");
+        println!("│  FHE OPERATIONS (GSO-FHE) - {:<20} │", label);
+        println!("└────────────────────────────────────────────────────────────┘");
+
+        let inner = RNSFHEContext::new_coeff_domain(&config);
+        let mut fhe_ctx = GSOFHEContext::new(inner);
+        let mut rng = ShadowHarvester::new();
+        let keys = fhe_ctx.generate_keys(&mut rng);
+
+        // FHE ENCRYPT
+        let start = Instant::now();
+        let mut cts = Vec::with_capacity(fhe_ops as usize);
+        for i in 0..fhe_ops {
+            cts.push(fhe_ctx.encrypt(i, &keys.public_key, &mut rng));
+        }
+        let fhe_enc_time = start.elapsed();
+        let fhe_enc_ops_sec = fhe_ops as f64 / fhe_enc_time.as_secs_f64();
+
+        // FHE ADD
+        let ct1 = fhe_ctx.encrypt(10, &keys.public_key, &mut rng);
+        let ct2 = fhe_ctx.encrypt(20, &keys.public_key, &mut rng);
+        let start = Instant::now();
+        for _ in 0..fhe_ops {
+            let _ = fhe_ctx.add(&ct1, &ct2);
+        }
+        let fhe_add_time = start.elapsed();
+        let fhe_add_ops_sec = fhe_ops as f64 / fhe_add_time.as_secs_f64();
+
+        // FHE MUL (symmetric)
+        let start = Instant::now();
+        for _ in 0..fhe_ops {
+            let _ = fhe_ctx.mul_symmetric(&ct1, &ct2, &keys.secret_key);
+        }
+        let fhe_mul_time = start.elapsed();
+        let fhe_mul_ops_sec = fhe_ops as f64 / fhe_mul_time.as_secs_f64();
+
+        // FHE DECRYPT
+        let start = Instant::now();
+        for ct in &cts {
+            let _ = fhe_ctx.decrypt(ct, &keys.secret_key);
+        }
+        let fhe_dec_time = start.elapsed();
+        let fhe_dec_ops_sec = fhe_ops as f64 / fhe_dec_time.as_secs_f64();
+
+        println!("  Operation      │ Time        │ Ops/sec     │ ms/op");
+        println!("  ───────────────┼─────────────┼─────────────┼────────");
+        println!("  FHE_ENCRYPT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
+                 fhe_enc_time.as_secs_f64() * 1000.0, fhe_enc_ops_sec,
+                 fhe_enc_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+        println!("  FHE_ADD        │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
+                 fhe_add_time.as_secs_f64() * 1000.0, fhe_add_ops_sec,
+                 fhe_add_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+        println!("  FHE_MUL        │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
+                 fhe_mul_time.as_secs_f64() * 1000.0, fhe_mul_ops_sec,
+                 fhe_mul_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+        println!("  FHE_DECRYPT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
+                 fhe_dec_time.as_secs_f64() * 1000.0, fhe_dec_ops_sec,
+                 fhe_dec_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+    }
+
+    #[test]
+    #[ignore = "Secure config baseline (secure_128)"]
+    fn benchmark_fhe_ops_secure_128() {
+        benchmark_fhe_ops("secure_128", SecureConfig::secure_128().into_config(), 50);
+    }
+
+    #[test]
+    #[ignore = "Secure config baseline (secure_192)"]
+    fn benchmark_fhe_ops_secure_192() {
+        benchmark_fhe_ops("secure_192", SecureConfig::secure_192().into_config(), 30);
     }
 }

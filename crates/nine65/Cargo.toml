@@ -6,7 +6,12 @@ edition.workspace = true
 authors.workspace = true
 
 [features]
-default = ["ntt_fft", "accelerated", "parallel"]
+default = ["ntt_fft", "parallel"]
+
+# The default feature set no longer includes "accelerated". Users who wish
+# to enable acceleration via proprietary crates (mana/unhal) should explicitly
+# enable the "accelerated" feature (e.g., `--features accelerated`). This
+# change improves buildability for users without access to those crates.
 secure-keygen = []
 ntt_fft = []
 wassan = ["shadow-entropy"]
@@ -21,8 +26,6 @@ debug_dual_mul = []
 serde = ["dep:serde", "dep:serde_json", "dep:bincode"]
 # Shadow entropy extensions (CRT shadow, WASSAN noise field)
 shadow-entropy = []
-# GSO-FHE gravitational swarm optimization noise bounding
-gso = []
 # Allow use of insecure test configurations in release builds (NOT RECOMMENDED)
 allow_insecure = []
 # Enable slow/expensive tests (opt-in)
