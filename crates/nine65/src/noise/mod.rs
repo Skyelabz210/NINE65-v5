@@ -432,84 +432,109 @@ const P2_MARKERS: usize = 5;
 ///
 /// Memory: O(1) - only 5 markers regardless of sample count
 /// Time: O(1) per update
-/// 
-/// Perfect for tracking noise distribution across millions of FHE operations.
+///
+/// INTEGER-ONLY IMPLEMENTATION: Uses Q32.32 fixed-point arithmetic.
+/// No floating point = perfect determinism across platforms.
+///
+/// Fixed-point format: 1.0 = Q32_ONE = 2^32 = 4294967296
 #[derive(Debug, Clone)]
 pub struct P2QuantileEstimator {
-    /// Target quantile (0.0 to 1.0, stored as fraction)
-    p: f64,  // We use f64 ONLY for the quantile parameter, not data
-    
+    /// Target quantile in Q32.32 format (0 to Q32_ONE represents 0.0 to 1.0)
+    p_q32: i64,
+
     /// Marker heights (sorted sample values in millibits)
     q: [i64; P2_MARKERS],
-    
+
     /// Actual marker positions (1-indexed)
     n: [i64; P2_MARKERS],
-    
-    /// Desired marker positions
-    n_prime: [f64; P2_MARKERS],
-    
-    /// Increment for desired positions
-    dn: [f64; P2_MARKERS],
-    
+
+    /// Desired marker positions in Q32.32 format
+    n_prime_q32: [i64; P2_MARKERS],
+
+    /// Increment for desired positions in Q32.32 format
+    dn_q32: [i64; P2_MARKERS],
+
     /// Total observation count
     count: u64,
 }
 
+/// Q32.32 fixed-point representation of 1.0
+const Q32_ONE: i64 = 1i64 << 32;
+/// Q32.32 fixed-point representation of 0.5
+const Q32_HALF: i64 = 1i64 << 31;
+
 impl P2QuantileEstimator {
-    /// Create estimator for given quantile (0.0 to 1.0)
-    pub fn new_f64(p: f64) -> Self {
-        assert!((0.0..=1.0).contains(&p), "p must be 0.0-1.0");
-        
+    /// Create estimator for given quantile in permille (0-1000, where 500 = 0.5)
+    pub fn new(p_permille: i64) -> Self {
+        assert!((0..=1000).contains(&p_permille), "p_permille must be 0-1000");
+
+        // Convert permille to Q32.32: p_q32 = p_permille * Q32_ONE / 1000
+        let p_q32 = (p_permille * Q32_ONE) / 1000;
+
+        // Initial n_prime values in Q32.32:
+        // [1.0, 1.0 + 2.0*p, 1.0 + 4.0*p, 3.0 + 2.0*p, 5.0]
+        let n_prime_q32 = [
+            Q32_ONE,                           // 1.0
+            Q32_ONE + 2 * p_q32,               // 1.0 + 2.0*p
+            Q32_ONE + 4 * p_q32,               // 1.0 + 4.0*p
+            3 * Q32_ONE + 2 * p_q32,           // 3.0 + 2.0*p
+            5 * Q32_ONE,                       // 5.0
+        ];
+
+        // dn values in Q32.32: [0.0, p/2, p, (1+p)/2, 1.0]
+        let dn_q32 = [
+            0,                                  // 0.0
+            p_q32 / 2,                         // p/2
+            p_q32,                             // p
+            (Q32_ONE + p_q32) / 2,             // (1+p)/2
+            Q32_ONE,                           // 1.0
+        ];
+
         Self {
-            p,
+            p_q32,
             q: [0; P2_MARKERS],
             n: [1, 2, 3, 4, 5],
-            n_prime: [1.0, 1.0 + 2.0 * p, 1.0 + 4.0 * p, 3.0 + 2.0 * p, 5.0],
-            dn: [0.0, p / 2.0, p, (1.0 + p) / 2.0, 1.0],
+            n_prime_q32,
+            dn_q32,
             count: 0,
         }
     }
-    
-    /// Create estimator from milliquantile (0-1000)
-    pub fn new(p_milli: i64) -> Self {
-        Self::new_f64(p_milli as f64 / 1000.0)
-    }
-    
+
     /// Median estimator (p = 0.5)
     pub fn median() -> Self {
-        Self::new_f64(0.5)
+        Self::new(500)
     }
-    
+
     /// 90th percentile estimator
     pub fn p90() -> Self {
-        Self::new_f64(0.9)
+        Self::new(900)
     }
-    
+
     /// 95th percentile estimator
     pub fn p95() -> Self {
-        Self::new_f64(0.95)
+        Self::new(950)
     }
-    
+
     /// 99th percentile estimator
     pub fn p99() -> Self {
-        Self::new_f64(0.99)
+        Self::new(990)
     }
-    
+
     /// Update estimator with new observation (in millibits)
     pub fn update(&mut self, x: i64) {
         self.count += 1;
-        
+
         if self.count <= P2_MARKERS as u64 {
             // Initialization phase: collect first 5 samples
             self.q[(self.count - 1) as usize] = x;
-            
+
             if self.count == P2_MARKERS as u64 {
                 // Sort initial samples
                 self.q.sort_unstable();
             }
             return;
         }
-        
+
         // Find cell k where x falls
         let k: usize;
         if x < self.q[0] {
@@ -529,98 +554,130 @@ impl P2QuantileEstimator {
                 self.q[4] = x;
             }
         }
-        
+
         // Increment positions of markers > k
         for i in (k + 1)..P2_MARKERS {
             self.n[i] += 1;
         }
-        
-        // Update desired positions
+
+        // Update desired positions (Q32.32 arithmetic)
         for i in 0..P2_MARKERS {
-            self.n_prime[i] += self.dn[i];
+            self.n_prime_q32[i] += self.dn_q32[i];
         }
-        
+
         // Adjust heights of markers 1, 2, 3 if needed
         for i in 1..=3 {
-            let d = self.n_prime[i] - self.n[i] as f64;
-            
-            if (d >= 1.0 && self.n[i + 1] - self.n[i] > 1) ||
-               (d <= -1.0 && self.n[i - 1] - self.n[i] < -1) {
-                let d_sign = if d >= 0.0 { 1 } else { -1 };
-                
-                // Try parabolic
-                let q_new = self.parabolic(i, d_sign);
-                
+            // d = n_prime[i] - n[i] in Q32.32
+            let d_q32 = self.n_prime_q32[i] - (self.n[i] * Q32_ONE);
+
+            // Check if |d| >= 1.0 and there's room to adjust
+            if (d_q32 >= Q32_ONE && self.n[i + 1] - self.n[i] > 1) ||
+               (d_q32 <= -Q32_ONE && self.n[i - 1] - self.n[i] < -1) {
+                let d_sign = if d_q32 >= 0 { 1i64 } else { -1i64 };
+
+                // Try parabolic interpolation
+                let q_new = self.parabolic_q32(i, d_sign);
+
                 if self.q[i - 1] < q_new && q_new < self.q[i + 1] {
                     self.q[i] = q_new;
                 } else {
-                    // Use linear
-                    self.q[i] = self.linear(i, d_sign);
+                    // Use linear interpolation fallback
+                    self.q[i] = self.linear_q32(i, d_sign);
                 }
-                
-                self.n[i] += d_sign as i64;
+
+                self.n[i] += d_sign;
             }
         }
     }
-    
-    /// Parabolic interpolation (P² formula)
-    fn parabolic(&self, i: usize, d: i32) -> i64 {
-        let d = d as f64;
-        let ni = self.n[i] as f64;
-        let ni_prev = self.n[i - 1] as f64;
-        let ni_next = self.n[i + 1] as f64;
-        
-        let qi = self.q[i] as f64;
-        let qi_prev = self.q[i - 1] as f64;
-        let qi_next = self.q[i + 1] as f64;
-        
-        let term1 = (ni - ni_prev + d) * (qi_next - qi) / (ni_next - ni);
-        let term2 = (ni_next - ni - d) * (qi - qi_prev) / (ni - ni_prev);
-        
-        (qi + d / (ni_next - ni_prev) * (term1 + term2)) as i64
-    }
-    
-    /// Linear interpolation fallback
-    fn linear(&self, i: usize, d: i32) -> i64 {
-        let qi = self.q[i] as f64;
-        let qi_neighbor = if d > 0 { 
-            self.q[i + 1] as f64 
-        } else { 
-            self.q[i - 1] as f64 
+
+    /// Parabolic interpolation (P² formula) - INTEGER ONLY
+    /// Uses i128 for intermediate calculations to prevent overflow
+    fn parabolic_q32(&self, i: usize, d: i64) -> i64 {
+        let ni = self.n[i];
+        let ni_prev = self.n[i - 1];
+        let ni_next = self.n[i + 1];
+
+        let qi = self.q[i];
+        let qi_prev = self.q[i - 1];
+        let qi_next = self.q[i + 1];
+
+        // term1 = (ni - ni_prev + d) * (qi_next - qi) / (ni_next - ni)
+        let num1 = (ni - ni_prev + d) as i128 * (qi_next - qi) as i128;
+        let denom1 = (ni_next - ni) as i128;
+        let term1 = if denom1 != 0 { num1 / denom1 } else { 0 };
+
+        // term2 = (ni_next - ni - d) * (qi - qi_prev) / (ni - ni_prev)
+        let num2 = (ni_next - ni - d) as i128 * (qi - qi_prev) as i128;
+        let denom2 = (ni - ni_prev) as i128;
+        let term2 = if denom2 != 0 { num2 / denom2 } else { 0 };
+
+        // result = qi + d / (ni_next - ni_prev) * (term1 + term2)
+        let denom_final = (ni_next - ni_prev) as i128;
+        let adjustment = if denom_final != 0 {
+            (d as i128 * (term1 + term2)) / denom_final
+        } else {
+            0
         };
-        let ni = self.n[i] as f64;
-        let ni_neighbor = if d > 0 { 
-            self.n[i + 1] as f64 
-        } else { 
-            self.n[i - 1] as f64 
-        };
-        
-        (qi + d as f64 * (qi_neighbor - qi) / (ni_neighbor - ni)) as i64
+
+        (qi as i128 + adjustment) as i64
     }
-    
+
+    /// Linear interpolation fallback - INTEGER ONLY
+    fn linear_q32(&self, i: usize, d: i64) -> i64 {
+        let qi = self.q[i];
+        let (qi_neighbor, ni_neighbor) = if d > 0 {
+            (self.q[i + 1], self.n[i + 1])
+        } else {
+            (self.q[i - 1], self.n[i - 1])
+        };
+        let ni = self.n[i];
+
+        // result = qi + d * (qi_neighbor - qi) / (ni_neighbor - ni)
+        let denom = (ni_neighbor - ni) as i128;
+        if denom == 0 {
+            return qi;
+        }
+
+        let adjustment = (d as i128 * (qi_neighbor - qi) as i128) / denom;
+        (qi as i128 + adjustment) as i64
+    }
+
     /// Get current quantile estimate (in millibits)
     pub fn value(&self) -> i64 {
         if self.count < P2_MARKERS as u64 {
             // Not enough samples - return best available
             if self.count == 0 { return 0; }
-            let idx = ((self.count as f64 - 1.0) * self.p) as usize;
+            // idx = (count - 1) * p_q32 / Q32_ONE
+            let idx = (((self.count - 1) as i64 * self.p_q32) / Q32_ONE) as usize;
             return self.q[idx.min(self.count as usize - 1)];
         }
-        
+
         // Middle marker (index 2) is the quantile estimate
         self.q[2]
     }
-    
-    /// Get value in bits (for display)
+
+    /// Get value in millibits/1000 (for display - returns integer millibits)
+    pub fn value_millibits(&self) -> i64 {
+        self.value()
+    }
+
+    /// Get value in bits (as f64 for convenience)
     pub fn value_bits(&self) -> f64 {
         self.value() as f64 / MILLIBITS_PER_BIT as f64
     }
-    
+
+    /// Get value as (integer_bits, milli_fraction) for display
+    /// e.g., 3500 millibits -> (3, 500) meaning 3.500 bits
+    pub fn value_bits_parts(&self) -> (i64, i64) {
+        let v = self.value();
+        (v / MILLIBITS_PER_BIT as i64, v % MILLIBITS_PER_BIT as i64)
+    }
+
     /// Get observation count
     pub fn count(&self) -> u64 {
         self.count
     }
-    
+
     /// Get all marker heights (for debugging)
     pub fn markers(&self) -> [i64; P2_MARKERS] {
         self.q
@@ -684,22 +741,22 @@ impl NoiseDistribution {
     
     /// Get median in bits
     pub fn median_bits(&self) -> f64 {
-        self.median.value_bits()
+        self.median.value() as f64 / MILLIBITS_PER_BIT as f64
     }
-    
+
     /// Get P90 in bits
     pub fn p90_bits(&self) -> f64 {
-        self.p90.value_bits()
+        self.p90.value() as f64 / MILLIBITS_PER_BIT as f64
     }
     
     /// Get P95 in bits
     pub fn p95_bits(&self) -> f64 {
-        self.p95.value_bits()
+        self.p95.value() as f64 / MILLIBITS_PER_BIT as f64
     }
-    
+
     /// Get P99 in bits
     pub fn p99_bits(&self) -> f64 {
-        self.p99.value_bits()
+        self.p99.value() as f64 / MILLIBITS_PER_BIT as f64
     }
     
     /// Print distribution summary

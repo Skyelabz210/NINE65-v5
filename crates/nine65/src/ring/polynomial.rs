@@ -80,7 +80,16 @@ impl RingPolynomial {
         let coeffs = ntt.multiply(&self.coeffs, &other.coeffs);
         Self { coeffs, q: self.q }
     }
-    
+
+    /// Constant-time polynomial multiplication using NTT
+    ///
+    /// Uses constant-time Barrett reduction to prevent timing side-channels.
+    /// Use this variant when one or both operands depend on secret data.
+    pub fn mul_ct(&self, other: &Self, ntt: &NTTEngine) -> Self {
+        let coeffs = ntt.multiply_ct(&self.coeffs, &other.coeffs);
+        Self { coeffs, q: self.q }
+    }
+
     /// Scalar multiplication
     pub fn scalar_mul(&self, scalar: u64, ntt: &NTTEngine) -> Self {
         let coeffs = ntt.scalar_mul(&self.coeffs, scalar);
