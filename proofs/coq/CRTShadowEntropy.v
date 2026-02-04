@@ -67,6 +67,14 @@ Proof.
     apply Nat.Div0.div_lt_upper_bound; lia.
 Qed.
 
+(** General quotient bound: if x < m*n then x/m < n. *)
+Theorem quotient_range : forall x m n : nat,
+  m > 0 -> x < m * n -> x / m < n.
+Proof.
+  intros x m n Hm Hx.
+  apply Nat.Div0.div_lt_upper_bound; lia.
+Qed.
+
 (** Shadow entropy: log2(shadow_range) bits per operation *)
 Definition shadow_entropy_bits (m : nat) : nat := Nat.log2 m.
 
@@ -80,7 +88,8 @@ Qed.
 
 (** * Accumulator *)
 
-(** Accumulate shadows via XOR-like mixing *)
+(** Accumulate shadows via XOR-like mixing
+    NOTE: code uses XOR on 64-bit words; this model uses + for simplicity. *)
 Definition mix_shadows (acc new_shadow : nat) : nat :=
   acc + new_shadow.  (* Simplified; real uses XOR *)
 
@@ -125,9 +134,9 @@ Definition ten_k : nat := pow10_crt 4.
 Theorem entropy_significant : entropy_rate > ten_k.
 Proof.
   unfold entropy_rate, bits_per_shadow, operations_per_second, channels, ten_k, pow10_crt.
+  simpl.
   (* 64 * 60 * 8 = 30720 > 10000 *)
-  (* Use Nat.ltb_lt to convert to a decidable comparison *)
-  apply Nat.ltb_lt. reflexivity.
+  lia.
 Qed.
 
 (** * Magnitude Comparison *)

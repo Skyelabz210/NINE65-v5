@@ -15,6 +15,261 @@ use super::ntt_fft::NTTEngineFFT as NTTEngine;
 #[cfg(not(feature = "ntt_fft"))]
 use super::ntt::NTTEngine;
 
+
+use core::cmp::Ordering;
+
+/// Minimal 256-bit unsigned integer for intermediate reconstruction.
+///
+/// Representation: value = lo + hi * 2^128.
+/// Only the operations needed by NINE65's K-Elimination / rescale path are implemented.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct U256 {
+    pub(crate) lo: u128,
+    pub(crate) hi: u128,
+}
+
+impl U256 {
+    #[inline] pub(crate) const fn zero() -> Self { Self { lo: 0, hi: 0 } }
+    #[inline] pub(crate) const fn one() -> Self { Self { lo: 1, hi: 0 } }
+    #[inline] pub(crate) const fn from_u64(x: u64) -> Self { Self { lo: x as u128, hi: 0 } }
+    #[cfg(test)]
+    #[inline]
+    pub(crate) const fn from_u128(x: u128) -> Self { Self { lo: x, hi: 0 } }
+
+    #[inline]
+    pub(crate) fn is_zero(self) -> bool { self.lo == 0 && self.hi == 0 }
+
+    #[inline]
+    pub(crate) fn cmp(self, other: Self) -> Ordering {
+        match self.hi.cmp(&other.hi) {
+            Ordering::Equal => self.lo.cmp(&other.lo),
+            o => o,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn ge(self, other: Self) -> bool { self.cmp(other) != Ordering::Less }
+    #[inline]
+    pub(crate) fn gt(self, other: Self) -> bool { self.cmp(other) == Ordering::Greater }
+    #[inline]
+    pub(crate) fn le(self, other: Self) -> bool { self.cmp(other) != Ordering::Greater }
+
+    #[inline]
+    pub(crate) fn overflowing_add(self, other: Self) -> (Self, bool) {
+        let (lo, c0) = self.lo.overflowing_add(other.lo);
+        let (hi1, c1) = self.hi.overflowing_add(other.hi);
+        let (hi, c2) = hi1.overflowing_add(if c0 { 1 } else { 0 });
+        (Self { lo, hi }, c1 || c2)
+    }
+
+    #[inline]
+    pub(crate) fn add(self, other: Self) -> Self {
+        self.overflowing_add(other).0
+    }
+
+    #[inline]
+    pub(crate) fn sub(self, other: Self) -> Self {
+        debug_assert!(self.ge(other), "U256 underflow");
+        let (lo, b0) = self.lo.overflowing_sub(other.lo);
+        let hi = self.hi - other.hi - if b0 { 1 } else { 0 };
+        Self { lo, hi }
+    }
+
+    #[inline]
+    pub(crate) fn shr1(self) -> Self {
+        let lo = (self.lo >> 1) | ((self.hi & 1) << 127);
+        let hi = self.hi >> 1;
+        Self { lo, hi }
+    }
+
+    #[inline]
+    pub(crate) fn shl1(self) -> Self {
+        let hi = (self.hi << 1) | (self.lo >> 127);
+        let lo = self.lo << 1;
+        Self { lo, hi }
+    }
+
+    #[inline]
+    pub(crate) fn bitlen(self) -> u32 {
+        if self.hi != 0 {
+            256 - self.hi.leading_zeros()
+        } else if self.lo != 0 {
+            128 - self.lo.leading_zeros()
+        } else {
+            0
+        }
+    }
+
+    #[inline]
+    pub(crate) fn get_bit(self, i: u32) -> u32 {
+        if i < 128 {
+            ((self.lo >> i) & 1) as u32
+        } else {
+            ((self.hi >> (i - 128)) & 1) as u32
+        }
+    }
+
+    #[inline]
+    fn wide_mul_256(a: u128, b: u128) -> (u128, u128) {
+        let a_lo = a as u64 as u128;
+        let a_hi = (a >> 64) as u64 as u128;
+        let b_lo = b as u64 as u128;
+        let b_hi = (b >> 64) as u64 as u128;
+
+        let lo_lo = a_lo * b_lo;
+        let hi_lo = a_hi * b_lo;
+        let lo_hi = a_lo * b_hi;
+        let hi_hi = a_hi * b_hi;
+
+        let mid = hi_lo + lo_hi;
+        let (result_lo, carry1) = lo_lo.overflowing_add(mid << 64);
+        let carry2 = mid >> 64;
+        let result_hi = hi_hi + carry2 + if carry1 { 1 } else { 0 };
+
+        (result_lo, result_hi)
+    }
+
+    /// Multiply by a small u64, returning the low 256 bits (exact for our usage).
+    #[inline]
+    pub(crate) fn mul_u64(self, m: u64) -> Self {
+        let b = m as u128;
+        let (p0_lo, p0_hi) = Self::wide_mul_256(self.lo, b);
+        let (p1_lo, _) = Self::wide_mul_256(self.hi, b);
+        let (hi, _) = p0_hi.overflowing_add(p1_lo);
+        Self { lo: p0_lo, hi }
+    }
+
+    /// Multiply two U256 values and return the low 256 bits.
+    #[inline]
+    pub(crate) fn mul_low(self, other: Self) -> Self {
+        let (p00_lo, p00_hi) = Self::wide_mul_256(self.lo, other.lo);
+        let (p01_lo, _) = Self::wide_mul_256(self.lo, other.hi);
+        let (p10_lo, _) = Self::wide_mul_256(self.hi, other.lo);
+        let (cross, _) = p01_lo.overflowing_add(p10_lo);
+        let (hi, _) = p00_hi.overflowing_add(cross);
+        Self { lo: p00_lo, hi }
+    }
+
+    /// value mod m where m fits in u64 (as used for primes).
+    #[inline]
+    pub(crate) fn mod_u64(self, m: u64) -> u64 {
+        let m128 = m as u128;
+        if m128 == 0 { return 0; }
+        // 2^128 mod m = (2^64 mod m)^2 mod m
+        let two64 = (1u128 << 64) % m128;
+        let two128 = (two64 * two64) % m128;
+        let hi_mod = self.hi % m128;
+        let lo_mod = self.lo % m128;
+        let rem = (hi_mod * two128 + lo_mod) % m128;
+        rem as u64
+    }
+
+    /// Divide by u64, returning (quotient, remainder).
+    pub(crate) fn div_mod_u64(self, d: u64) -> (Self, u64) {
+        assert!(d != 0, "division by zero");
+        let d128 = d as u128;
+
+        // Work in base 2^64 limbs: [w0, w1, w2, w3] least->most significant.
+        let w0 = self.lo as u64;
+        let w1 = (self.lo >> 64) as u64;
+        let w2 = self.hi as u64;
+        let w3 = (self.hi >> 64) as u64;
+
+        let mut rem: u128 = 0;
+        // limb 3
+        let acc3 = (rem << 64) | (w3 as u128);
+        let q3 = (acc3 / d128) as u64;
+        rem = acc3 % d128;
+
+        // limb 2
+        let acc2 = (rem << 64) | (w2 as u128);
+        let q2 = (acc2 / d128) as u64;
+        rem = acc2 % d128;
+
+        // limb 1
+        let acc1 = (rem << 64) | (w1 as u128);
+        let q1 = (acc1 / d128) as u64;
+        rem = acc1 % d128;
+
+        // limb 0
+        let acc0 = (rem << 64) | (w0 as u128);
+        let q0 = (acc0 / d128) as u64;
+        rem = acc0 % d128;
+
+        let q_lo = (q0 as u128) | ((q1 as u128) << 64);
+        let q_hi = (q2 as u128) | ((q3 as u128) << 64);
+
+        (Self { lo: q_lo, hi: q_hi }, rem as u64)
+    }
+
+    /// Remainder of self divided by modulus (modulus != 0).
+    /// Uses bitwise long division; 256 steps worst case.
+    pub(crate) fn rem_u256(self, modulus: Self) -> Self {
+        assert!(!modulus.is_zero(), "mod by zero");
+        if self.lt(modulus) {
+            return self;
+        }
+        let mut rem = Self::zero();
+        let bl = self.bitlen();
+        for i in (0..bl).rev() {
+            rem = rem.shl1();
+            if self.get_bit(i) == 1 {
+                rem.lo |= 1;
+            }
+            if rem.ge(modulus) {
+                rem = rem.sub(modulus);
+            }
+        }
+        rem
+    }
+
+    #[inline]
+    pub(crate) fn lt(self, other: Self) -> bool { self.cmp(other) == Ordering::Less }
+
+    /// (a + b) mod m, with a,b < m
+    #[inline]
+    pub(crate) fn add_mod(self, other: Self, m: Self) -> Self {
+        let (sum, _) = self.overflowing_add(other);
+        if sum.ge(m) { sum.sub(m) } else { sum }
+    }
+
+    /// (a - b) mod m, with a,b < m
+    #[inline]
+    pub(crate) fn sub_mod(self, other: Self, m: Self) -> Self {
+        if self.ge(other) { self.sub(other) } else { m.sub(other.sub(self)) }
+    }
+
+    /// Product of a slice of u64s (exact as long as the true product fits in 256 bits).
+    pub(crate) fn product_u64s(values: &[u64]) -> Self {
+        let mut acc = Self::one();
+        for &v in values {
+            acc = acc.mul_u64(v);
+        }
+        acc
+    }
+}
+
+/// Return true if the product of the first `level` primes fits in u128.
+pub(crate) fn q_fits_u128(level: usize, primes: &[u64]) -> bool {
+    let mut acc: u128 = 1;
+    for &p in primes.iter().take(level) {
+        match acc.checked_mul(p as u128) {
+            Some(next) => acc = next,
+            None => return false,
+        }
+    }
+    true
+}
+
+/// Compute Δ = floor(Q/t) in RNS form without relying on u128-sized Q.
+pub(crate) fn compute_delta_rns_overflow_safe(primes: &[u64], t: u64) -> Vec<u64> {
+    assert!(t != 0, "Plaintext modulus t must be > 0");
+    let q = U256::product_u64s(primes);
+    let (delta, _) = q.div_mod_u64(t);
+    primes.iter().map(|&p| delta.mod_u64(p)).collect()
+}
+
+
 /// RNS Context for managing multiple prime moduli
 pub struct RNSContext {
     /// List of coprime moduli
@@ -142,6 +397,37 @@ impl RNSContext {
 
         result
     }
+
+/// Reconstruct at a given level into a 256-bit integer (exact if the level product fits in 256 bits).
+///
+/// This is used for secure_192 / secure_256 paths where the level product exceeds u128.
+pub(crate) fn to_u256_level(&self, rns: &[u64], level: usize) -> U256 {
+    assert!(level <= self.primes.len(), "Level exceeds prime count");
+    assert!(rns.len() >= level, "RNS length mismatch");
+
+    let primes = &self.primes[..level];
+
+    // Iterative CRT (Garner-style) in full precision (U256).
+    // x_0 = r0, m_0 = p0
+    let mut x = U256::from_u64(rns[0] % primes[0]);
+    let mut m_prod = U256::from_u64(primes[0]);
+
+    for i in 1..level {
+        let p = primes[i];
+        let x_mod_p = x.mod_u64(p);
+        let m_mod_p = m_prod.mod_u64(p);
+        let diff = (rns[i] + p - x_mod_p) % p;
+        let inv = mod_inverse(m_mod_p, p);
+        let t = ((diff as u128) * (inv as u128) % (p as u128)) as u64;
+
+        x = x.add(m_prod.mul_u64(t));
+        m_prod = m_prod.mul_u64(p);
+    }
+
+    x
+}
+
+
 
     /// Compute modular inverse using extended Euclidean algorithm
     fn mod_inv(a: u128, m: u128) -> u128 {
@@ -311,6 +597,32 @@ impl RNSPolynomial {
 }
 
 /// Modular inverse using extended Euclidean algorithm
+
+/// Reconstruct an integer from CRT residues into U256 using iterative CRT.
+///
+/// Assumes primes are pairwise coprime and the true value is in [0, Π p_i).
+fn crt_reconstruct_u256(residues: &[u64], primes: &[u64]) -> U256 {
+    assert!(!primes.is_empty(), "need primes");
+    assert!(residues.len() >= primes.len(), "residue length mismatch");
+
+    let mut x = U256::from_u64(residues[0] % primes[0]);
+    let mut m_prod = U256::from_u64(primes[0]);
+
+    for i in 1..primes.len() {
+        let p = primes[i];
+        let x_mod_p = x.mod_u64(p);
+        let m_mod_p = m_prod.mod_u64(p);
+        let diff = (residues[i] + p - x_mod_p) % p;
+        let inv = mod_inverse(m_mod_p, p);
+        let t = ((diff as u128) * (inv as u128) % (p as u128)) as u64;
+
+        x = x.add(m_prod.mul_u64(t));
+        m_prod = m_prod.mul_u64(p);
+    }
+
+    x
+}
+
 fn mod_inverse(a: u64, m: u64) -> u64 {
     let mut mn = (m as i128, a as i128);
     let mut xy = (0i128, 1i128);
@@ -634,130 +946,42 @@ impl DualRNSContext {
     ///
     /// # Returns
     /// k such that v_exact = v_main + k × M_level
-    pub fn extract_k_rns_level(&self, v_main: u128, v_anchor_rns: &[u64], level_main_primes: &[u64]) -> u128 {
-        assert_eq!(v_anchor_rns.len(), self.anchor.primes.len());
-        assert!(self.anchor.primes.len() >= 3, "Need at least 3 anchor primes for k reconstruction");
+    
+/// Extract k using a LEVEL-SPECIFIC main modulus product, without materializing the full modulus in u128.
+///
+/// Returns k as a 256-bit unsigned value in [0, A_k), where A_k is the product of the anchor primes
+/// used for reconstruction.
+pub(crate) fn extract_k_rns_level(&self, v_main: U256, v_anchor_rns: &[u64], level_main_primes: &[u64]) -> U256 {
+    assert!(level_main_primes.len() <= self.main.primes.len(), "Level exceeds main prime count");
+    assert_eq!(v_anchor_rns.len(), self.anchor.primes.len(), "Anchor RNS length mismatch");
 
-        // HIGH-001: Anchor capacity validation
-        // For 4+ main primes (M >= 119 bits), k_max can exceed 3-anchor capacity (~94 bits)
-        // Must have 4+ anchor primes to handle k_max up to ~99 bits
-        if level_main_primes.len() >= 4 {
-            assert!(
-                self.anchor.primes.len() >= 4,
-                "ANCHOR CAPACITY ERROR: {} main primes require 4+ anchor primes (have {}). \
-                 k_max for 4-prime M (~119 bits) is ~99 bits, but 3-anchor capacity is only ~94 bits.",
-                level_main_primes.len(),
-                self.anchor.primes.len()
-            );
-        }
+    // Compute M_level = product(level_main_primes) as U256 (fits for current parameter sets).
+    let m_level = U256::product_u64s(level_main_primes);
 
-        // Compute M_level = product of level main primes
-        let m_level: u128 = level_main_primes.iter()
-            .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))
-            .expect("M_level overflow: main prime product exceeded u128");
+    // Choose how many anchor primes to reconstruct k from.
+    // For >=5 main primes, use 5 anchors; for >=4 use 4; else use 3.
+    let k_primes = if level_main_primes.len() >= 5 {
+        self.anchor.primes.len().min(5)
+    } else if level_main_primes.len() >= 4 {
+        self.anchor.primes.len().min(4)
+    } else {
+        self.anchor.primes.len().min(3)
+    };
+    assert!(k_primes >= 3, "Need at least 3 anchor primes for k reconstruction");
 
-        // Compute k in RNS form: k_rns[i] = ((v_anchor[i] - (v_main mod a_i)) × M_level⁻¹) mod a_i
-        let k_rns: Vec<u64> = self.anchor.primes.iter()
-            .zip(v_anchor_rns.iter())
-            .map(|(&a_i, &v_a_i)| {
-                // Compute M_level⁻¹ mod a_i on the fly
-                let m_level_mod_ai = (m_level % a_i as u128) as u64;
-                let m_level_inv_ai = mod_inverse(m_level_mod_ai, a_i);
-
-                let v_m_mod_ai = (v_main % a_i as u128) as u64;
-
-                // diff = v_a_i - v_m_mod_ai mod a_i
-                let diff = if v_a_i >= v_m_mod_ai {
-                    v_a_i - v_m_mod_ai
-                } else {
-                    a_i - v_m_mod_ai + v_a_i
-                };
-
-                // k_i = diff × M_level⁻¹ mod a_i
-                ((diff as u128 * m_level_inv_ai as u128) % a_i as u128) as u64
-            })
-            .collect();
-
-        // Determine how many anchor primes needed for k reconstruction
-        // k_max ≈ Δ²×N / M where Δ = M/t
-        // For 3 main primes (M ~90 bits): k_max ~70 bits, A3 ~94 bits ✓
-        // For 4 main primes (M ~119 bits): k_max ~99 bits, A3 ~94 bits ✗, A4 ~125 bits ✓
-        // Use 4 anchor primes if level >= 4 main primes (M >= 119 bits)
-        let use_4_primes = level_main_primes.len() >= 4 && self.anchor.primes.len() >= 4;
-
-        if use_4_primes {
-            // 4-prime CRT reconstruction (product ~125 bits, fits u128)
-            let p0 = self.anchor.primes[0] as u128;
-            let p1 = self.anchor.primes[1] as u128;
-            let p2 = self.anchor.primes[2] as u128;
-            let p3 = self.anchor.primes[3] as u128;
-
-            // Use incremental CRT to avoid overflow:
-            // First reconstruct k mod (p0*p1) from k_rns[0], k_rns[1]
-            // Then extend to k mod (p0*p1*p2) using k_rns[2]
-            // Then extend to k mod (p0*p1*p2*p3) using k_rns[3]
-
-            // Step 1: k mod p0
-            let mut k_partial = k_rns[0] as u128;
-            let mut mod_partial = p0;
-
-            // Step 2: Extend to k mod (p0*p1)
-            // k ≡ k_partial (mod mod_partial)
-            // k ≡ k_rns[1] (mod p1)
-            // => k = k_partial + mod_partial * ((k_rns[1] - k_partial mod p1) * mod_partial^-1 mod p1)
-            let k1 = k_rns[1] as u128;
-            let k_partial_mod_p1 = k_partial % p1;
-            let diff1 = if k1 >= k_partial_mod_p1 { k1 - k_partial_mod_p1 } else { p1 - k_partial_mod_p1 + k1 };
-            let mod_partial_inv_p1 = mod_inverse((mod_partial % p1) as u64, self.anchor.primes[1]) as u128;
-            let coeff1 = (diff1 * mod_partial_inv_p1) % p1;
-            k_partial = k_partial + mod_partial * coeff1;
-            mod_partial = mod_partial * p1;
-
-            // Step 3: Extend to k mod (p0*p1*p2)
-            let k2 = k_rns[2] as u128;
-            let k_partial_mod_p2 = k_partial % p2;
-            let diff2 = if k2 >= k_partial_mod_p2 { k2 - k_partial_mod_p2 } else { p2 - k_partial_mod_p2 + k2 };
-            let mod_partial_inv_p2 = mod_inverse((mod_partial % p2) as u64, self.anchor.primes[2]) as u128;
-            let coeff2 = (diff2 * mod_partial_inv_p2) % p2;
-            k_partial = k_partial + mod_partial * coeff2;
-            mod_partial = mod_partial * p2;
-
-            // Step 4: Extend to k mod (p0*p1*p2*p3)
-            let k3 = k_rns[3] as u128;
-            let k_partial_mod_p3 = k_partial % p3;
-            let diff3 = if k3 >= k_partial_mod_p3 { k3 - k_partial_mod_p3 } else { p3 - k_partial_mod_p3 + k3 };
-            let mod_partial_inv_p3 = mod_inverse((mod_partial % p3) as u64, self.anchor.primes[3]) as u128;
-            let coeff3 = (diff3 * mod_partial_inv_p3) % p3;
-
-            // Final k = k_partial + mod_partial * coeff3
-            // mod_partial ~94 bits, coeff3 ~32 bits => product ~126 bits, fits u128
-            // Use checked arithmetic to catch unexpected overflow (should never happen)
-            mod_partial.checked_mul(coeff3)
-                .and_then(|product| k_partial.checked_add(product))
-                .expect("CRT reconstruction overflow: k_partial + mod_partial * coeff3 exceeded u128")
-        } else {
-            // 3-prime CRT reconstruction (original path)
-            let p0 = self.anchor.primes[0] as u128;
-            let p1 = self.anchor.primes[1] as u128;
-            let p2 = self.anchor.primes[2] as u128;
-
-            let product_3 = p0 * p1 * p2;
-
-            let m0 = p1 * p2;
-            let m1 = p0 * p2;
-            let m2 = p0 * p1;
-
-            let m0_inv = mod_inverse((m0 % p0) as u64, self.anchor.primes[0]) as u128;
-            let m1_inv = mod_inverse((m1 % p1) as u64, self.anchor.primes[1]) as u128;
-            let m2_inv = mod_inverse((m2 % p2) as u64, self.anchor.primes[2]) as u128;
-
-            let term0 = ((k_rns[0] as u128 * m0_inv) % p0) * m0;
-            let term1 = ((k_rns[1] as u128 * m1_inv) % p1) * m1;
-            let term2 = ((k_rns[2] as u128 * m2_inv) % p2) * m2;
-
-            (term0 % product_3 + term1 % product_3 + term2 % product_3) % product_3
-        }
+    // Compute k residues in each anchor modulus: k_i = (v_a - v_m) * (M_level^{-1} mod a_i) mod a_i
+    let mut k_rns = vec![0u64; self.anchor.primes.len()];
+    for (i, &a_i) in self.anchor.primes.iter().enumerate() {
+        let m_level_mod_ai = m_level.mod_u64(a_i);
+        let inv = mod_inverse(m_level_mod_ai, a_i);
+        let v_m_mod_ai = v_main.mod_u64(a_i);
+        let diff = (v_anchor_rns[i] + a_i - v_m_mod_ai) % a_i;
+        k_rns[i] = ((diff as u128) * (inv as u128) % (a_i as u128)) as u64;
     }
+
+    // Reconstruct k from the first k_primes anchors via iterative CRT to U256.
+    crt_reconstruct_u256(&k_rns[..k_primes], &self.anchor.primes[..k_primes])
+}
 
     /// K-Elimination: Reconstruct full value from dual-RNS representation
     ///
@@ -1533,7 +1757,7 @@ mod tests {
 
             // Construct v = v_main + k * M, then compute v_anchor_rns
             // For simplicity, use v_main = 0, so v = k * M
-            let v_main: u128 = 0;
+            let v_main = U256::zero();
             // v_exact = k * M (may overflow u128, so compute residues directly)
 
             // Compute v_anchor_rns[i] = (k * M) mod anchor_primes[i]
@@ -1550,7 +1774,7 @@ mod tests {
             let k_reconstructed = ctx.extract_k_rns_level(v_main, &v_anchor_rns, &main_primes);
 
             assert_eq!(
-                k_reconstructed, k_true,
+                k_reconstructed, U256::from_u128(k_true),
                 "4-prime CRT failed for k = {} ({} bits)",
                 k_true, 128 - k_true.leading_zeros().max(1)
             );
@@ -1622,19 +1846,20 @@ mod tests {
 
     /// Test anchor capacity validation assertion
     #[test]
-    #[should_panic(expected = "ANCHOR CAPACITY ERROR")]
+    #[should_panic(expected = "Level exceeds main prime count")]
     fn test_anchor_capacity_insufficient() {
-        // Create context with only 3 anchor primes (via DualRNSContext::new directly)
+        // Create context with only 3 main primes
         let main_primes = vec![998244353u64, 985661441, 754974721]; // 3 main initially
         let anchor_primes = vec![2013265921u64, 2281701377, 2483027969]; // Only 3 anchor
 
-        // Create context with 3 anchor primes
+        // Create context with 3 main primes
         let ctx = DualRNSContext::new(main_primes.clone(), anchor_primes, 4096);
 
-        // Now try to extract_k with 4 main primes - should panic
+        // Now try to extract_k with 4 main primes - should panic because
+        // the context was created with only 3 main primes
         let four_main_primes = vec![998244353u64, 985661441, 754974721, 469762049];
         let v_anchor_rns = vec![0u64; ctx.anchor.primes.len()];
-        let _ = ctx.extract_k_rns_level(0, &v_anchor_rns, &four_main_primes);
+        let _ = ctx.extract_k_rns_level(U256::zero(), &v_anchor_rns, &four_main_primes);
     }
 
     /// Test u128 overflow boundary in 4-prime CRT
@@ -1672,7 +1897,7 @@ mod tests {
             }
 
             // Construct v_anchor_rns = (k * M) mod each anchor prime
-            let v_main: u128 = 0;
+            let v_main = U256::zero();
             let v_anchor_rns: Vec<u64> = ctx.anchor.primes.iter()
                 .map(|&a_i| {
                     let k_mod_ai = (k_true % a_i as u128) as u64;
@@ -1684,7 +1909,7 @@ mod tests {
             let k_reconstructed = ctx.extract_k_rns_level(v_main, &v_anchor_rns, &main_primes);
 
             assert_eq!(
-                k_reconstructed, k_true,
+                k_reconstructed, U256::from_u128(k_true),
                 "u128 boundary CRT failed for k = {} ({} bits)",
                 k_true, 128 - k_true.leading_zeros()
             );

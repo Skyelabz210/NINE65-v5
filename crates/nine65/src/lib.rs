@@ -421,8 +421,8 @@ mod integration_tests {
         let _ = evaluator.add(&ct, &ct2);
         let add_time = start.elapsed();
         
-        // Homo mul benchmark (using BFVEvaluator::mul for timing - note: mul_dual_symmetric
-        // has overflow issues at N=4096, tracked for future fix)
+        // Homo mul benchmark (using BFVEvaluator::mul for timing - mul_dual_symmetric
+        // now supports two-stage rescale for large-Q configs)
         let start = std::time::Instant::now();
         #[allow(deprecated)]
         let _ = evaluator.mul(&ct, &ct2);
