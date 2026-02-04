@@ -4,7 +4,7 @@
 
 [![Lean 4](https://img.shields.io/badge/Lean-4.27.0-blue)](https://leanprover.github.io/)
 [![Mathlib](https://img.shields.io/badge/Mathlib-4-green)](https://github.com/leanprover-community/mathlib4)
-[![Theorems](https://img.shields.io/badge/Theorems-27-brightgreen)]()
+[![Theorems](https://img.shields.io/badge/Theorems-84-brightgreen)]()
 [![Sorry](https://img.shields.io/badge/Sorry-0-success)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -71,9 +71,17 @@ grep -r "sorry" KElimination.lean
 k-elimination-lean4/
 ├── KElimination.lean          # Main formalization (27 theorems)
 ├── KElimination/
-│   └── Basic.lean             # Basic definitions
+│   ├── Basic.lean             # Basic definitions
+│   ├── ZMod.lean              # ZMod formulation (8 theorems)
+│   ├── ShadowEntropy.lean     # Quotient semantics (5 theorems)
+│   ├── AHOP/                  # AHOP Algebraic Foundations
+│   │   ├── Algebra.lean       # Descartes form, reflections (7 theorems)
+│   │   ├── Hardness.lean      # Orbit analysis, bounds (12 theorems)
+│   │   └── Parameters.lean    # Production parameters (6 theorems)
+│   └── Lattice/
+│       └── CRT.lean           # Multi-channel CRT (15 theorems)
 ├── coq/
-│   └── K_Elimination.v        # Coq cross-validation (10 lemmas)
+│   └── K_Elimination.v        # Coq cross-validation (11 lemmas)
 ├── docs/
 │   ├── K_Elimination_Technical_Paper.pdf   # 6-page paper
 │   ├── K_Elimination_Technical_Paper.tex   # LaTeX source
@@ -86,7 +94,7 @@ k-elimination-lean4/
 └── LICENSE                    # MIT
 ```
 
-## Verified Theorems (27 Total)
+## Verified Theorems (84 Total)
 
 | Category | Theorems | Count |
 |----------|----------|-------|
@@ -100,6 +108,12 @@ k-elimination-lean4/
 | Validation | `validation_v1` through `validation_v6` | 6 |
 | Division | `division_exact`, `division_correct` | 2 |
 | Completeness | `complexity_improvement`, `k_elimination_complete`, `detect_coprimality_violation` | 3 |
+| ZMod Formulation | `kElimination_ZMod`, `fourPrime_crt_unique` | 8 |
+| ShadowEntropy | Quotient semantics | 5 |
+| **AHOP Algebra** | `reflect_preserves_apollonian`, `reflect_involution` | 7 |
+| **AHOP Hardness** | `orbit_exponential_lower_bound`, `injective_zeroTagged` | 12 |
+| **AHOP Parameters** | `params_128bit_secure`, `params_128bit_orbit_lower_bound` | 6 |
+| **Lattice CRT** | `crt_unique_representation`, `alpha_invertible_mod_beta` | 15 |
 
 ## The Core Insight
 
@@ -149,8 +163,10 @@ The theorem was independently verified in two proof systems:
 
 | System | Version | Theorems | Axioms | Status |
 |--------|---------|----------|--------|--------|
-| Lean 4 | 4.27.0 | 27 | 0 | ✅ |
-| Coq | 8.20.1 | 10 | 0 | ✅ |
+| Lean 4 | 4.27.0 | 84 | 1* | ✅ |
+| Coq | 8.20.1 | 11 | 0 | ✅ |
+
+*One intentional axiom for AHOP cryptographic hardness assumption.
 
 ## Citation
 

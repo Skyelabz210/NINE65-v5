@@ -64,16 +64,17 @@ K-Elimination is complementary to CRT. CRT reconstructs X from residues; K-Elimi
 
 ## Formal Verification
 
-### What does "27 theorems, 0 sorry" mean?
+### What does "84 theorems, 0 sorry" mean?
 
-- **27 theorems**: Every mathematical claim is a machine-checked theorem
+- **84 theorems**: Every mathematical claim is a machine-checked theorem (including AHOP algebraic foundations)
 - **0 sorry**: No axioms, no assumptions, no skipped proofs — complete verification
+- **1 axiom**: AHOP hardness is an intentional cryptographic assumption
 
 ### What proof assistants were used?
 
 | System | Version | Theorems | Status |
 |--------|---------|----------|--------|
-| Lean 4 | 4.27.0 | 27 | 0 sorry |
+| Lean 4 | 4.27.0 | 84 | 0 sorry |
 | Coq | 8.20.1 | 11 | 0 admitted |
 
 Cross-validation in two independent proof assistants eliminates tool-specific bugs.
