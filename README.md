@@ -10,7 +10,7 @@
 |--------|--------|-----------------|
 | **Max Depth** | 50+ levels (symmetric) | 10-15 levels |
 | **Bootstrap Required** | Never | Every ~10 muls |
-| **Depth-50 Circuit** | 812ms (symmetric) | 2,000-5,000ms |
+| **Depth-50 Circuit** | 6.15s / 22.62s (symmetric, secure_128 / secure_192) | 2,000-5,000ms |
 | **Memory** | ~200MB | 1-3GB |
 | **Hardware** | CPU only | GPU recommended |
 | **Post-Quantum** | Rough LWE baseline in docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md | Varies |
@@ -109,42 +109,42 @@ Classical period finding without circular dependencies:
 ## Performance Benchmarks
 
 Performance numbers are from internal release benchmarks. Reproduce and gate via
-docs/RELEASE_CHECKLIST.md.
+docs/RELEASE_CHECKLIST.md. Latest baseline: docs/PERFORMANCE_BASELINE_2026-01-27.md.
+FHE ops and depth use secure_128 and secure_192 baselines.
 
 ### Arithmetic Operations (Single-threaded, Release Build)
 
 #### RNS Arithmetic (4-lane parallel)
 | Operation | Time/op | Throughput |
 |-----------|---------|------------|
-| ADD | 48 ns | 20.7M ops/sec |
-| SUB | 41 ns | 24.3M ops/sec |
-| MUL | 83 ns | 12.0M ops/sec |
-| MUL+Signature | 101 ns | 9.9M ops/sec |
+| ADD | 65.7 ns | 15.2M ops/sec |
+| SUB | 52.9 ns | 18.9M ops/sec |
+| MUL | 95.6 ns | 10.5M ops/sec |
+| MUL+Signature | 100.0 ns | 10.0M ops/sec |
 
 #### Exact Coefficient Arithmetic (Dual-Track)
 | Operation | Time/op | Throughput |
 |-----------|---------|------------|
-| COEFF_ADD | 52 ns | 19.1M ops/sec |
-| COEFF_MUL | 70 ns | 14.3M ops/sec |
-| COEFF_DIV | 48 ns | 20.7M ops/sec |
-| COEFF_SCALE | 49 ns | 20.4M ops/sec |
+| COEFF_ADD | 60.0 ns | 16.7M ops/sec |
+| COEFF_MUL | 84.0 ns | 11.9M ops/sec |
+| COEFF_DIV | 53.5 ns | 18.7M ops/sec |
+| COEFF_SCALE | 53.7 ns | 18.6M ops/sec |
 
-#### FHE Operations
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Encrypt | <1ms | 80x faster than traditional |
-| Add | ~50us | Real-time capable |
-| Mul | ~16ms | Including K-Elimination rescale |
-| Depth-50 Circuit | 812ms | Zero bootstraps |
+#### FHE Operations (secure configs)
+| Operation | secure_128 | secure_192 | Notes |
+|-----------|------------|------------|-------|
+| Encrypt | 23.93ms | 62.14ms | baseline |
+| Add | 0.91ms | 2.18ms | baseline |
+| Mul | 125.01ms | 411.55ms | Including K-Elimination rescale |
+| Decrypt | 11.17ms | 28.88ms | baseline |
 
 ### Depth Benchmark Results
-```
-Depth: 50 multiplicative levels
-Basin collapses: 0
-Total time: 812ms
-Average per mul: 16.24ms
-Bootstraps required: 0
-```
+| Config | Depth | Total time | Avg time/mul | Collapses |
+|--------|-------|------------|--------------|-----------|
+| secure_128 | 50 | 6.147s | 122.95ms | 0 |
+| secure_192 | 50 | 22.625s | 452.50ms | 0 |
+
+Bootstraps required: 0 (symmetric).
 
 ---
 
@@ -153,9 +153,9 @@ Bootstraps required: 0
 Methodology and sources are documented in docs/FHE_BENCHMARK_COMPARISON.md.
 
 ```
-Library          | Max Depth | Bootstrap | Depth-50 Time
+Library          | Max Depth | Bootstrap | Depth-50 Time (symmetric)
 -----------------+-----------+-----------+--------------
-NINE65           |    50+    |   Never   |    812ms
+NINE65           |    50+    |   Never   |    6.15s / 22.62s
 OpenFHE (BGV)    |    15     |   ~50ms   |   ~2,500ms
 Microsoft SEAL   |    12     |    N/A    |   (limited)
 TFHE-rs (GPU)    | Unlimited |   <1ms    |    ~200ms*
@@ -319,8 +319,62 @@ assert_eq!(result, 6);
 ### Documentation
 - `docs/SECURITY_PROOFS.md` - Security assumptions and proofs
 - `docs/FHE_BENCHMARK_COMPARISON.md` - Industry comparison with sources
+- `docs/PERFORMANCE_BASELINE_2026-01-27.md` - Measured performance baseline and environment
 - `docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md` - LWE estimator baseline
 - `docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md` - public-mode depth sweep
+
+---
+
+## Formal Verification
+
+NINE65 innovations are backed by machine-checked proofs in Coq and Lean4.
+
+### Coq Proofs (`proofs/coq/`)
+
+| File | Innovation | Status |
+|------|------------|--------|
+| `KElimination.v` | K-Elimination exact division | Verified |
+| `K_Elimination.v` | Core k-value theorems | Verified |
+| `GSOFHE.v` | GSO-FHE noise bounding | Verified |
+| `CRTShadowEntropy.v` | Shadow entropy harvesting | Verified |
+| `OrderFinding.v` | Non-circular order finding | Verified |
+| `MQReLU.v` | MQ-ReLU activation | Verified |
+| `IntegerSoftmax.v` | Integer softmax | Verified |
+| `MontgomeryPersistent.v` | Montgomery arithmetic | Verified |
+| `MobiusInt.v` | Mobius integer transforms | Verified |
+| `CyclotomicPhase.v` | Cyclotomic phase tracking | Verified |
+| `PadeEngine.v` | Pade approximation engine | Verified |
+| `ExactCoefficient.v` | Exact coefficient arithmetic | Verified |
+| `StateCompression.v` | FHE state compression | Verified |
+| `SideChannelResistance.v` | Side-channel mitigations | Verified |
+| `EncryptedQuantum.v` | Encrypted quantum simulation | Verified |
+
+### Lean4 Proofs (`lean4/KElimination/`)
+
+| File | Content | Status |
+|------|---------|--------|
+| `KElimination.lean` | Main K-Elimination formalization | Verified |
+| `Basic.lean` | Core definitions | Verified |
+| `ShadowEntropy.lean` | Shadow/quotient reconstruction | Verified |
+| `ZMod.lean` | Modular arithmetic lemmas | Verified |
+
+### Verification Commands
+
+```bash
+# Coq verification (requires Coq 8.18+)
+cd proofs/coq && coqc *.v
+
+# Lean4 verification (requires Lean 4.x + Mathlib)
+cd lean4/KElimination && lake build
+```
+
+### Proof Archive
+
+A standalone archive of all proofs is available:
+```bash
+# Location: ~/v5_proofs.tar.gz (52KB)
+tar -xzvf ~/v5_proofs.tar.gz
+```
 
 ---
 
@@ -341,5 +395,5 @@ Proprietary. See `LICENSE`.
 
 ---
 
-*Last updated: 2026-01-27*
+*Last updated: 2026-02-04*
 *NINE65 - Bootstrap-Free FHE with K-Elimination*
