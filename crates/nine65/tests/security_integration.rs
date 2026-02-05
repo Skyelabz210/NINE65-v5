@@ -438,7 +438,7 @@ mod adversarial_tests {
 
     #[test]
     fn test_malformed_json_rejected() {
-        let config = FHEConfig::light();
+        let config = FHEConfig::light_rns();
 
         // Completely malformed JSON
         let result = Ciphertext::from_json_validated("{}", config.n, config.q);

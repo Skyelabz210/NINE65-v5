@@ -14,7 +14,8 @@
   "acceptance_checks": [
     "AC1",
     "AC2",
-    "AC3"
+    "AC3",
+    "AC4"
   ],
   "nodes": [
     {
@@ -327,6 +328,131 @@
       "evidence": {
         "note": "Synthesis updated; no outstanding gaps; quantum exclusions documented."
       }
+    },
+    {
+      "id": "H1",
+      "label": "Key serialization + validation hardening",
+      "type": "prover",
+      "statement": "Add validated serialization helpers for PublicKey/EvaluationKey and RingPolynomial::validate to prevent malformed key DoS.",
+      "dependencies": [
+        "A1",
+        "A2"
+      ],
+      "status": "verified",
+      "assigned_to": "pi",
+      "confidence": 0.55,
+      "artifacts": [
+        "crates/nine65/src/ring/polynomial.rs",
+        "crates/nine65/src/keys/mod.rs",
+        "swarm_run/jobs/H1/output/result.md"
+      ],
+      "evidence": {
+        "critic_severity": "CLEAN"
+      }
+    },
+    {
+      "id": "M2",
+      "label": "Key serialization tests",
+      "type": "simulator",
+      "statement": "Add serde roundtrip tests for PublicKey/EvaluationKey validated deserialization.",
+      "dependencies": [
+        "H1"
+      ],
+      "status": "verified",
+      "assigned_to": "mu",
+      "confidence": 0.55,
+      "artifacts": [
+        "crates/nine65/src/keys/mod.rs",
+        "swarm_run/jobs/M2/output/tests.json",
+        "swarm_run/jobs/M2/output/report.md"
+      ],
+      "evidence": {
+        "tests_passed": true,
+        "critic_severity": "CLEAN"
+      }
+    },
+    {
+      "id": "S3",
+      "label": "Release test run (post-hardening)",
+      "type": "verifier",
+      "statement": "Run release tests for workspace and serde-enabled nine65 to validate new helpers.",
+      "dependencies": [
+        "M2"
+      ],
+      "status": "verified",
+      "assigned_to": "sigma",
+      "confidence": 0.6,
+      "artifacts": [
+        "swarm_run/jobs/S3/output/test.log",
+        "swarm_run/jobs/S3/output/report.md"
+      ],
+      "evidence": {
+        "tests_passed": true,
+        "serde_tests_passed": true,
+        "test_log": "swarm_run/jobs/S3/output/test.log",
+        "critic_severity": "CLEAN"
+      }
+    },
+    {
+      "id": "K3",
+      "label": "Critique hardening artifacts",
+      "type": "critic",
+      "statement": "Adversarial review of H1/M2/S3 outputs for gaps and inconsistencies.",
+      "dependencies": [
+        "H1",
+        "M2",
+        "S3"
+      ],
+      "status": "verified",
+      "assigned_to": "kappa",
+      "confidence": 0.7,
+      "artifacts": [
+        "swarm_run/jobs/K3/output/critique.md",
+        "swarm_run/jobs/K3/output/result.md"
+      ],
+      "evidence": {
+        "critic_severity": "CLEAN"
+      }
+    },
+    {
+      "id": "O3",
+      "label": "Synthesis checkpoint (hardening)",
+      "type": "synthesizer",
+      "statement": "Summarize hardening changes and remaining gaps after K3.",
+      "dependencies": [
+        "K3"
+      ],
+      "status": "verified",
+      "assigned_to": "omega",
+      "confidence": 0.6,
+      "artifacts": [
+        "swarm_run/jobs/O3/output/theorem_stack.md",
+        "swarm_run/jobs/O3/output/conflict_log.md",
+        "docs/NINE65_V5_FHE_DEEP_ANALYSIS_TEST_REPORT.md"
+      ],
+      "evidence": {
+        "note": "Hardening complete; key serialization validated; no quantum scope."
+      }
+    },
+    {
+      "id": "AC4",
+      "label": "Key serialization acceptance",
+      "type": "acceptance_check",
+      "statement": "Validated serialization for PublicKey/EvaluationKey exists and tests pass.",
+      "dependencies": [
+        "H1",
+        "S3"
+      ],
+      "status": "verified",
+      "assigned_to": "orchestrator",
+      "confidence": 0.8,
+      "artifacts": [
+        "crates/nine65/src/keys/mod.rs",
+        "swarm_run/jobs/S3/output/test.log"
+      ],
+      "evidence": {
+        "keys_serialized": true
+      }
     }
   ],
   "migration_log": [
@@ -345,6 +471,10 @@
     {
       "timestamp": "2026-02-05T01:40:53Z",
       "note": "Lean KElimination proofs fully discharged; warnings-as-error enabled; artifacts updated."
+    },
+    {
+      "timestamp": "2026-02-05T03:42:51.578968+00:00",
+      "note": "Hardening update: added validated serialization for BFV PublicKey/EvaluationKey and serde-gated roundtrip tests; reran release + serde test suites."
     }
   ]
 }

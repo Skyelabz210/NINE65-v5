@@ -20,6 +20,9 @@
 | **Post-Quantum** | LWE-based (lattice estimator verified) | Varies |
 | **Test Coverage** | 491 tests passing | N/A |
 
+Deployment status: pre-production; deployment is not recommended until timing side-channel mitigations
+and baseline artifacts are fully reconciled. Minimum evaluation config: `secure_192`.
+
 Public-mode depth baseline is recorded in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md.
 
 ---
@@ -30,7 +33,7 @@ NINE65 targets post-quantum security through LWE (Learning With Errors) based cr
 
 ### Lattice Estimator Baseline (2026-01-27)
 Rough LWE estimates (Core-SVP + GSA) for SecureConfig parameters are recorded in
-docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md.
+docs/LATTICE_ESTIMATOR_BASELINE_2026-02-05.md.
 
 | SecureConfig | n | log2(q) | min attack log2(rop) |
 |--------------|---|---------|----------------------|
@@ -65,7 +68,7 @@ cargo test -p nine65 security::tests -- --nocapture
 
 **Note**: These are parameter estimates based on standard LWE security analysis.
 For formal guarantees, external audits and independent estimator runs are recommended.
-Baseline estimator outputs are recorded in docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md.
+Baseline estimator outputs are recorded in docs/LATTICE_ESTIMATOR_BASELINE_2026-02-05.md.
 
 ---
 
@@ -114,7 +117,7 @@ Classical period finding without circular dependencies:
 ## Performance Benchmarks
 
 Performance numbers are from internal release benchmarks. Reproduce and gate via
-docs/RELEASE_CHECKLIST.md. Latest baseline: docs/PERFORMANCE_BASELINE_2026-01-27.md.
+docs/RELEASE_CHECKLIST.md. Latest baseline: docs/PERFORMANCE_BASELINE_2026-02-05.md.
 FHE ops and depth use secure_128 and secure_192 baselines.
 
 ### Arithmetic Operations (Single-threaded, Release Build)
@@ -325,8 +328,8 @@ assert_eq!(result, 6);
 ### Documentation
 - `docs/SECURITY_PROOFS.md` - Security assumptions and proofs
 - `docs/FHE_BENCHMARK_COMPARISON.md` - Industry comparison with sources
-- `docs/PERFORMANCE_BASELINE_2026-01-27.md` - Measured performance baseline and environment
-- `docs/LATTICE_ESTIMATOR_BASELINE_2026-01-27.md` - LWE estimator baseline
+- `docs/PERFORMANCE_BASELINE_2026-02-05.md` - Measured performance baseline and environment
+- `docs/LATTICE_ESTIMATOR_BASELINE_2026-02-05.md` - LWE estimator baseline
 - `docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md` - public-mode depth sweep
 
 ---
