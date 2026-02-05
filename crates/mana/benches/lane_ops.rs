@@ -1,6 +1,6 @@
 //! MANA Lane Operations Benchmarks
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use mana::lane::{Lane, LaneOps};
 use mana::stream::{ManaStream, StreamOps};
 
