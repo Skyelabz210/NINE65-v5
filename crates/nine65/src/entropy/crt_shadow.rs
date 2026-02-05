@@ -2,6 +2,11 @@
 //!
 //! QMNF Innovation: Zero-cost entropy generation from computational byproducts.
 //!
+//! # Theorem Reference
+//! - Proof File: `CRTShadowEntropy.v`
+//! - Lean File: `ShadowEntropy.lean`
+//! - Status: VERIFIED
+//!
 //! ## Core Concept
 //!
 //! CRTBigInt (Residue Number Systems) performs parallel modular arithmetic:

@@ -5,6 +5,10 @@
 //!
 //! Performance: ~200ns per evaluation, zero drift, 100% reproducible
 //! Accuracy: Error < 10^-8 for |x| < 1 (scaled integer domain)
+//!
+//! # Theorem Reference
+//! - Proof File: `PadeEngine.v`
+//! - Status: VERIFIED
 
 /// Scale factor for integer representation (10^9 = 1.0)
 pub const PADE_SCALE: i128 = 1_000_000_000;

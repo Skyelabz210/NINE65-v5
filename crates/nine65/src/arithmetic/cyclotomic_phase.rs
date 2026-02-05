@@ -6,6 +6,10 @@
 //!
 //! NO POLYNOMIAL APPROXIMATION NEEDED - it's native to the ring structure.
 //!
+//! # Theorem Reference
+//! - Proof File: `CyclotomicPhase.v`
+//! - Status: VERIFIED
+//!
 //! Performance: ~50ns for phase extraction (vs ~3ms for poly approximation)
 
 /// Cyclotomic ring parameters

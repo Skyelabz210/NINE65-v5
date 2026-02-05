@@ -16,6 +16,10 @@
 //! ```
 //! We use B = N-1 as the bound. No factoring required.
 //!
+//! # Theorem Reference
+//! - Proof File: `OrderFinding.v`
+//! - Status: VERIFIED
+//!
 //! # Algorithm 4.1 (from the paper)
 //!
 //! 1. Set B = N-1, m = ⌈√B⌉

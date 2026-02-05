@@ -8,6 +8,10 @@
 //!   X ≡ inner.limbs[i] (mod p_i) for all i
 //!   X ≡ anchor.m_res (mod M)
 //!   X ≡ anchor.a_res (mod A)
+//!
+//! # Theorem Reference
+//! - Proof File: `ExactCoefficient.v`
+//! - Status: VERIFIED
 
 use super::exact_divider::ExactDivider;
 

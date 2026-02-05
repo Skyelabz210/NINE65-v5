@@ -460,8 +460,6 @@ pub struct P2QuantileEstimator {
 
 /// Q32.32 fixed-point representation of 1.0
 const Q32_ONE: i64 = 1i64 << 32;
-/// Q32.32 fixed-point representation of 0.5
-const Q32_HALF: i64 = 1i64 << 31;
 
 impl P2QuantileEstimator {
     /// Create estimator for given quantile in permille (0-1000, where 500 = 0.5)

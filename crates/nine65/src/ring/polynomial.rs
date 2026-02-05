@@ -9,7 +9,10 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 #[cfg(not(feature = "ntt_fft"))]
 use crate::arithmetic::NTTEngine;
 use crate::entropy::{ShadowHarvester, FheRng};
+use crate::errors::{Nine65Error, Nine65Result};
 use zeroize::Zeroize;
+
+const MAX_RING_POLY_DEGREE: usize = 32768;
 
 /// Polynomial in R_q = Z_q[X]/(X^N + 1)
 ///
@@ -55,6 +58,54 @@ impl RingPolynomial {
     /// Get polynomial degree (N)
     pub fn degree(&self) -> usize {
         self.coeffs.len()
+    }
+
+    /// Validate polynomial structure and bounds
+    ///
+    /// # Security
+    /// Use after deserialization to prevent:
+    /// - DoS via excessive allocation (bounded by MAX_RING_POLY_DEGREE)
+    /// - Inconsistent modulus/degree
+    /// - Out-of-range coefficients
+    pub fn validate(&self, expected_n: usize, expected_q: u64) -> Nine65Result<()> {
+        if self.coeffs.len() > MAX_RING_POLY_DEGREE {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "RingPolynomial: degree {} exceeds maximum {}",
+                    self.coeffs.len(),
+                    MAX_RING_POLY_DEGREE
+                ),
+            });
+        }
+
+        if self.coeffs.len() != expected_n {
+            return Err(Nine65Error::InvalidPolynomialDegree {
+                got: self.coeffs.len(),
+                expected: expected_n,
+            });
+        }
+
+        if self.q != expected_q {
+            return Err(Nine65Error::ConfigError {
+                message: format!(
+                    "RingPolynomial: modulus {} != expected {}",
+                    self.q, expected_q
+                ),
+            });
+        }
+
+        for (i, &coeff) in self.coeffs.iter().enumerate() {
+            if coeff >= self.q {
+                return Err(Nine65Error::ConfigError {
+                    message: format!(
+                        "RingPolynomial: coeff[{}] = {} >= q = {} (out of bounds)",
+                        i, coeff, self.q
+                    ),
+                });
+            }
+        }
+
+        Ok(())
     }
     
     /// Add two polynomials

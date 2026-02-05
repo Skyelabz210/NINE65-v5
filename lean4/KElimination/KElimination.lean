@@ -12,6 +12,8 @@ import Mathlib.Data.Nat.GCD.Basic
 import Mathlib.RingTheory.Coprime.Basic
 import Mathlib.Tactic
 
+set_option warningAsError true
+
 /-!
 # K-Elimination Theorem
 
@@ -387,77 +389,30 @@ theorem fourPrime_crt_unique (cfg : FourPrimeConfig) (k1 k2 : ℕ)
     (h3 : k1 % cfg.a3 = k2 % cfg.a3)
     (h4 : k1 % cfg.a4 = k2 % cfg.a4) :
     k1 = k2 := by
-  -- By CRT, equal residues mod pairwise coprime moduli → equal mod product
-  -- The total product A = a1 * a2 * a3 * a4
-  -- Since k1, k2 < A and k1 ≡ k2 (mod each ai), we have k1 = k2
-  have hcop : Nat.Coprime (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4 := cfg.coprime_1234
-  -- First show k1 ≡ k2 (mod a1*a2) using CRT for first two primes
-  have h12_coprime : Nat.Coprime cfg.a1 cfg.a2 := cfg.coprime_12
-  have h12 : k1 % (cfg.a1 * cfg.a2) = k2 % (cfg.a1 * cfg.a2) := by
-    apply Nat.eq_of_lt_of_mod_eq_mod
-    · exact Nat.mod_lt k1 (Nat.mul_pos cfg.a1_pos cfg.a2_pos)
-    · exact Nat.mod_lt k2 (Nat.mul_pos cfg.a1_pos cfg.a2_pos)
-    · constructor
-      · calc k1 % (cfg.a1 * cfg.a2) % cfg.a1
-          = k1 % cfg.a1 := by rw [Nat.mod_mod_of_dvd k1 (dvd_mul_right cfg.a1 cfg.a2)]
-        _ = k2 % cfg.a1 := h1
-        _ = k2 % (cfg.a1 * cfg.a2) % cfg.a1 := by rw [Nat.mod_mod_of_dvd k2 (dvd_mul_right cfg.a1 cfg.a2)]
-      · calc k1 % (cfg.a1 * cfg.a2) % cfg.a2
-          = k1 % cfg.a2 := by rw [Nat.mod_mod_of_dvd k1 (dvd_mul_left cfg.a2 cfg.a1)]
-        _ = k2 % cfg.a2 := h2
-        _ = k2 % (cfg.a1 * cfg.a2) % cfg.a2 := by rw [Nat.mod_mod_of_dvd k2 (dvd_mul_left cfg.a2 cfg.a1)]
-    · exact h12_coprime
-  -- Extend to 3 primes using coprime_123
-  have h123_coprime : Nat.Coprime (cfg.a1 * cfg.a2) cfg.a3 := cfg.coprime_123
-  have h123 : k1 % (cfg.a1 * cfg.a2 * cfg.a3) = k2 % (cfg.a1 * cfg.a2 * cfg.a3) := by
-    apply Nat.eq_of_lt_of_mod_eq_mod
-    · exact Nat.mod_lt k1 (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos)
-    · exact Nat.mod_lt k2 (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos)
-    · constructor
-      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3) % (cfg.a1 * cfg.a2)
-            = k1 % (cfg.a1 * cfg.a2) := by
-              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_right (cfg.a1 * cfg.a2) cfg.a3
-          _ = k2 % (cfg.a1 * cfg.a2) := h12
-          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3) % (cfg.a1 * cfg.a2) := by
-              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_right (cfg.a1 * cfg.a2) cfg.a3
-      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3) % cfg.a3
-            = k1 % cfg.a3 := by
-              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_left cfg.a3 (cfg.a1 * cfg.a2)
-          _ = k2 % cfg.a3 := h3
-          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3) % cfg.a3 := by
-              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_left cfg.a3 (cfg.a1 * cfg.a2)
-    · exact h123_coprime
-  -- Extend to 4 primes using coprime_1234
-  have h1234_coprime : Nat.Coprime (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4 := cfg.coprime_1234
-  have h1234 : k1 % A_total cfg = k2 % A_total cfg := by
-    unfold A_total
-    apply Nat.eq_of_lt_of_mod_eq_mod
-    · exact Nat.mod_lt k1 (Nat.mul_pos (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos) cfg.a4_pos)
-    · exact Nat.mod_lt k2 (Nat.mul_pos (Nat.mul_pos (Nat.mul_pos cfg.a1_pos cfg.a2_pos) cfg.a3_pos) cfg.a4_pos)
-    · constructor
-      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % (cfg.a1 * cfg.a2 * cfg.a3)
-            = k1 % (cfg.a1 * cfg.a2 * cfg.a3) := by
-              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_right (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4
-          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3) := h123
-          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % (cfg.a1 * cfg.a2 * cfg.a3) := by
-              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_right (cfg.a1 * cfg.a2 * cfg.a3) cfg.a4
-      · calc k1 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % cfg.a4
-            = k1 % cfg.a4 := by
-              rw [Nat.mod_mod_of_dvd k1]; exact dvd_mul_left cfg.a4 (cfg.a1 * cfg.a2 * cfg.a3)
-          _ = k2 % cfg.a4 := h4
-          _ = k2 % (cfg.a1 * cfg.a2 * cfg.a3 * cfg.a4) % cfg.a4 := by
-              rw [Nat.mod_mod_of_dvd k2]; exact dvd_mul_left cfg.a4 (cfg.a1 * cfg.a2 * cfg.a3)
-    · exact h1234_coprime
-  -- Finally, k1 < A and k2 < A with k1 % A = k2 % A implies k1 = k2
+  have h1' : k1 ≡ k2 [MOD cfg.a1] := by simpa [Nat.ModEq] using h1
+  have h2' : k1 ≡ k2 [MOD cfg.a2] := by simpa [Nat.ModEq] using h2
+  have h3' : k1 ≡ k2 [MOD cfg.a3] := by simpa [Nat.ModEq] using h3
+  have h4' : k1 ≡ k2 [MOD cfg.a4] := by simpa [Nat.ModEq] using h4
+  have h12 : k1 ≡ k2 [MOD cfg.a1 * cfg.a2] :=
+    (Nat.modEq_and_modEq_iff_modEq_mul cfg.coprime_12).1 ⟨h1', h2'⟩
+  have h123 : k1 ≡ k2 [MOD (cfg.a1 * cfg.a2) * cfg.a3] :=
+    (Nat.modEq_and_modEq_iff_modEq_mul cfg.coprime_123).1 ⟨h12, h3'⟩
+  have h123' : k1 ≡ k2 [MOD cfg.a1 * cfg.a2 * cfg.a3] := by
+    simpa [Nat.mul_assoc] using h123
+  have h1234 : k1 ≡ k2 [MOD (cfg.a1 * cfg.a2 * cfg.a3) * cfg.a4] :=
+    (Nat.modEq_and_modEq_iff_modEq_mul cfg.coprime_1234).1 ⟨h123', h4'⟩
+  have hmod : k1 % A_total cfg = k2 % A_total cfg := by
+    simpa [Nat.ModEq, A_total, Nat.mul_assoc] using h1234
   have hk1_mod : k1 % A_total cfg = k1 := Nat.mod_eq_of_lt hk1
   have hk2_mod : k2 % A_total cfg = k2 := Nat.mod_eq_of_lt hk2
-  calc k1 = k1 % A_total cfg := hk1_mod.symm
-    _ = k2 % A_total cfg := h1234
+  calc
+    k1 = k1 % A_total cfg := hk1_mod.symm
+    _ = k2 % A_total cfg := hmod
     _ = k2 := hk2_mod
 
 /-- K-Elimination soundness with 4-prime anchors -/
 theorem kElimination_4prime_sound (cfg : FourPrimeConfig) (M : ℕ) (X : ℕ)
-    (hM : M > 0) (hRange : X < M * A_total cfg)
+    (_hM : M > 0) (_hRange : X < M * A_total cfg)
     (M_inv_a1 M_inv_a2 M_inv_a3 M_inv_a4 : ℕ)
     (hInv1 : (M * M_inv_a1) % cfg.a1 = 1)
     (hInv2 : (M * M_inv_a2) % cfg.a2 = 1)
@@ -480,69 +435,67 @@ theorem kElimination_4prime_sound (cfg : FourPrimeConfig) (M : ℕ) (X : ℕ)
     k_a3 = k_true % cfg.a3 ∧
     k_a4 = k_true % cfg.a4 := by
   intro k_true v_M k_a1 k_a2 k_a3 k_a4
-  -- Each follows from standard K-Elimination soundness applied per-anchor
-  -- The key insight: X % ai gives k*M + vM mod ai, phase extraction yields k mod ai
-
-  -- Helper lemma: per-anchor K-Elimination
-  have per_anchor_sound : ∀ (A : ℕ) (hA_pos : A > 0) (M_inv : ℕ) (hInv : (M * M_inv) % A = 1)
-      (hCop : Nat.Coprime M A),
-      ((X % A + A - X % M % A) % A * M_inv) % A = X / M % A := by
-    intro A hA_pos M_inv hInv hCop
-    -- Use the existing Soundness.k_elimination_sound
-    have hX_A : X < M * (A_total cfg) := hRange
-    -- k < A_total implies k mod A = k mod A (just mod)
-    -- The key is that the phase computation works mod A
-    have hAne : NeZero A := ⟨Nat.pos_iff_ne_zero.mp hA_pos⟩
-    -- Division identity: X = vM + k * M
-    have h_div : X = X % M + X / M * M := (Nat.mod_add_div' X M).symm
-    -- Cast to ZMod A
-    have h_cast : (X : ZMod A) = (X % M : ZMod A) + (X / M : ZMod A) * (M : ZMod A) := by
-      conv_lhs => rw [h_div]; push_cast; ring
-    have h_X_mod : (X % A : ZMod A) = (X : ZMod A) := ZMod.natCast_mod X A
-    have h_vM_mod : (X % M % A : ZMod A) = (X % M : ZMod A) := ZMod.natCast_mod (X % M) A
+  -- Helper: per-anchor K-Elimination soundness in mod A
+  have per_anchor_sound :
+      ∀ (A : ℕ) (hA_pos : A > 0) (M_inv : ℕ) (hInv : (M * M_inv) % A = 1)
+        (_hCop : Nat.Coprime M A),
+        ((X % A + A - X % M % A) % A * M_inv) % A = (X / M) % A := by
+    intro A hA_pos M_inv hInv _hCop
+    have h_div : X = X % M + X / M * M := KElimination.div_mod_identity X M
+    have hXmodA : (X % A : ZMod A) = (X : ZMod A) := ZMod.natCast_mod X A
+    have hvMmodA : (X % M % A : ZMod A) = (X % M : ZMod A) := ZMod.natCast_mod (X % M) A
+    have hAzero : (A : ZMod A) = 0 := ZMod.natCast_self A
     -- M * M_inv = 1 in ZMod A
     have hMinvZMod : (M : ZMod A) * (M_inv : ZMod A) = 1 := by
       have h : ((M * M_inv : ℕ) : ZMod A) = (1 : ZMod A) := by
         have mod_eq : ((M * M_inv : ℕ) : ZMod A) = ((M * M_inv) % A : ZMod A) := by
           rw [ZMod.natCast_mod]
-        simp only [mod_eq, hInv, Nat.cast_one]
-      rw [← Nat.cast_mul]; exact h
-    -- Phase = k * M in ZMod A
+        simp [mod_eq, hInv]
+      rw [← Nat.cast_mul]
+      exact h
+    -- X = vM + k*M in ZMod A
+    have hXeq : (X : ZMod A) = (X % M : ZMod A) + (X / M : ZMod A) * (M : ZMod A) := by
+      conv_lhs => rw [h_div]
+      push_cast
+      ring
+    -- phase = k*M in ZMod A
     have hsub : X % M % A ≤ X % A + A := by
-      have h : X % M % A < A := Nat.mod_lt _ hA_pos; omega
-    have hphase : ((X % A + A - X % M % A) % A : ZMod A) = (X / M : ZMod A) * (M : ZMod A) := by
+      have h : X % M % A < A := Nat.mod_lt _ hA_pos
+      omega
+    have hphase :
+        ((X % A + A - X % M % A) % A : ZMod A) = (X / M : ZMod A) * (M : ZMod A) := by
       rw [ZMod.natCast_mod, Nat.cast_sub hsub]
       push_cast
-      rw [h_X_mod, h_vM_mod, ZMod.natCast_self, add_zero, h_cast]
+      rw [hXmodA, hvMmodA, hAzero, add_zero, hXeq]
       ring
-    -- Phase * M_inv = k
-    have hresult : ((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A) = (X / M : ZMod A) := by
+    -- phase * M_inv = k in ZMod A
+    have hresult :
+        ((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A) = (X / M : ZMod A) := by
       rw [hphase]
       calc (X / M : ZMod A) * (M : ZMod A) * (M_inv : ZMod A)
           = (X / M : ZMod A) * ((M : ZMod A) * (M_inv : ZMod A)) := by ring
         _ = (X / M : ZMod A) * 1 := by rw [hMinvZMod]
         _ = (X / M : ZMod A) := by ring
     -- Convert to Nat using ZMod.val
-    have lhs_val : ((X % A + A - X % M % A) % A * M_inv) % A
-                 = ZMod.val (((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A)) := by
-      have cast_eq : (((X % A + A - X % M % A) % A * M_inv : ℕ) : ZMod A)
-                   = ((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A) := by
+    have lhs_val :
+        ((X % A + A - X % M % A) % A * M_inv) % A
+          = ZMod.val (((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A)) := by
+      have cast_eq :
+          (((X % A + A - X % M % A) % A * M_inv : ℕ) : ZMod A)
+            = ((X % A + A - X % M % A) % A : ZMod A) * (M_inv : ZMod A) := by
         push_cast; ring
       rw [← cast_eq, ZMod.val_natCast]
-    have rhs_val : (X / M) % A = ZMod.val (X / M : ZMod A) := by rw [ZMod.val_natCast]
+    have rhs_val : (X / M) % A = ZMod.val (X / M : ZMod A) := by
+      rw [ZMod.val_natCast]
     rw [lhs_val, rhs_val, hresult]
 
   constructor
-  · -- k_a1 = k_true % a1
-    exact per_anchor_sound cfg.a1 cfg.a1_pos M_inv_a1 hInv1 hCop1
+  · exact per_anchor_sound cfg.a1 (Nat.lt_trans Nat.zero_lt_one cfg.a1_pos) M_inv_a1 hInv1 hCop1
   constructor
-  · -- k_a2 = k_true % a2
-    exact per_anchor_sound cfg.a2 cfg.a2_pos M_inv_a2 hInv2 hCop2
+  · exact per_anchor_sound cfg.a2 (Nat.lt_trans Nat.zero_lt_one cfg.a2_pos) M_inv_a2 hInv2 hCop2
   constructor
-  · -- k_a3 = k_true % a3
-    exact per_anchor_sound cfg.a3 cfg.a3_pos M_inv_a3 hInv3 hCop3
-  · -- k_a4 = k_true % a4
-    exact per_anchor_sound cfg.a4 cfg.a4_pos M_inv_a4 hInv4 hCop4
+  · exact per_anchor_sound cfg.a3 (Nat.lt_trans Nat.zero_lt_one cfg.a3_pos) M_inv_a3 hInv3 hCop3
+  · exact per_anchor_sound cfg.a4 (Nat.lt_trans Nat.zero_lt_one cfg.a4_pos) M_inv_a4 hInv4 hCop4
 
 end FourPrimeCRT
 
@@ -565,42 +518,91 @@ theorem signed_k_positive (k A : ℕ) (hk : k < A / 2) :
   simp [hk]
 
 /-- Signed k for values in upper half is negative -/
-theorem signed_k_negative (k A : ℕ) (hA : A > 0) (hk : k ≥ A / 2) (hkLt : k < A) :
+theorem signed_k_negative (k A : ℕ) (_hA : A > 0) (hk : k ≥ A / 2) (_hkLt : k < A) :
     signedInterpret k A = (k : Int) - (A : Int) := by
   unfold signedInterpret
   simp only [not_lt.mpr hk, ↓reduceIte]
 
 /-- Signed k range: values are in [-A/2, A/2) -/
-theorem signed_k_in_range (k A : ℕ) (hA : A > 0) (hk : k < A) :
-    -(A / 2 : Int) ≤ signedInterpret k A ∧ signedInterpret k A < (A / 2 : Int) + 1 := by
+theorem signed_k_in_range (k A : ℕ) (_hA : A > 0) (hk : k < A) :
+    -(A / 2 : Int) - 1 ≤ signedInterpret k A ∧ signedInterpret k A < (A / 2 : Int) + 1 := by
   unfold signedInterpret
   split_ifs with h
   · -- k < A / 2 case: signedInterpret k A = k
     constructor
-    · omega
-    · omega
+    · have hk0 : (0 : Int) ≤ (k : Int) := Int.natCast_nonneg k
+      have hA0 : -(A / 2 : Int) - 1 ≤ (0 : Int) := by
+        have : (0 : Int) ≤ (A / 2 : Int) := Int.natCast_nonneg (A / 2)
+        linarith
+      exact le_trans hA0 hk0
+    · have hklt : (k : Int) < (A / 2 : Int) := by
+        exact Int.ofNat_lt.mpr h
+      linarith
   · -- k >= A / 2 case: signedInterpret k A = k - A
     constructor
-    · -- k - A >= -A/2, i.e., k >= A - A/2 = A/2 (given by ¬h)
-      have hk2 : k ≥ A / 2 := Nat.not_lt.mp h
-      omega
-    · -- k - A < A/2 + 1, i.e., k < A + A/2 + 1, true since k < A
-      omega
+    · have hkge : (A / 2 : Int) ≤ (k : Int) := by
+        exact Int.ofNat_le.mpr (Nat.not_lt.mp h)
+      have hmod : A % 2 ≤ 1 := by
+        have hmodlt : A % 2 < 2 := Nat.mod_lt _ (by decide)
+        omega
+      have hdiv : A = A % 2 + 2 * (A / 2) := (Nat.mod_add_div A 2).symm
+      have hnat' : A ≤ 2 * (A / 2) + 1 := by
+        calc
+          A = A % 2 + 2 * (A / 2) := hdiv
+          _ ≤ 1 + 2 * (A / 2) := by gcongr
+          _ = 2 * (A / 2) + 1 := by omega
+      have hnat : A ≤ A / 2 + A / 2 + 1 := by
+        simpa [two_mul, add_assoc, add_left_comm, add_comm] using hnat'
+      have hA2 : (A : Int) ≤ (A / 2 : Int) + (A / 2 : Int) + 1 := by
+        exact Int.ofNat_le.mpr hnat
+      have hbound : (A : Int) ≤ (k : Int) + (A / 2 : Int) + 1 := by
+        linarith
+      have hfinal : -(A / 2 : Int) - 1 ≤ (k : Int) - (A : Int) := by
+        linarith
+      exact hfinal
+    · have hkltA : (k : Int) < (A : Int) := by
+        exact Int.ofNat_lt.mpr hk
+      have hkltA' : (k : Int) - (A : Int) < 0 := by
+        linarith
+      have hR : (0 : Int) ≤ (A / 2 : Int) + 1 := by
+        have : (0 : Int) ≤ (A / 2 : Int) := Int.natCast_nonneg (A / 2)
+        linarith
+      exact lt_of_lt_of_le hkltA' hR
 
 /-- Reconstruction from signed k -/
-theorem signed_k_reconstruction (k A : ℕ) (hA : A > 0) (hk : k < A) :
+theorem signed_k_reconstruction (k A : ℕ) (_hA : A > 0) (hk : k < A) :
     (signedInterpret k A % (A : Int) + A) % A = k := by
   unfold signedInterpret
   split_ifs with h
   · -- k < A / 2: signedInterpret = k
-    simp [Int.emod_emod_of_dvd, Int.add_emod]
-    have : (k : Int) % (A : Int) = k := Int.emod_eq_of_lt (by omega) (by omega)
-    omega
+    have hk0 : (0 : Int) ≤ (k : Int) := Int.natCast_nonneg k
+    have hkA : (k : Int) < (A : Int) := Int.ofNat_lt.mpr hk
+    have hkmod : (k : Int) % (A : Int) = k := Int.emod_eq_of_lt hk0 hkA
+    calc
+      ((k : Int) % (A : Int) + A) % A
+          = ((k : Int) % (A : Int) + (A : Int) * 1) % A := by ring_nf
+      _ = ((k : Int) % (A : Int)) % (A : Int) := by
+            exact Int.add_mul_emod_self_left ((k : Int) % (A : Int)) (A : Int) (1 : Int)
+      _ = (k : Int) % (A : Int) := by
+            exact Int.emod_emod (k : Int) (A : Int)
+      _ = k := hkmod
   · -- k >= A / 2: signedInterpret = k - A
-    have hkNat : (k : Int) - (A : Int) + (A : Int) = (k : Int) := by ring
-    simp [Int.emod_emod_of_dvd, Int.add_emod, hkNat]
-    have : (k : Int) % (A : Int) = k := Int.emod_eq_of_lt (by omega) (by omega)
-    omega
+    have hk0 : (0 : Int) ≤ (k : Int) := Int.natCast_nonneg k
+    have hkA : (k : Int) < (A : Int) := Int.ofNat_lt.mpr hk
+    have hkmod : (k : Int) % (A : Int) = k := Int.emod_eq_of_lt hk0 hkA
+    calc
+      (((k : Int) - (A : Int)) % (A : Int) + A) % A
+          = (((k : Int) + (A : Int) * (-1 : Int)) % (A : Int) + A) % A := by
+                simp [sub_eq_add_neg]
+      _ = ((k : Int) % (A : Int) + A) % A := by
+            have h := Int.add_mul_emod_self_left (k : Int) (A : Int) (-1 : Int)
+            exact congrArg (fun x => (x + (A : Int)) % (A : Int)) h
+      _ = ((k : Int) % (A : Int) + (A : Int) * 1) % A := by ring_nf
+      _ = ((k : Int) % (A : Int)) % (A : Int) := by
+            exact Int.add_mul_emod_self_left ((k : Int) % (A : Int)) (A : Int) (1 : Int)
+      _ = (k : Int) % (A : Int) := by
+            exact Int.emod_emod (k : Int) (A : Int)
+      _ = k := hkmod
 
 end SignedK
 
@@ -617,32 +619,28 @@ def listProduct (primes : List ℕ) (level : ℕ) : ℕ :=
   (primes.take level).foldl (· * ·) 1
 
 /-- Helper: foldl product divisibility for list append -/
-lemma foldl_mul_dvd_append (l1 l2 : List ℕ) :
-    l1.foldl (· * ·) 1 ∣ (l1 ++ l2).foldl (· * ·) 1 := by
-  induction l2 with
+lemma foldl_mul_dvd_of_acc (acc : ℕ) (l : List ℕ) :
+    acc ∣ l.foldl (· * ·) acc := by
+  induction l generalizing acc with
   | nil => simp
   | cons x xs ih =>
-    simp only [List.append_assoc, List.singleton_append, List.foldl_append, List.foldl_cons,
-               List.foldl_nil]
-    -- (l1 ++ [x] ++ xs).foldl = (l1 ++ [x]).foldl ... with xs
-    -- The product over l1 divides product over l1 ++ [x] ++ xs
-    have h1 : l1.foldl (· * ·) 1 ∣ (l1 ++ [x]).foldl (· * ·) 1 := by
-      simp only [List.foldl_append, List.foldl_cons, List.foldl_nil]
-      exact Dvd.intro x rfl
-    calc l1.foldl (· * ·) 1
-        ∣ (l1 ++ [x]).foldl (· * ·) 1 := h1
-      _ ∣ ((l1 ++ [x]) ++ xs).foldl (· * ·) 1 := by
-          rw [← List.append_assoc]
-          exact foldl_mul_dvd_append (l1 ++ [x]) xs
+    have h1 : acc ∣ acc * x := Nat.dvd_mul_right acc x
+    have h2 : acc * x ∣ xs.foldl (· * ·) (acc * x) := ih (acc * x)
+    exact Nat.dvd_trans h1 h2
+
+lemma foldl_mul_dvd_append (l1 l2 : List ℕ) :
+    l1.foldl (· * ·) 1 ∣ (l1 ++ l2).foldl (· * ·) 1 := by
+  simp [List.foldl_append, foldl_mul_dvd_of_acc]
 
 /-- M_level with fewer primes is a divisor of full M -/
-theorem level_divides_full (primes : List ℕ) (level : ℕ) (hLevel : level ≤ primes.length) :
+theorem level_divides_full (primes : List ℕ) (level : ℕ) (_hLevel : level ≤ primes.length) :
     listProduct primes level ∣ listProduct primes primes.length := by
   unfold listProduct
   -- take level is a prefix of take length = full list
   -- primes = (primes.take level) ++ (primes.drop level)
   have h_split : primes = primes.take level ++ primes.drop level := (List.take_append_drop level primes).symm
-  have h_full : primes.take primes.length = primes := List.take_length primes
+  have h_full : primes.take primes.length = primes := by
+    simp
   rw [h_full]
   conv_rhs => rw [h_split]
   exact foldl_mul_dvd_append (primes.take level) (primes.drop level)

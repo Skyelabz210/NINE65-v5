@@ -3,6 +3,10 @@
 //! Integrates GSO attractor-based noise bounding with K-Elimination FHE.
 //! Enables unlimited-depth homomorphic computation via basin collapse instead of bootstrapping.
 //!
+//! # Theorem Reference
+//! - Proof File: `GSOFHE.v`
+//! - Status: VERIFIED
+//!
 //! ## Architecture
 //!
 //! ```text
@@ -760,7 +764,6 @@ mod depth_benchmarks {
     }
 
     #[test]
-    #[ignore = "Secure config baseline (secure_128)"]
     fn benchmark_symmetric_max_depth_secure_128() {
         let mut ctx = bench_ctx(SecureConfig::secure_128().into_config());
         let mut rng = ShadowHarvester::new();
@@ -788,7 +791,6 @@ mod depth_benchmarks {
     }
 
     #[test]
-    #[ignore = "Secure config baseline (secure_192)"]
     fn benchmark_symmetric_max_depth_secure_192() {
         let mut ctx = bench_ctx(SecureConfig::secure_192().into_config());
         let mut rng = ShadowHarvester::new();
@@ -1291,13 +1293,11 @@ mod arithmetic_benchmarks {
     }
 
     #[test]
-    #[ignore = "Secure config baseline (secure_128)"]
     fn benchmark_fhe_ops_secure_128() {
         benchmark_fhe_ops("secure_128", SecureConfig::secure_128().into_config(), 50);
     }
 
     #[test]
-    #[ignore = "Secure config baseline (secure_192)"]
     fn benchmark_fhe_ops_secure_192() {
         benchmark_fhe_ops("secure_192", SecureConfig::secure_192().into_config(), 30);
     }

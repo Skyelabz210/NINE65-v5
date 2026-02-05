@@ -48,7 +48,7 @@ pub use ntt::NTTEngine;
 pub use ntt::NTTEngine as NTTEngineDFT;
 pub use ntt_fft::NTTEngineFFT;
 pub use rns::{RNSContext, RNSPolynomial, DualRNSContext, DualRNSPolynomial, DualRNSValue};
-pub(crate) use rns::{U256, compute_delta_rns_overflow_safe, q_fits_u128};
+pub(crate) use rns::{U256, compute_delta_rns_overflow_safe};
 pub use k_elimination::KElimination;
 pub use exact_divider::ExactDivider;
 pub use exact_coeff::{ExactCoeff, ExactContext, ExactPoly, AnchorTrack, RnsInner};
