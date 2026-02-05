@@ -28,6 +28,11 @@ Commands:
 - `cargo bench --workspace`
 - Archive `target/criterion` reports for the release artifact.
 
+## Baseline Artifacts (Reproducible)
+- `scripts/generate_security_baseline.sh` -> `docs/LATTICE_ESTIMATOR_BASELINE_YYYY-MM-DD.md`
+- `scripts/generate_performance_baseline.sh` -> `docs/PERFORMANCE_BASELINE_YYYY-MM-DD.md`
+- Archive generated baseline docs with the release artifact.
+
 ## Docs
 - Update `README.md` feature list and examples if flags or paths change.
 - Review `docs/SECURITY_PROOFS.md` and `docs/FHE_BENCHMARK_COMPARISON.md` for accuracy.

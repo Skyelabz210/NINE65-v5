@@ -259,12 +259,12 @@ For production deployment, the following proofs should be formalized:
 1. **RLWE Reduction**: Breaking NINE65 ⟹ Solving RLWE(N, q, χ)
 2. **K-Elimination Soundness**: Exact reconstruction for V < M × A
 3. **Evaluation Key Security**: evk does not leak s²
+4. **Lean 4 formalization of K-Elimination**: completed (lean4/KElimination)
 
 ### 8.2 Recommended (Future Work)
 
-1. Lean 4 formalization of K-Elimination
-2. Independent security audit
-3. NIST-style known answer tests
+1. Independent security audit
+2. NIST-style known answer tests
 
 ---
 
@@ -272,7 +272,9 @@ For production deployment, the following proofs should be formalized:
 
 ### 9.1 Public Mode Circuit Depth
 
-Current parameters support only depth-1 circuits reliably in public mode.
+Depth-1 circuits are reliable across configs; depth > 1 depends on parameters and
+decomposition base. Baseline measurements show depth 4-5 for standard_128/high_192
+with smaller bases; light_rns_exact depth-2 still fails (see docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md).
 
 **Root Cause Analysis (December 2025, Updated December 30)**:
 
@@ -364,7 +366,8 @@ should be used for key generation in production.
 | Encryption is IND-CPA under RLWE | Proven (informal) | Standard RLWE argument |
 | K-Elimination doesn't weaken security | Justified | Operates on ciphertexts only |
 | Symmetric mode: deep circuits | Verified (50+ muls) | Zero relinearization noise |
-| Public mode: single-depth | Verified | Standard BFV relinearization |
+| Public mode: depth-1 reliable | Verified | Standard BFV relinearization |
+| Public mode: depth 4-5 baseline | Measured | standard_128/high_192 (see baseline doc) |
 | Public mode: deep circuits | NOT YET | Needs larger params or bootstrapping |
 
 **Bottom Line**: NINE65 provides standard RLWE security with an innovative

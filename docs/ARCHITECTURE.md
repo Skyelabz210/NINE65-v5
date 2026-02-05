@@ -1,14 +1,16 @@
 # NINE65 Architecture
 
 **Version**: 5.0
-**Status**: Production Ready
-**Security Rating**: 8.5/10
+**Status**: Pre-production (deployment not recommended yet)
+**Security Rating**: Provisional (see RedShirt assessment)
 
 ---
 
 ## Overview
 
 NINE65 is a bootstrap-free Fully Homomorphic Encryption (FHE) library built on the BFV scheme with novel innovations including K-Elimination for exact RNS division and GSO-FHE for gravitational swarm noise optimization.
+
+**Deployment note**: Production deployment is not recommended until timing side-channel mitigations and parameter baselines are fully reconciled (see docs/REDSHIRT_SECURITY_ASSESSMENT.md). Minimum recommended configuration for evaluation is `SecureConfig::secure_192()`.
 
 ---
 
@@ -164,7 +166,9 @@ impl SecretData for SecretPoly {}
 | `light()` | 1024 | 80-bit | 36-bit | TEST ONLY (gated) |
 | `he_standard_128()` | 2048 | 128-bit | 56-bit | TEST ONLY (gated) |
 | `standard_128()` | 4096 | 128-bit | 96-bit | MARGINAL |
-| `SecureConfig::secure_128()` | 4096 | 128-bit | 128-bit | PRODUCTION |
+| `SecureConfig::secure_128()` | 4096 | 128-bit | 128-bit | MARGINAL (not recommended) |
+| `SecureConfig::secure_192()` | 8192 | 192-bit | 176-bit | RECOMMENDED |
+| `SecureConfig::secure_256()` | 16384 | 256-bit | 268-bit | MAXIMUM |
 
 ---
 
