@@ -575,4 +575,50 @@ mod tests {
         
         assert_eq!(decrypted, plaintext, "Encrypt/decrypt failed with secure keys");
     }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_public_key_serde_roundtrip_validated() {
+        let config = SecureConfig::test_fast().into_config();
+        let ntt = NTTEngine::new(config.q, config.n);
+        let mut harvester = ShadowHarvester::with_seed(2026);
+
+        let keys = KeySet::generate(&config, &ntt, &mut harvester);
+
+        let json = keys.public_key.to_json().expect("serialize public key");
+        let pk = PublicKey::from_json_validated(&json, config.n, config.q)
+            .expect("validated public key");
+        assert_eq!(pk.pk0.coeffs, keys.public_key.pk0.coeffs);
+        assert_eq!(pk.pk1.coeffs, keys.public_key.pk1.coeffs);
+
+        let bytes = keys.public_key.to_bytes().expect("serialize public key bytes");
+        let pk_bytes = PublicKey::from_bytes_validated(&bytes, config.n, config.q)
+            .expect("validated public key bytes");
+        assert_eq!(pk_bytes.pk0.coeffs, keys.public_key.pk0.coeffs);
+        assert_eq!(pk_bytes.pk1.coeffs, keys.public_key.pk1.coeffs);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn test_eval_key_serde_roundtrip_validated() {
+        let config = SecureConfig::test_fast().into_config();
+        let ntt = NTTEngine::new(config.q, config.n);
+        let mut harvester = ShadowHarvester::with_seed(8080);
+
+        let keys = KeySet::generate(&config, &ntt, &mut harvester);
+
+        let json = keys.eval_key.to_json().expect("serialize eval key");
+        let ek = EvaluationKey::from_json_validated(&json, config.n, config.q)
+            .expect("validated eval key");
+        assert_eq!(ek.levels, keys.eval_key.levels);
+        assert_eq!(ek.decomp_base, keys.eval_key.decomp_base);
+        assert_eq!(ek.rlk.len(), keys.eval_key.rlk.len());
+
+        let bytes = keys.eval_key.to_bytes().expect("serialize eval key bytes");
+        let ek_bytes = EvaluationKey::from_bytes_validated(&bytes, config.n, config.q)
+            .expect("validated eval key bytes");
+        assert_eq!(ek_bytes.levels, keys.eval_key.levels);
+        assert_eq!(ek_bytes.decomp_base, keys.eval_key.decomp_base);
+        assert_eq!(ek_bytes.rlk.len(), keys.eval_key.rlk.len());
+    }
 }
