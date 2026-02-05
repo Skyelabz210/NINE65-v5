@@ -249,18 +249,6 @@ impl U256 {
     }
 }
 
-/// Return true if the product of the first `level` primes fits in u128.
-pub(crate) fn q_fits_u128(level: usize, primes: &[u64]) -> bool {
-    let mut acc: u128 = 1;
-    for &p in primes.iter().take(level) {
-        match acc.checked_mul(p as u128) {
-            Some(next) => acc = next,
-            None => return false,
-        }
-    }
-    true
-}
-
 /// Compute Δ = floor(Q/t) in RNS form without relying on u128-sized Q.
 pub(crate) fn compute_delta_rns_overflow_safe(primes: &[u64], t: u64) -> Vec<u64> {
     assert!(t != 0, "Plaintext modulus t must be > 0");

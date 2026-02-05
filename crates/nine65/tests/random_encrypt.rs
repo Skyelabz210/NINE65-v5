@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 use nine65::prelude::*;
 
-/// Property-based test: encryption then decryption returns the original message.
+// Property-based test: encryption then decryption returns the original message.
 proptest! {
     #[test]
     fn prop_encrypt_decrypt(msg in 0u64..1000) {

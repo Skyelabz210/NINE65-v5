@@ -13,6 +13,10 @@
 //! Polarity propagates correctly through all arithmetic operations.
 //!
 //! Performance: ~15ns per operation, exact, no threshold errors
+//!
+//! # Theorem Reference
+//! - Proof File: `MobiusInt.v`
+//! - Status: VERIFIED
 
 use std::cmp::Ordering;
 

@@ -26,6 +26,7 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 use crate::arithmetic::NTTEngine;
 use crate::entropy::ShadowHarvester;
 use crate::entropy::{secure_ternary_vector, secure_uniform_vector, secure_cbd_vector};
+use crate::errors::{Nine65Error, Nine65Result};
 use crate::params::FHEConfig;
 use crate::ring::RingPolynomial;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -87,6 +88,7 @@ impl SecretKey {
 
 /// Public Key: (pk0, pk1) where pk0 = -a*s + e, pk1 = a
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct PublicKey {
     /// pk0 = -a*s + e
     pub pk0: RingPolynomial,
@@ -154,6 +156,24 @@ impl PublicKey {
 
         Self { pk0, pk1: a }
     }
+
+    /// Validate public key structure and bounds
+    ///
+    /// # Security
+    /// Use after deserialization to prevent malformed key DoS or modulus mismatch.
+    pub fn validate(&self, expected_n: usize, expected_q: u64) -> Nine65Result<()> {
+        self.pk0.validate(expected_n, expected_q)?;
+        self.pk1.validate(expected_n, expected_q)?;
+
+        if self.pk0.coeffs.len() != self.pk1.coeffs.len() {
+            return Err(Nine65Error::InvalidPolynomialDegree {
+                got: self.pk1.coeffs.len(),
+                expected: self.pk0.coeffs.len(),
+            });
+        }
+
+        Ok(())
+    }
 }
 
 /// Evaluation Key for relinearization after multiplication
@@ -161,6 +181,7 @@ impl PublicKey {
 /// Contains relinearization key components for converting degree-2
 /// ciphertexts back to degree-1 after homomorphic multiplication.
 #[derive(Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EvaluationKey {
     /// Relinearization key components
     /// rlk[i] = (b_i, a_i) where b_i = -a_i * s + e_i + (s² * T^i)
@@ -218,6 +239,55 @@ impl EvaluationKey {
         let mut harvester = ShadowHarvester::from_os_seed();
         Self::generate(sk, config, ntt, &mut harvester)
     }
+
+    /// Validate evaluation key structure and bounds
+    ///
+    /// # Security
+    /// Use after deserialization to ensure decomposition metadata and
+    /// polynomial dimensions are consistent with the expected parameters.
+    pub fn validate(&self, expected_n: usize, expected_q: u64) -> Nine65Result<()> {
+        if self.decomp_base == 0 {
+            return Err(Nine65Error::InvalidParameter {
+                message: "EvaluationKey: decomp_base must be non-zero".to_string(),
+            });
+        }
+
+        if !self.decomp_base.is_power_of_two() {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "EvaluationKey: decomp_base {} must be a power of two",
+                    self.decomp_base
+                ),
+            });
+        }
+
+        if self.levels == 0 {
+            return Err(Nine65Error::InvalidParameter {
+                message: "EvaluationKey: levels must be non-zero".to_string(),
+            });
+        }
+
+        if self.rlk.len() != self.levels {
+            return Err(Nine65Error::InvalidParameter {
+                message: format!(
+                    "EvaluationKey: rlk len {} != levels {}",
+                    self.rlk.len(),
+                    self.levels
+                ),
+            });
+        }
+
+        for (i, (b, a)) in self.rlk.iter().enumerate() {
+            b.validate(expected_n, expected_q).map_err(|e| Nine65Error::InvalidParameter {
+                message: format!("EvaluationKey: rlk[{}].b invalid: {}", i, e),
+            })?;
+            a.validate(expected_n, expected_q).map_err(|e| Nine65Error::InvalidParameter {
+                message: format!("EvaluationKey: rlk[{}].a invalid: {}", i, e),
+            })?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Secure zeroization for EvaluationKey
@@ -230,6 +300,122 @@ impl Drop for EvaluationKey {
             b.coeffs.zeroize();
             a.coeffs.zeroize();
         }
+    }
+}
+
+// ============================================================================
+// SERIALIZATION HELPERS
+// ============================================================================
+
+#[cfg(feature = "serde")]
+impl PublicKey {
+    /// Serialize to JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Serialize to compact binary format (bincode)
+    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
+    }
+
+    /// Deserialize from JSON with validation
+    pub fn from_json_validated(s: &str, expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let pk: Self = serde_json::from_str(s)
+            .map_err(|e| Nine65Error::DeserializationError {
+                message: format!("JSON parse error: {}", e),
+            })?;
+        pk.validate(expected_n, expected_q)?;
+        Ok(pk)
+    }
+
+    /// Deserialize from bytes with validation
+    pub fn from_bytes_validated(bytes: &[u8], expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let pk: Self = bincode::deserialize(bytes)
+            .map_err(|e| Nine65Error::DeserializationError {
+                message: format!("Bincode parse error: {}", e),
+            })?;
+        pk.validate(expected_n, expected_q)?;
+        Ok(pk)
+    }
+}
+
+#[cfg(all(feature = "serde", feature = "allow_insecure"))]
+impl PublicKey {
+    /// Deserialize from JSON string (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key.
+    /// Only use for trusted input. For untrusted input, use `from_json_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
+
+    /// Deserialize from bincode bytes (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key.
+    /// Only use for trusted input. For untrusted input, use `from_bytes_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl EvaluationKey {
+    /// Serialize to JSON string
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    /// Serialize to compact binary format (bincode)
+    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::Error> {
+        bincode::serialize(self)
+    }
+
+    /// Deserialize from JSON with validation
+    pub fn from_json_validated(s: &str, expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let ek: Self = serde_json::from_str(s)
+            .map_err(|e| Nine65Error::DeserializationError {
+                message: format!("JSON parse error: {}", e),
+            })?;
+        ek.validate(expected_n, expected_q)?;
+        Ok(ek)
+    }
+
+    /// Deserialize from bytes with validation
+    pub fn from_bytes_validated(bytes: &[u8], expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
+        let ek: Self = bincode::deserialize(bytes)
+            .map_err(|e| Nine65Error::DeserializationError {
+                message: format!("Bincode parse error: {}", e),
+            })?;
+        ek.validate(expected_n, expected_q)?;
+        Ok(ek)
+    }
+}
+
+#[cfg(all(feature = "serde", feature = "allow_insecure"))]
+impl EvaluationKey {
+    /// Deserialize from JSON string (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key.
+    /// Only use for trusted input. For untrusted input, use `from_json_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
+    pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(s)
+    }
+
+    /// Deserialize from bincode bytes (UNVALIDATED)
+    ///
+    /// # Security Warning
+    /// This method does NOT validate the deserialized key.
+    /// Only use for trusted input. For untrusted input, use `from_bytes_validated()`.
+    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
     }
 }
 

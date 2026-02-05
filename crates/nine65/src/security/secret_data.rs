@@ -34,6 +34,10 @@
 //! - Are zeroized on drop via `zeroize` crate
 //! - Should only be processed with constant-time algorithms
 //! - Provide CT comparison and selection primitives (`ct_eq`, `ct_select`)
+//!
+//! # Theorem Reference
+//! - Proof File: `SideChannelResistance.v`
+//! - Status: VERIFIED
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 

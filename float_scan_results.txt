@@ -1,0 +1,884 @@
+╔════════════════════════════════════════════════════════════╗
+║          QMNF FLOAT SCANNER                                ║
+║          "Truth cannot be approximated."                   ║
+╚════════════════════════════════════════════════════════════╝
+
+Scanning: /home/ubuntu/NINE65-v5
+Files scanned: 80
+
+🔴 CRITICAL VIOLATIONS (216 found):
+   These are in the computation path and MUST be fixed.
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/arithmetic/exact_divider.rs:225
+      FloatFunction
+      let diff = (scaled as i64 - expected as i64).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/arithmetic/pade_engine.rs:125
+      FloatFunction
+      assert!((result - PADE_SCALE).abs() < PADE_SCALE / 1000);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/arithmetic/pade_engine.rs:133
+      FloatFunction
+      assert!((result - expected).abs() < PADE_SCALE / 100);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/arithmetic/pade_engine.rs:146
+      FloatFunction
+      assert!((result - PADE_SCALE).abs() < PADE_SCALE / 1000);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/arithmetic/pade_engine.rs:155
+      FloatFunction
+      assert!((pos + neg).abs() < PADE_SCALE / 1000);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/arithmetic/persistent_montgomery.rs:372
+      TypeCast
+      let speedup = traditional_time.as_nanos() as f64 / persistent_time.as_nanos() as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:117
+      TypeAnnotation
+      pub add_noise_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:118
+      TypeAnnotation
+      pub mul_noise_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:119
+      TypeAnnotation
+      pub relin_noise_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:120
+      TypeAnnotation
+      pub rescale_reduction_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:121
+      TypeAnnotation
+      pub rotate_noise_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:122
+      TypeAnnotation
+      pub safety_factor: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:137
+      TypeAnnotation
+      pub fn noise_for_op(&self, op_type: OpType) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:168
+      TypeAnnotation
+      let mut max_noise: f64 = 0.0;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:169
+      TypeAnnotation
+      let mut noise_at_output: f64 = 0.0;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:179
+      Literal
+      .fold(0.0_f64, f64::max)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:206
+      TypeAnnotation
+      pub max_noise_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:207
+      TypeAnnotation
+      pub output_noise_bits: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:235
+      TypeCast
+      + self.plaintext_bits as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:236
+      TypeCast
+      + self.security_level as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:239
+      FloatFunction
+      let required_bits = required_bits.ceil() as usize;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:376
+      TypeCast
+      let budget = params.total_modulus_bits as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:377
+      TypeCast
+      - self.plaintext_bits as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:378
+      TypeCast
+      - self.security_level as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:396
+      TypeAnnotation
+      pub fn estimate_speedup(&self, result: &CompilationResult) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:399
+      TypeCast
+      let traditional_bootstraps = (result.circuit.max_multiplicative_depth as f64 / bootstrap_interval).ceil();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:405
+      TypeCast
+      let with_bootstrap = result.circuit.nodes.len() as f64 + traditional_bootstraps * bootstrap_cost;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/compiler.rs:408
+      TypeCast
+      let without_bootstrap = result.circuit.nodes.len() as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/crt_shadow.rs:1311
+      TypeCast
+      (time_with_sig.as_nanos() as f64 / time_no_sig.as_nanos() as f64 - 1.0) * 100.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/secure.rs:282
+      TypeAnnotation
+      let mean: f64 = samples.iter().map(|&s| s as f64).sum::<f64>() / samples.len() as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/secure.rs:283
+      TypeAnnotation
+      let variance: f64 = samples.iter()
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/secure.rs:284
+      TypeCast
+      .map(|&s| (s as f64 - mean).powi(2))
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/secure.rs:285
+      TypeAnnotation
+      .sum::<f64>() / samples.len() as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/secure.rs:287
+      TypeCast
+      let expected_variance = eta as f64 / 2.0;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/secure.rs:288
+      FloatFunction
+      assert!((variance - expected_variance).abs() < 0.5,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/shadow.rs:242
+      TypeCast
+      let mean = sum as f64 / n as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/entropy/shadow.rs:268
+      FloatFunction
+      let deviation = (count as i64 - expected as i64).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/budget.rs:233
+      TypeAnnotation
+      pub fn remaining_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/budget.rs:234
+      TypeCast
+      self.remaining_mb as f64 / 1000.0
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/budget.rs:238
+      TypeAnnotation
+      pub fn initial_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/budget.rs:239
+      TypeCast
+      self.initial_mb as f64 / 1000.0
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/budget.rs:269
+      TypeCast
+      100.0 * used as f64 / self.initial_mb as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/budget.rs:393
+      TypeCast
+      remaining, remaining as f64 / 1000.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:86
+      TypeAnnotation
+      pub fn noise_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:87
+      TypeCast
+      self.noise_millibits as f64 / MILLIBITS_PER_BIT as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:91
+      TypeAnnotation
+      pub fn budget_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:92
+      TypeCast
+      self.budget_remaining as f64 / MILLIBITS_PER_BIT as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:282
+      TypeAnnotation
+      pub fn noise_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:283
+      TypeCast
+      self.current_noise as f64 / MILLIBITS_PER_BIT as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:293
+      TypeAnnotation
+      pub fn budget_remaining_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:294
+      TypeCast
+      self.budget_remaining_millibits() as f64 / MILLIBITS_PER_BIT as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:440
+      TypeAnnotation
+      p: f64,  // We use f64 ONLY for the quantile parameter, not data
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:449
+      TypeAnnotation
+      n_prime: [f64; P2_MARKERS],
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:452
+      TypeAnnotation
+      dn: [f64; P2_MARKERS],
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:460
+      TypeAnnotation
+      pub fn new_f64(p: f64) -> Self {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:475
+      TypeCast
+      Self::new_f64(p_milli as f64 / 1000.0)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:480
+      Literal
+      Self::new_f64(0.5)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:485
+      Literal
+      Self::new_f64(0.9)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:490
+      Literal
+      Self::new_f64(0.95)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:495
+      Literal
+      Self::new_f64(0.99)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:545
+      TypeCast
+      let d = self.n_prime[i] - self.n[i] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:568
+      TypeCast
+      let d = d as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:569
+      TypeCast
+      let ni = self.n[i] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:570
+      TypeCast
+      let ni_prev = self.n[i - 1] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:571
+      TypeCast
+      let ni_next = self.n[i + 1] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:573
+      TypeCast
+      let qi = self.q[i] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:574
+      TypeCast
+      let qi_prev = self.q[i - 1] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:575
+      TypeCast
+      let qi_next = self.q[i + 1] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:585
+      TypeCast
+      let qi = self.q[i] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:587
+      TypeCast
+      self.q[i + 1] as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:589
+      TypeCast
+      self.q[i - 1] as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:591
+      TypeCast
+      let ni = self.n[i] as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:593
+      TypeCast
+      self.n[i + 1] as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:595
+      TypeCast
+      self.n[i - 1] as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:598
+      TypeCast
+      (qi + d as f64 * (qi_neighbor - qi) / (ni_neighbor - ni)) as i64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:606
+      TypeCast
+      let idx = ((self.count as f64 - 1.0) * self.p) as usize;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:615
+      TypeAnnotation
+      pub fn value_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:616
+      TypeCast
+      self.value() as f64 / MILLIBITS_PER_BIT as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:681
+      TypeAnnotation
+      pub fn mean_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:682
+      TypeCast
+      self.mean() as f64 / MILLIBITS_PER_BIT as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:686
+      TypeAnnotation
+      pub fn median_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:691
+      TypeAnnotation
+      pub fn p90_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:696
+      TypeAnnotation
+      pub fn p95_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:701
+      TypeAnnotation
+      pub fn p99_bits(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:777
+      FloatFunction
+      short_anomaly: short_z.abs() > self.threshold_sigma,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:778
+      FloatFunction
+      medium_anomaly: medium_z.abs() > self.threshold_sigma,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:779
+      FloatFunction
+      long_anomaly: long_z.abs() > self.threshold_sigma,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:838
+      FloatFunction
+      assert!((ema.value_millibits() - 1100).abs() < 50);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:946
+      FloatFunction
+      let error = (median - expected).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:968
+      FloatFunction
+      let error = (p95 - expected).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/noise/mod.rs:1020
+      FloatFunction
+      let mean_median_diff = (dist.mean_bits() - dist.median_bits()).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/batch.rs:259
+      FloatFunction
+      let diff = (expected as i64 - got as i64).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:145
+      Literal
+      let golden_angle = 2.399_963_229_728_653_f64; // 2*pi*(1 - 1/phi)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:146
+      TypeCast
+      let angle = (id as f64) * golden_angle;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:147
+      TypeCast
+      let r = ((id as f64 + 1.0).sqrt() * scale as f64) as i64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:151
+      TypeCast
+      center_x: (r as f64 * angle.cos()) as i64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:152
+      TypeCast
+      center_y: (r as f64 * angle.sin()) as i64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:209
+      TypeCast
+      let iterations = (target.radius as f64).log2() as u32 + 10;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:440
+      TypeCast
+      ratio: ct.noise.distance as f64 / self.basin_radius as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:453
+      TypeAnnotation
+      pub ratio: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:462
+      TypeCast
+      self.distance as f64, self.basin_radius as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:644
+      TypeCast
+      basin.id, basin.center_x, basin.center_y, basin.radius as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:651
+      TypeCast
+      (b1.center_y - b0.center_y).pow(2)) as f64).sqrt();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:925
+      TypeCast
+      add_time.as_nanos() as f64 / ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:928
+      TypeCast
+      sub_time.as_nanos() as f64 / ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:931
+      TypeCast
+      mul_time.as_nanos() as f64 / ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:934
+      TypeCast
+      mul_sig_time.as_nanos() as f64 / ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:988
+      TypeCast
+      recon_time.as_nanos() as f64 / div_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:991
+      TypeCast
+      exact_div_time.as_nanos() as f64 / div_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:994
+      TypeCast
+      divmod_time.as_nanos() as f64 / div_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:997
+      TypeCast
+      scale_time.as_nanos() as f64 / div_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1050
+      TypeCast
+      coeff_add_time.as_nanos() as f64 / coeff_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1053
+      TypeCast
+      coeff_mul_time.as_nanos() as f64 / coeff_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1056
+      TypeCast
+      coeff_div_time.as_nanos() as f64 / coeff_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1059
+      TypeCast
+      coeff_scale_time.as_nanos() as f64 / coeff_ops as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1134
+      TypeCast
+      add_time.as_nanos() as f64 / ops as f64, add_ops_sec / 1_000_000.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1136
+      TypeCast
+      mul_time.as_nanos() as f64 / ops as f64, mul_ops_sec / 1_000_000.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1140
+      TypeCast
+      exact_div_time.as_nanos() as f64 / div_ops as f64, exact_div_ops_sec / 1_000_000.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/gso_fhe.rs:1142
+      TypeCast
+      scale_time.as_nanos() as f64 / div_ops as f64, scale_ops_sec / 1_000_000.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/homomorphic.rs:888
+      FloatFunction
+      let error = (result as i64 - expected as i64).abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/neural.rs:425
+      FloatFunction
+      assert!((result - expected).abs() < expected / 10);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/parallel.rs:375
+      TypeCast
+      encrypt_time.as_micros() as f64 / count as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/parallel.rs:378
+      TypeCast
+      decrypt_time.as_micros() as f64 / count as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:717
+      TypeCast
+      self.q_product as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:718
+      TypeCast
+      delta as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:1924
+      FloatFunction
+      let margin = delta_half as i128 - error.abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:1934
+      FloatFunction
+      let margin = delta_half as i128 - error.abs();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:2292
+      TypeCast
+      m_product_level as f64, a_n_product as f64, (a_n_product/2) as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:2462
+      FloatFunction
+      let rounded = if v_rem.abs() as u64 >= q_last_half {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:3359
+      FloatFunction
+      i, k_i, a_i, (a_i as i64 - k_i as i64).abs());
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:3404
+      TypeCast
+      label, k_full as f64, status,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:3786
+      TypeCast
+      ctx.n, ctx.q_product as f64, ctx.t, ctx.config.primes.len());
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:3873
+      FloatFunction
+      (0..ctx.n).map(|i| centered_coeff(poly, i).abs()).max().unwrap_or(0)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:3882
+      FloatFunction
+      (phase - expected).abs()
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4028
+      TypeCast
+      ctx.n, ctx.q_product as f64, ctx.t, ctx.config.primes.len());
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4175
+      TypeCast
+      inner_a_val as f64, a, expected_inner_a as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4183
+      TypeCast
+      inner_b_val as f64, b, expected_inner_b as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4197
+      TypeCast
+      let expected_d0_f64 = (delta_big as f64) * (delta_big as f64) * (a as f64) * (b as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4199
+      TypeCast
+      d0_val as f64, a, b, expected_d0_f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4211
+      TypeCast
+      e0_val as f64, expected, expected_e0 as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4222
+      TypeCast
+      inner_deg2_val as f64, expected, expected_e0 as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4340
+      TypeCast
+      (delta_big as f64) * (delta_big as f64), ctx.q_product as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4463
+      TypeCast
+      let q = ctx.q_product as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4464
+      TypeCast
+      let n = ctx.n as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4465
+      TypeCast
+      let m_a = ctx.dual_rns.main_product as f64 * ctx.dual_rns.anchor_product as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4561
+      TypeCast
+      (delta_big as f64) * (delta_big as f64) * 35.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4602
+      TypeCast
+      let log_q = (ctx.q_product as f64).ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4605
+      TypeCast
+      let log_m = (ctx.dual_rns.main_product as f64).ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4606
+      TypeAnnotation
+      let log_a: f64 = ctx.dual_rns.anchor.primes.iter()
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4607
+      TypeCast
+      .map(|&p| (p as f64).ln())
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4611
+      Literal
+      let ln2 = 2.0_f64.ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4621
+      FloatFunction
+      let margin = (log_m_a - log_q2).exp();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4790
+      TypeCast
+      let log_q = (ctx.q_product as f64).ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4791
+      TypeCast
+      let log_n = (ctx.n as f64).ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4794
+      TypeCast
+      let log_m = (ctx.dual_rns.main_product as f64).ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4795
+      TypeAnnotation
+      let log_a: f64 = ctx.dual_rns.anchor.primes.iter()
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4796
+      TypeCast
+      .map(|&p| (p as f64).ln())
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4805
+      Literal
+      let ln2 = 2.0_f64.ln();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4811
+      FloatFunction
+      let margin = (log_m_a - log_q2n).exp();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4871
+      TypeCast
+      let capacity = ctx.dual_rns.main_product as f64 * ctx.dual_rns.anchor_product as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:4873
+      TypeCast
+      product as f64, capacity, (product as f64) < capacity);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:5098
+      TypeCast
+      ctx.q_product as f64, ctx.t, (ctx.q_product / ctx.t as u128) as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:5126
+      TypeCast
+      d0_full as f64, (35 * delta * delta) as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:5138
+      TypeCast
+      e0_full as f64, (35 * delta) as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:5249
+      TypeCast
+      inner_full as f64, (35 * delta) as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6033
+      TypeCast
+      let max_val = std::cmp::min((ctx.t as f64).sqrt() as u64, 50);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6245
+      FloatFunction
+      (err_center, err_center.abs())
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6271
+      TypeCast
+      let delta_sq_f64 = (delta as f64) * (delta as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6272
+      Literal
+      let delta_half_2_f64 = delta_sq_f64 / 2.0;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6305
+      TypeCast
+      abs_err_tensor_23 as f64, delta_half_2_f64, abs_err_tensor_23 as f64 / delta_half_2_f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6322
+      TypeCast
+      abs_err_rescaled_23 as f64, delta_half_1 as f64, abs_err_rescaled_23 as f64 / delta_half_1 as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6337
+      TypeCast
+      abs_err_relin_23 as f64, delta_half_1 as f64, abs_err_relin_23 as f64 / delta_half_1 as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6367
+      TypeCast
+      let tensor_ratio = abs_err_tensor_final as f64 / delta_half_2_f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6370
+      TypeCast
+      abs_err_tensor_final as f64, delta_half_2_f64, tensor_ratio);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6390
+      TypeCast
+      let rescale_ratio = abs_err_rescaled_final as f64 / delta_half_1 as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6393
+      TypeCast
+      abs_err_rescaled_final as f64, delta_half_1 as f64, rescale_ratio);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6428
+      TypeCast
+      let relin_ratio = abs_err_relin_final as f64 / delta_half_1 as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6431
+      TypeCast
+      abs_err_relin_final as f64, delta_half_1 as f64, relin_ratio);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6660
+      FloatFunction
+      (v_m2 as i128 - expected as i128).abs());
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6682
+      TypeCast
+      label, v_m as f64, k as f64, k as f64 / a3_product as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6953
+      TypeCast
+      i, v_main_i as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6955
+      TypeCast
+      k_signed_mag as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:6966
+      FloatFunction
+      j, expected, actual, (expected as i64 - actual as i64).abs());
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7130
+      TypeCast
+      let delta_sq_f64 = (delta as f64) * (delta as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7131
+      Literal
+      let delta_sq_half_f64 = delta_sq_f64 / 2.0;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7137
+      TypeCast
+      delta_half as f64, delta_sq_half_f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7293
+      TypeCast
+      let tensor_ratio = abs_err_tensor as f64 / delta_sq_half_f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7378
+      TypeCast
+      let relin_ratio = abs_err_relin as f64 / delta_sq_half_f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7395
+      TypeCast
+      let final_ratio = abs_err_final as f64 / delta_half as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_fhe.rs:7762
+      TypeCast
+      consumed, consumed as f64 / 1000.0);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_mul.rs:446
+      TypeCast
+      v_m, v_m as f64, k, k as f64, delta);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_mul.rs:448
+      TypeCast
+      a_n_product as f64, k > a_n_product / 2,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ops/rns_mul.rs:538
+      TypeCast
+      k, k as f64, k_mag, k_is_neg);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:252
+      TypeAnnotation
+      pub fn rns_noise_budget(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:254
+      TypeCast
+      return self.noise_budget() as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:264
+      TypeCast
+      let n_bits = (self.n as f64).log2() / 2.0;  // log2(sqrt(n))
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:265
+      TypeCast
+      let initial_noise = eta_bits as f64 + n_bits + 3.0;  // safety margin
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:267
+      TypeCast
+      (delta_bits as f64) - initial_noise
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:621
+      TypeCast
+      let ratio = n as f64 / log_q as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:661
+      TypeCast
+      config.rns_product() as f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/mod.rs:689
+      TypeCast
+      let ratio = config.n as f64 / log_q as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/production.rs:89
+      TypeAnnotation
+      pub sigma: f64,                 // Error std dev (conceptual, we use integer CBD)
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/production.rs:181
+      TypeCast
+      (n as f64 / 37.5) as usize
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/params/validation.rs:157
+      TypeCast
+      let ratio = (n as f64) / (log_q as f64);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ring/pool.rs:139
+      TypeAnnotation
+      pub fn hit_ratio(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ring/pool.rs:143
+      TypeCast
+      self.stats_hits as f64 / self.stats_acquires as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/ring/pool.rs:418
+      FloatFunction
+      assert!((pool.hit_ratio() - 0.5).abs() < 0.001);
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:26
+      TypeAnnotation
+      pub sigma: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:54
+      TypeAnnotation
+      pub ratio: f64,
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:74
+      TypeCast
+      let sigma = (config.eta as f64 / 2.0).sqrt();
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:85
+      TypeAnnotation
+      pub fn new(n: usize, log_q: u32, sigma: f64) -> Self {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:95
+      TypeAnnotation
+      pub fn ratio(&self) -> f64 {
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:96
+      TypeCast
+      self.n as f64 / self.log_q as f64
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:144
+      TypeCast
+      let raw_estimate = 2.6 * self.n as f64 / self.log_q as f64;
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/security/mod.rs:198
+      TypeCast
+      (n as f64 / required_ratio).floor() as u32
+
+   /home/ubuntu/NINE65-v5/crates/nine65/src/v2_integration_tests.rs:192
+      TypeCast
+      let ntt_speedup = dft_time.as_nanos() as f64 / fft_time.as_nanos() as f64;
+
+🟡 WARNINGS (193 found):
+   These are in tests/examples - acceptable but noted.
+
+⚪ INFO (3 found):
+   These are in comments - informational only.
+
+────────────────────────────────────────────────────────────
+❌ FAIL: 216 float violations in computation path
+   "Truth cannot be approximated." - Fix these before proceeding.

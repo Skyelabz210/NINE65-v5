@@ -10,6 +10,13 @@
 //! - MobiusInt for signed arithmetic (100% vs 0% accuracy under chaining)
 //!
 //! Performance: 1,000-100,000× faster than standard FHE polynomial approximation
+//!
+//! # Theorem References
+//! - `PadeEngine.v` (Padé exp/sigmoid/tanh)
+//! - `MQReLU.v` (O(1) sign detection)
+//! - `CyclotomicPhase.v` (ring-native sin/cos)
+//! - `IntegerSoftmax.v` (exact-sum softmax)
+//! - `MobiusInt.v` (signed arithmetic transform)
 
 use crate::arithmetic::{
     PadeEngine, PADE_SCALE,

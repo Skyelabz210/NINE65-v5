@@ -328,6 +328,7 @@ assert_eq!(result, 6);
 ## Formal Verification
 
 NINE65 innovations are backed by machine-checked proofs in Coq and Lean4.
+Proof-to-code mappings are tracked in `docs/FORMALIZATION_INDEX.md`.
 
 ### Coq Proofs (`proofs/coq/`)
 

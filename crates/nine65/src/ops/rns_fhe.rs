@@ -36,6 +36,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Format a u128 in scientific notation without floats: "1.23e45"
 /// Returns (mantissa_int, mantissa_frac, exponent) for formatting
+#[cfg(any(test, debug_assertions))]
 #[inline]
 fn sci_notation_u128(val: u128) -> String {
     if val == 0 {
@@ -62,45 +63,8 @@ fn sci_notation_u128(val: u128) -> String {
     format!("{}.{:02}e{}", int_part, frac_part, exp)
 }
 
-/// Format a i128 in scientific notation without floats
-#[inline]
-fn sci_notation_i128(val: i128) -> String {
-    if val == 0 {
-        return "0".to_string();
-    }
-    let sign = if val < 0 { "-" } else { "" };
-    let abs_val = val.unsigned_abs();
-    format!("{}{}", sign, sci_notation_u128(abs_val))
-}
-
-/// Format a U256 in scientific notation without floats
-#[inline]
-fn sci_notation_u256(val: U256) -> String {
-    // For U256, we can use the high bits to estimate magnitude
-    if val.hi == 0 {
-        return sci_notation_u128(val.lo);
-    }
-    // Count bits to estimate decimal digits: digits ≈ bits * log10(2) ≈ bits * 0.301
-    // We use integer approximation: digits ≈ (bits * 77) / 256
-    let total_bits = 128 + (128 - val.hi.leading_zeros()) as u128;
-    let approx_digits = (total_bits * 77) / 256;
-
-    // Get top ~3 digits by shifting
-    let shift_bits = total_bits.saturating_sub(10);
-    let top_bits = if shift_bits < 128 {
-        (val.hi << (128 - shift_bits)) | (val.lo >> shift_bits)
-    } else {
-        val.hi >> (shift_bits - 128)
-    };
-
-    // Convert to decimal mantissa (rough approximation)
-    let mantissa = top_bits / 100;
-    let frac = (top_bits / 10) % 10;
-
-    format!("{}.{}e{}", mantissa / 10, frac, approx_digits)
-}
-
 /// Integer square root via binary search (exact floor)
+#[cfg(test)]
 #[inline]
 fn isqrt_u64(n: u64) -> u64 {
     if n < 2 { return n; }
@@ -118,6 +82,7 @@ fn isqrt_u64(n: u64) -> u64 {
 }
 
 /// Integer log2 (floor) - counts position of highest set bit
+#[cfg(test)]
 #[inline]
 fn ilog2_u128(n: u128) -> u32 {
     if n == 0 { return 0; }
@@ -126,44 +91,13 @@ fn ilog2_u128(n: u128) -> u32 {
 
 /// Integer ratio formatted as "X.XX" (scaled by 100)
 /// Returns a string representation of a/b with 2 decimal places
+#[cfg(test)]
 #[inline]
 fn ratio_str(a: u128, b: u128) -> String {
     if b == 0 { return "inf".to_string(); }
     let scaled = (a.saturating_mul(100)) / b;
     let int_part = scaled / 100;
     let frac_part = scaled % 100;
-    format!("{}.{:02}", int_part, frac_part)
-}
-
-/// Integer ratio with more precision "X.XXXX" (scaled by 10000)
-#[inline]
-fn ratio_str_precise(a: u128, b: u128) -> String {
-    if b == 0 { return "inf".to_string(); }
-    let scaled = (a.saturating_mul(10000)) / b;
-    let int_part = scaled / 10000;
-    let frac_part = scaled % 10000;
-    format!("{}.{:04}", int_part, frac_part)
-}
-
-/// Approximate log base 2 in fixed-point (Q16.16 format)
-/// Returns log2(n) * 65536 as integer
-#[inline]
-fn ilog2_q16(n: u128) -> u64 {
-    if n == 0 { return 0; }
-    let floor_log2 = ilog2_u128(n) as u64;
-    // Linear interpolation for fractional part
-    // frac ≈ (n - 2^floor) / 2^floor
-    let power = 1u128 << floor_log2;
-    let remainder = n - power;
-    let frac = ((remainder.saturating_mul(65536)) / power) as u64;
-    (floor_log2 << 16) | frac.min(65535)
-}
-
-/// Format Q16.16 fixed point as decimal string
-#[inline]
-fn q16_to_str(val: u64) -> String {
-    let int_part = val >> 16;
-    let frac_part = ((val & 0xFFFF) * 100) >> 16;
     format!("{}.{:02}", int_part, frac_part)
 }
 
@@ -2572,7 +2506,7 @@ fn k_elim_rescale_dual(&self, poly: &DualRNSPoly) -> DualRNSPoly {
     }
 
     fn should_two_stage_rescale(&self, level: usize) -> bool {
-        self.q_product == 0 && level >= 3
+        self.q_product == 0 && level >= 3 && self.config.primes.len() > 5
     }
 
 
@@ -3785,7 +3719,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Public mode depth sweep (slow). Run with --nocapture for output."]
     fn test_public_mode_depth_sweep() {
         let configs = [
             FHEConfig::standard_128(),
@@ -4044,7 +3977,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Diagnostic test for public mode
     fn test_mul_dual_public_mode_deep() {
         // Detailed diagnostic test for public mode multiplication
         // Traces centered coefficients and phase error at each stage
@@ -4758,10 +4690,10 @@ mod tests {
         let d0_main_0: Vec<u64> = d0.main.iter().map(|l| l[0]).collect();
         let d0_main_val = ctx.rns.to_int(&d0_main_0);
         let d0_anchor_0: Vec<u64> = d0.anchor.iter().map(|l| l[0]).collect();
-        let d0_anchor_val = ctx.dual_rns.anchor.to_int(&d0_anchor_0);
+        let d0_anchor_val = ctx.dual_rns.anchor.to_u256_level(&d0_anchor_0, ctx.dual_rns.anchor.primes.len());
 
         println!("d0[0] mod M = {}", d0_main_val);
-        println!("d0[0] mod A = {}", d0_anchor_val);
+        println!("d0[0] mod A = {:?}", d0_anchor_val);
         println!("Expected: Δ²×35 (very large)");
 
         // K-Elimination rescale
@@ -5288,7 +5220,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Diagnostic trace (verbose)"]
     fn test_mul_dual_debug() {
         // Detailed debugging of mul_dual to find the bug
         let config = FHEConfig::light_rns_exact();
@@ -5331,8 +5262,8 @@ mod tests {
 
         // Check d0 anchor values too
         let d0_anchor_0: Vec<u64> = d0.anchor.iter().map(|l| l[0]).collect();
-        let d0_anchor_full = ctx.dual_rns.anchor.to_int(&d0_anchor_0);
-        println!("d0_anchor[0] = {}", d0_anchor_full);
+        let d0_anchor_full = ctx.dual_rns.anchor.to_u256_level(&d0_anchor_0, ctx.dual_rns.anchor.primes.len());
+        println!("d0_anchor[0] = {:?}", d0_anchor_full);
 
         // K-Elimination rescale
         let e0 = ctx.k_elim_rescale_dual(&d0);
@@ -5416,12 +5347,12 @@ mod tests {
         let d2_176_main: Vec<u64> = d2.main.iter().map(|l| l[max_e2_idx]).collect();
         let d2_176_anchor: Vec<u64> = d2.anchor.iter().map(|l| l[max_e2_idx]).collect();
         let d2_176_main_val = ctx.rns.to_int(&d2_176_main);
-        let d2_176_anchor_val = ctx.dual_rns.anchor.to_int(&d2_176_anchor);
+        let d2_176_anchor_val = ctx.dual_rns.anchor.to_u256_level(&d2_176_anchor, ctx.dual_rns.anchor.primes.len());
         println!("\nDEBUG d2[{}] BEFORE K-Elim:", max_e2_idx);
         println!("  d2[{}] main residues: {:?}", max_e2_idx, d2_176_main);
         println!("  d2[{}] anchor residues: {:?}", max_e2_idx, d2_176_anchor);
         println!("  d2[{}] main reconstructed: {}", max_e2_idx, d2_176_main_val);
-        println!("  d2[{}] anchor reconstructed: {}", max_e2_idx, d2_176_anchor_val);
+        println!("  d2[{}] anchor reconstructed: {:?}", max_e2_idx, d2_176_anchor_val);
         println!("  Expected ratio d2_anchor/d2_main ≈ 1 (same value mod both systems)");
 
         // Check what K-Elimination produces
@@ -6176,7 +6107,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "secure_128 mul_dual_symmetric correctness"]
     fn test_secure_128_mul_dual_symmetric() {
         use crate::params::secure_configs::SecureConfig;
 
@@ -6196,7 +6126,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "secure_192 mul_dual_symmetric correctness"]
     fn test_secure_192_mul_dual_symmetric() {
         use crate::params::secure_configs::SecureConfig;
 
@@ -6974,9 +6903,6 @@ mod tests {
         let anchor_residues: Vec<u64> = poly.anchor.iter().map(|limb| limb[coeff_idx]).collect();
         let k = ctx.dual_rns.extract_k_rns(v_m, &anchor_residues);
 
-        let a3_product: u128 = ctx.dual_rns.anchor.primes[0..3].iter()
-            .fold(1u128, |acc, &p| acc * p as u128);
-
         println!("  {}: v_m={}, k={}",
             label, sci_notation_u128(v_m), sci_notation_u128(k));
 
@@ -6984,7 +6910,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Diagnostic trace (verbose)"]
     fn test_mul_dual_anchor_consistency_trace() {
         // Trace anchor consistency through mul_dual to find where divergence happens.
         // This is a diagnostic test to locate the bug in tree multiplication.

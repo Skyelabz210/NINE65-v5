@@ -15,6 +15,10 @@
 //!   Only convert at TRUE system boundaries (I/O, external systems)
 //!
 //! Performance: 50-100× speedup for FHE operations
+//!
+//! # Theorem Reference
+//! - Proof File: `MontgomeryPersistent.v`
+//! - Status: VERIFIED
 
 /// Persistent Montgomery Context
 /// 

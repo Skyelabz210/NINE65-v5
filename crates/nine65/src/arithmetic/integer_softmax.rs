@@ -14,6 +14,10 @@
 //! 5. Adjust rounding to guarantee sum = SCALE
 //!
 //! Performance: ~200ns per element, exact sum
+//!
+//! # Theorem Reference
+//! - Proof File: `IntegerSoftmax.v`
+//! - Status: VERIFIED
 
 /// Scale factor for softmax outputs (sum will equal this exactly)
 pub const SOFTMAX_SCALE: u128 = 1_000_000_000_000; // 10^12

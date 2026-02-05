@@ -5,6 +5,10 @@
 //!
 //! Given residues mod M and mod A (coprime), we can reconstruct the unique
 //! integer X < M*A and perform exact division when X is divisible by d.
+//!
+//! # Theorem Reference
+//! - Proof File: `ExactCoefficient.v`
+//! - Status: VERIFIED
 
 /// Exact divider using dual-modulus K-Elimination
 #[derive(Clone, Debug)]
