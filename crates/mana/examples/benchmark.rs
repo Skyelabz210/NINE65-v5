@@ -46,13 +46,10 @@ fn bench_lane_add(size: usize, iterations: usize) {
     let seq_ops = (size as u128 * iterations as u128 * 1_000_000_000) / seq_time.as_nanos().max(1);
 
         println!(
-                    "Lane Add (N={}): {} ops/s (branchless)",
-                    size,
-                    format_ops(seq_ops)
-                );
-}
-
-fn bench_stream_add(size: usize, iterations: usize) {
+                    d (N={}): {} ops/s (branchless)",
+            size,
+                    ps(seq_ops)
+                 bench_stream_add(size: usize, iterations: usize) {
     let a_data: Vec<u64> = (0..size).map(|i| (i as u64 * 12345) % TEST_PRIME).collect();
     let b_data: Vec<u64> = (0..size).map(|i| (i as u64 * 67890) % TEST_PRIME).collect();
 
