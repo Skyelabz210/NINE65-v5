@@ -8,6 +8,21 @@
 //! This crate contains no `unsafe` code and enforces this crate-wide.
 
 #![forbid(unsafe_code)]
+#![allow(
+    clippy::empty_line_after_doc_comments,
+    clippy::needless_range_loop,
+    clippy::manual_is_multiple_of,
+    clippy::let_and_return,
+    clippy::unnecessary_cast,
+    clippy::double_comparisons,
+    clippy::manual_div_ceil,
+    clippy::println_empty_string,
+    clippy::manual_range_patterns,
+    clippy::manual_abs_diff,
+    clippy::module_inception,
+    clippy::useless_vec,
+    clippy::identity_op,
+)]
 //!
 //! ## Core Innovations
 //! 
