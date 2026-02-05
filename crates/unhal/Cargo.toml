@@ -4,6 +4,7 @@ description = "Universal Neuromorphic Hardware Abstraction Layer - FHE Accelerat
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
+license = "MIT"
 
 [dependencies]
 mana = { path = "../mana" }
