@@ -26,8 +26,8 @@ fn format_ops(ops: u128) -> String {
 
 /// 8 NTT-friendly primes for full 8-core utilization
 const PRIMES: [u64; 8] = [
-    998244353, 985661441, 754974721, 469762049,      // original 4
-    1638350849, 1638137857, 1637990401, 1637613569,  // 4 new for 8-core saturation
+    998244353, 985661441, 754974721, 469762049, // original 4
+    1638350849, 1638137857, 1637990401, 1637613569, // 4 new for 8-core saturation
 ];
 
 fn bench_lane_add(size: usize, iterations: usize) {
@@ -45,7 +45,11 @@ fn bench_lane_add(size: usize, iterations: usize) {
     let seq_time = start.elapsed();
     let seq_ops = (size as u128 * iterations as u128 * 1_000_000_000) / seq_time.as_nanos().max(1);
 
-    println!("Lane Add (N={}): {} ops/s (branchless)", size, format_ops(seq_ops));
+        println!(
+                    "Lane Add (N={}): {} ops/s (branchless)",
+                    size,
+                    format_ops(seq_ops)
+                );
 }
 
 fn bench_stream_add(size: usize, iterations: usize) {
