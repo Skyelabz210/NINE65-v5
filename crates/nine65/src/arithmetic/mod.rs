@@ -69,3 +69,8 @@ pub use order_finding::{
 pub mod rational_bridge;
 #[cfg(feature = "exact_rational")]
 pub use rational_bridge::RationalBridge;
+
+#[cfg(feature = "clockwork")]
+pub mod bounded_rns;
+#[cfg(feature = "clockwork")]
+pub use bounded_rns::BoundedValue;
