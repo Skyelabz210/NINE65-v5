@@ -64,3 +64,8 @@ pub use order_finding::{
     verify_order_k_elimination, KRecurrence,
     OrderResult, FactorResult, gcd,
 };
+
+#[cfg(feature = "exact_rational")]
+pub mod rational_bridge;
+#[cfg(feature = "exact_rational")]
+pub use rational_bridge::RationalBridge;
