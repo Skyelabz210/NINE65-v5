@@ -1135,7 +1135,7 @@ mod tests {
         assert_eq!(result, 300 % config.t);
 
         // Budget should be reduced
-        assert!(tracked.budget().remaining_millibits() < tracked.budget().initial_bits() as i64 * 1000);
+        assert!(tracked.budget().remaining_millibits() < tracked.budget().initial_millibits());
     }
 
     #[test]

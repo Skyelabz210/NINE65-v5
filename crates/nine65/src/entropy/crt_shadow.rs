@@ -986,7 +986,9 @@ mod tests {
         let stats = rns.stats();
         println!("\nThroughput test (10000 muls):");
         println!("  {}", stats);
-        println!("  Entropy per op: {:.2} bits", stats.estimated_entropy as f64 / stats.operations as f64);
+        // Integer-only: compute entropy_per_op_x100 = (entropy * 100) / ops
+        let entropy_per_op_x100 = (stats.estimated_entropy * 100) / stats.operations;
+        println!("  Entropy per op: {}.{:02} bits", entropy_per_op_x100 / 100, entropy_per_op_x100 % 100);
 
         // Should have accumulated significant entropy
         assert!(stats.estimated_entropy > 10000);
@@ -1064,18 +1066,21 @@ mod tests {
         }
 
         let elapsed = start.elapsed();
-        let ops_per_sec = ops as f64 / elapsed.as_secs_f64();
-        let entropy_per_sec = rns.entropy_bits() as f64 / elapsed.as_secs_f64();
+        // Integer-only: ops_per_sec = (ops * 1_000_000_000) / elapsed_nanos
+        let elapsed_nanos = elapsed.as_nanos().max(1);
+        let ops_per_sec = (ops as u128 * 1_000_000_000) / elapsed_nanos;
+        let entropy_per_sec = (rns.entropy_bits() as u128 * 1_000_000_000) / elapsed_nanos;
+        let entropy_mbits_per_sec_x100 = entropy_per_sec * 100 / 1_000_000;
 
         println!("\n=== CRT Shadow Benchmark ({} ops) ===", ops);
         println!("  Time: {:?}", elapsed);
-        println!("  Ops/sec: {:.2e}", ops_per_sec);
+        println!("  Ops/sec: {}", ops_per_sec);
         println!("  Stats: {}", rns.stats());
-        println!("  Entropy throughput: {:.2e} bits/sec", entropy_per_sec);
-        println!("  Entropy throughput: {:.2} Mbits/sec", entropy_per_sec / 1_000_000.0);
+        println!("  Entropy throughput: {} bits/sec", entropy_per_sec);
+        println!("  Entropy throughput: {}.{:02} Mbits/sec", entropy_mbits_per_sec_x100 / 100, entropy_mbits_per_sec_x100 % 100);
 
         // Verify we're getting reasonable throughput (>100k ops/sec in debug, >1M in release)
-        assert!(ops_per_sec > 100_000.0, "Throughput too low: {:.2e}", ops_per_sec);
+        assert!(ops_per_sec > 100_000, "Throughput too low: {}", ops_per_sec);
     }
 
     #[test]
@@ -1312,8 +1317,15 @@ mod tests {
         println!("\n=== Signature Overhead Benchmark ({} ops) ===", ops);
         println!("  Without signature: {:?}", time_no_sig);
         println!("  With signature: {:?}", time_with_sig);
-        println!("  Overhead: {:.1}%",
-                 (time_with_sig.as_nanos() as f64 / time_no_sig.as_nanos() as f64 - 1.0) * 100.0);
+        // Integer-only: overhead_pct = ((with - without) * 100) / without
+        let ns_no = time_no_sig.as_nanos().max(1);
+        let ns_with = time_with_sig.as_nanos();
+        let overhead_x10 = if ns_with > ns_no {
+            ((ns_with - ns_no) * 1000 / ns_no) as u64
+        } else {
+            0
+        };
+        println!("  Overhead: {}.{}%", overhead_x10 / 10, overhead_x10 % 10);
 
         // Signature creation should be cheap (<50% overhead)
         assert!(time_with_sig.as_nanos() < time_no_sig.as_nanos() * 2,

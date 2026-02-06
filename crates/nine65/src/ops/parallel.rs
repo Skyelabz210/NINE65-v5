@@ -370,12 +370,14 @@ mod tests {
         let decrypted = parallel_dec.decrypt_batch_par(&ciphertexts);
         let decrypt_time = start.elapsed();
 
-        println!("Parallel encrypt {} messages: {:?} ({:.2} us/msg)",
+        let enc_ns_per_msg = encrypt_time.as_nanos() / count as u128;
+        println!("Parallel encrypt {} messages: {:?} ({}.{:03} us/msg)",
                  count, encrypt_time,
-                 encrypt_time.as_micros() as f64 / count as f64);
-        println!("Parallel decrypt {} messages: {:?} ({:.2} us/msg)",
+                 enc_ns_per_msg / 1000, enc_ns_per_msg % 1000);
+        let dec_ns_per_msg = decrypt_time.as_nanos() / count as u128;
+        println!("Parallel decrypt {} messages: {:?} ({}.{:03} us/msg)",
                  count, decrypt_time,
-                 decrypt_time.as_micros() as f64 / count as f64);
+                 dec_ns_per_msg / 1000, dec_ns_per_msg % 1000);
 
         // Verify correctness
         assert_eq!(decrypted, messages);

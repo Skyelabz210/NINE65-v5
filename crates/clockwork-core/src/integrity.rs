@@ -343,10 +343,12 @@ mod tests {
             }
         }
 
-        let detection_rate = detected as f64 / total as f64;
+        // Integer-only: compute detection rate in permille (parts per 1000)
+        // detected/total > 0.9999 is equivalent to (detected * 10000) / total > 9999
+        let rate_per_10k = (detected * 10_000) / total;
         assert!(
-            detection_rate > 0.9999,
-            "IT-03: Detection rate {detection_rate:.6} too low (expected > 0.9999)"
+            rate_per_10k > 9999,
+            "IT-03: Detection rate {rate_per_10k}/10000 too low (expected > 9999/10000)"
         );
     }
 

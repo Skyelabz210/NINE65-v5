@@ -411,21 +411,22 @@ mod tests {
         }
 
         // Simple χ² test: expect ~num_samples/num_bins per bin
-        let expected = num_samples / num_bins as u64;
+        // Integer-only: scale by 1000 to avoid floating-point
+        let expected_x1000 = (num_samples as u64 * 1000) / num_bins as u64;
 
-        let chi_sq: f64 = bin_counts
+        let chi_sq_x1000: u64 = bin_counts
             .iter()
             .map(|&count| {
-                let diff = count as f64 - expected as f64;
-                diff * diff / expected as f64
+                let diff = count as i64 * 1000 - expected_x1000 as i64;
+                ((diff * diff) as u64) / expected_x1000
             })
             .sum();
 
         // χ²(15) at p=0.01 is 30.578
-        // Use a generous threshold
+        // Use a generous threshold: 50.0 * 1000 = 50_000
         assert!(
-            chi_sq < 50.0,
-            "KT-04: Share distribution not uniform enough: χ²={chi_sq:.2}"
+            chi_sq_x1000 < 50_000,
+            "KT-04: Share distribution not uniform enough: χ²×1000={chi_sq_x1000}"
         );
     }
 

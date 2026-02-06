@@ -7974,7 +7974,7 @@ mod tests {
         let mut budget = NoiseBudget::with_budget_bits(100);  // 100 bits = plenty
         let initial_budget = budget.remaining_millibits();
         println!("Test budget: {} millibits ({} bits)",
-                 initial_budget, budget.remaining_bits());
+                 initial_budget, initial_budget / 1000);
 
         // Encrypt values (not tracked in this test)
         let ct1 = ctx.encrypt_dual(7, &keys.public_key, &mut rng);
@@ -7992,7 +7992,7 @@ mod tests {
         println!("Budget consumed: {} millibits ({} bits)",
                  consumed, consumed / 1000);
         println!("Budget remaining: {} millibits ({} bits)",
-                 budget.remaining_millibits(), budget.remaining_bits());
+                 budget.remaining_millibits(), budget.remaining_millibits() / 1000);
         println!("Operations performed: {}", budget.operations().len());
 
         // Verify the tracking recorded the right operations
@@ -8019,7 +8019,7 @@ mod tests {
         // Use artificial budget to test tracking at various depths
         let mut budget = NoiseBudget::with_budget_bits(200);  // 200 bits - enough for several muls
         println!("Initial budget: {} millibits ({} bits)",
-                 budget.remaining_millibits(), budget.remaining_bits());
+                 budget.remaining_millibits(), budget.remaining_millibits() / 1000);
 
         // Encrypt x = 2
         let mut ct = ctx.encrypt_dual(2, &keys.public_key, &mut rng);
@@ -8034,7 +8034,7 @@ mod tests {
                     ct = ct_new;
                     depth += 1;
                     println!("Depth {}: budget = {} millibits ({} bits)",
-                             depth, budget.remaining_millibits(), budget.remaining_bits());
+                             depth, budget.remaining_millibits(), budget.remaining_millibits() / 1000);
                 }
                 Err(e) => {
                     println!("Budget exhausted at depth {}: {}", depth, e);

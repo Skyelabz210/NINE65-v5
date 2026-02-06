@@ -229,14 +229,9 @@ impl NoiseBudget {
         self.remaining_mb
     }
     
-    /// Get remaining budget in bits (approximate)
-    pub fn remaining_bits(&self) -> f64 {
-        self.remaining_mb as f64 / 1000.0
-    }
-    
-    /// Get initial budget in bits
-    pub fn initial_bits(&self) -> f64 {
-        self.initial_mb as f64 / 1000.0
+    /// Get initial budget in millibits
+    pub fn initial_millibits(&self) -> i64 {
+        self.initial_mb
     }
     
     /// Check if operation can be performed
@@ -258,15 +253,14 @@ impl NoiseBudget {
     
     /// Get summary statistics
     pub fn summary(&self) -> String {
+        use crate::arithmetic::integer_math::format_millibits;
         let used = self.initial_mb - self.remaining_mb;
-        let remaining_bits = self.remaining_bits();
-        let initial_bits = self.initial_bits();
-        
+        let used_percent = if self.initial_mb > 0 { (used * 100) / self.initial_mb } else { 100 };
         format!(
-            "Noise Budget: {:.1}/{:.1} bits remaining ({:.1}% used, {} ops)",
-            remaining_bits,
-            initial_bits,
-            100.0 * used as f64 / self.initial_mb as f64,
+            "Noise Budget: {}/{} bits remaining ({}% used, {} ops)",
+            format_millibits(self.remaining_mb.max(0) as u64),
+            format_millibits(self.initial_mb as u64),
+            used_percent,
             self.operations.len()
         )
     }
@@ -289,20 +283,20 @@ mod tests {
         let budget = NoiseBudget::from_config(&config);
         
         println!("Light config budget: {}", budget);
-        assert!(budget.remaining_bits() > 0.0, "Should have positive budget");
+        assert!(budget.remaining_millibits() > 0, "Should have positive budget");
     }
-    
+
     #[test]
     fn test_noise_budget_consumption() {
         let config = SecureConfig::secure_128().into_config();
         let mut budget = NoiseBudget::from_config(&config);
-        
-        let initial = budget.remaining_bits();
-        
+
+        let initial = budget.remaining_millibits();
+
         // Perform addition
         budget.consume(NoiseOpType::Add, NoiseBudget::add_cost()).unwrap();
-        
-        assert!(budget.remaining_bits() < initial, "Budget should decrease");
+
+        assert!(budget.remaining_millibits() < initial, "Budget should decrease");
         assert_eq!(budget.operations().len(), 1);
     }
     
@@ -363,7 +357,7 @@ mod tests {
         println!("HE Standard 128 budget: {}", budget);
         println!("Remaining multiplications: {}", budget.remaining_multiplications(&config));
 
-        assert!(budget.remaining_bits() > 0.0, "HE Standard should have positive budget");
+        assert!(budget.remaining_millibits() > 0, "HE Standard should have positive budget");
     }
 
     #[test]
@@ -389,8 +383,8 @@ mod tests {
         // Verify operation count
         assert_eq!(budget.operations().len(), 100);
 
-        println!("Depth-100 precision test: {} millibits remaining ({:.3} bits)",
-                 remaining, remaining as f64 / 1000.0);
+        println!("Depth-100 precision test: {} millibits remaining ({}.{:03} bits)",
+                 remaining, remaining / 1000, remaining % 1000);
         println!("Max cumulative rounding error: 50 millibits (0.05 bits)");
     }
 }

@@ -1532,9 +1532,9 @@ mod tests {
         let ctx = DualRNSContext::new(main_primes, anchor_primes, 1024);
 
         println!("FHE-sized K-Elimination:");
-        println!("  M = {:.2e}", ctx.main_product as f64);
-        println!("  A = {:.2e}", ctx.anchor_product as f64);
-        println!("  Total capacity = {:.2e}", (ctx.main_product as f64) * (ctx.anchor_product as f64));
+        println!("  M = {} ({} bits)", ctx.main_product, 128u32.saturating_sub(ctx.main_product.leading_zeros()));
+        println!("  A = {} ({} bits)", ctx.anchor_product, 128u32.saturating_sub(ctx.anchor_product.leading_zeros()));
+        println!("  Total capacity = {} + {} = {} bits", 128u32.saturating_sub(ctx.main_product.leading_zeros()), 128u32.saturating_sub(ctx.anchor_product.leading_zeros()), 128u32.saturating_sub(ctx.main_product.leading_zeros()) + 128u32.saturating_sub(ctx.anchor_product.leading_zeros()));
 
         // Test large value (simulating Δ² after tensor product)
         // Δ ≈ M/t where t = 65537
@@ -1542,8 +1542,8 @@ mod tests {
         let delta: u128 = ctx.main_product / 65537;
         let delta_sq = delta.saturating_mul(delta);
 
-        println!("  Δ = M/t ≈ {:.2e}", delta as f64);
-        println!("  Δ² ≈ {:.2e}", delta_sq as f64);
+        println!("  Δ = M/t = {} ({} bits)", delta, 128u32.saturating_sub(delta.leading_zeros()));
+        println!("  Δ² = {} ({} bits)", delta_sq, 128u32.saturating_sub(delta_sq.leading_zeros()));
         println!("  Δ² < M×A? {}", delta_sq < ctx.main_product.saturating_mul(ctx.anchor_product));
 
         // Create dual-RNS representation of delta_sq
@@ -1651,19 +1651,19 @@ mod tests {
 
         println!("=== Full Dual-RNS FHE Chain Test ===");
         println!("Main primes: {:?}", main_primes);
-        println!("M = {:.2e}", ctx.main_product as f64);
-        println!("A = {:.2e}", ctx.anchor_product as f64);
+        println!("M = {} ({} bits)", ctx.main_product, 128u32.saturating_sub(ctx.main_product.leading_zeros()));
+        println!("A = {} ({} bits)", ctx.anchor_product, 128u32.saturating_sub(ctx.anchor_product.leading_zeros()));
 
         // Simulate: m = 5 encoded as m * Δ
         let t = 65537u64;
         let m = 5u64;
         let delta = ctx.main_product / t as u128;
 
-        println!("t = {}, Δ = M/t = {:.2e}", t, delta as f64);
+        println!("t = {}, Δ = M/t = {} ({} bits)", t, delta, 128u32.saturating_sub(delta.leading_zeros()));
 
         // Encode message
         let encoded = delta * m as u128;
-        println!("Encoded m = {} × Δ = {:.2e}", m, encoded as f64);
+        println!("Encoded m = {} × Δ = {} ({} bits)", m, encoded, 128u32.saturating_sub(encoded.leading_zeros()));
 
         // Actually, let's just test the k_elim path with a simpler value
         // Simulate tensor product: (m₁ × Δ) × (m₂ × Δ) = m₁m₂ × Δ²

@@ -135,12 +135,12 @@ impl PolynomialPool {
         (self.stats_acquires, self.stats_hits)
     }
 
-    /// Get cache hit ratio (0.0 to 1.0)
-    pub fn hit_ratio(&self) -> f64 {
+    /// Get cache hit ratio in permille (0-1000, where 1000 = 100%)
+    pub fn hit_ratio_permille(&self) -> u32 {
         if self.stats_acquires == 0 {
-            0.0
+            0
         } else {
-            self.stats_hits as f64 / self.stats_acquires as f64
+            ((self.stats_hits as u64 * 1000) / self.stats_acquires as u64) as u32
         }
     }
 
@@ -407,15 +407,15 @@ mod tests {
 
         // First acquire is a miss
         let p1 = pool.acquire(8, 100);
-        assert_eq!(pool.hit_ratio(), 0.0);
+        assert_eq!(pool.hit_ratio_permille(), 0);
 
         pool.release(p1);
 
         // Second acquire is a hit
         let p2 = pool.acquire(8, 100);
         assert_eq!(pool.stats(), (2, 1));
-        // hit_ratio uses f64, so approximately 0.5
-        assert!((pool.hit_ratio() - 0.5).abs() < 0.001);
+        // 1 hit / 2 acquires = 500 permille
+        assert_eq!(pool.hit_ratio_permille(), 500);
 
         pool.release(p2);
     }

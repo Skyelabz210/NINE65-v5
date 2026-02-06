@@ -252,24 +252,25 @@ impl FHEConfig {
         self.primes.iter().fold(1u128, |acc, &p| acc * p as u128)
     }
 
-    /// Get noise budget in bits for RNS multiplication
+    /// Get noise budget in millibits for RNS multiplication
     /// This accounts for the larger effective modulus from multiple primes
-    pub fn rns_noise_budget(&self) -> f64 {
+    /// Returns budget * 1000 for integer-only precision
+    pub fn rns_noise_budget_millibits(&self) -> u64 {
         if self.primes.len() < 2 {
-            return self.noise_budget() as f64;
+            return self.noise_budget() as u64 * 1000;
         }
 
         // With RNS, effective Q = product of all primes
         let q_product = self.rns_product();
         let delta_effective = q_product / self.t as u128;
-        let delta_bits = 128 - delta_effective.leading_zeros();
+        let delta_bits = if delta_effective > 0 { 128 - delta_effective.leading_zeros() } else { 0 };
 
         // Initial noise estimate
-        let eta_bits = self.eta as u32 + 1;  // log2(2*eta)
-        let n_bits = (self.n as f64).log2() / 2.0;  // log2(sqrt(n))
-        let initial_noise = eta_bits as f64 + n_bits + 3.0;  // safety margin
+        let eta_bits = self.eta as u32 + 1;
+        let n_bits_half = self.n.trailing_zeros() / 2; // integer log2(sqrt(n))
+        let initial_noise_bits = eta_bits + n_bits_half + 3;
 
-        (delta_bits as f64) - initial_noise
+        (delta_bits as u64).saturating_sub(initial_noise_bits as u64) * 1000
     }
     
     /// Standard configuration (~96-bit actual security)
@@ -623,13 +624,13 @@ impl FHEConfig {
 fn estimate_security(n: usize, q: u64) -> usize {
     // Simplified estimate based on n and log2(q)
     let log_q = 64 - q.leading_zeros();
-    let ratio = n as f64 / log_q as f64;
-    
-    if ratio > 50.0 {
+    let ratio_permille = ((n as u64) * 1000) / log_q as u64;
+
+    if ratio_permille > 50_000 {
         192
-    } else if ratio > 30.0 {
+    } else if ratio_permille > 30_000 {
         128
-    } else if ratio > 20.0 {
+    } else if ratio_permille > 20_000 {
         80
     } else {
         0
@@ -662,9 +663,9 @@ mod tests {
             assert!(config.delta() > 0, "{} delta is 0", config.name);
 
             let rns_info = if config.supports_rns_mul() {
-                format!("RNS Q={:.2e}, RNS budget={:.0}bits",
-                        config.rns_product() as f64,
-                        config.rns_noise_budget())
+                format!("RNS Q={}, RNS budget={}mb",
+                        config.rns_product(),
+                        config.rns_noise_budget_millibits())
             } else {
                 "single-mod".to_string()
             };
@@ -691,18 +692,18 @@ mod tests {
                 log_q, he_max_log_q, config.n);
         
         // Verify N/log(q) ratio (rough security indicator)
-        let ratio = config.n as f64 / log_q as f64;
-        assert!(ratio > 38.0, "N/log(q) ratio {} too low for 128-bit", ratio);
-        
+        let ratio_permille = ((config.n as u64) * 1000) / log_q as u64;
+        assert!(ratio_permille > 38_000, "N/log(q) ratio {}.{:03} too low for 128-bit", ratio_permille / 1000, ratio_permille % 1000);
+
         // Verify orbital safety
         let result = validate_params(config.n, config.q, config.t);
         assert!(result.orbital_safe, "HE Standard config fails orbital bounds");
         assert!(result.he_standard_compliant, "HE Standard config not compliant");
-        
+
         println!("HE Standard 128-bit Compliance:");
         println!("  N = {}", config.n);
         println!("  log(q) = {} (max {})", log_q, he_max_log_q);
-        println!("  N/log(q) = {:.1} (need > 38)", ratio);
+        println!("  N/log(q) = {}.{:03} (need > 38)", ratio_permille / 1000, ratio_permille % 1000);
         println!("  Orbital safe: {}", result.orbital_safe);
         println!("  HE compliant: {}", result.he_standard_compliant);
     }

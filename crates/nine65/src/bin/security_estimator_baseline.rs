@@ -2,12 +2,34 @@ use nine65::params::secure_configs::SecureConfig;
 use nine65::params::security_estimator::{CostModel, LatticeSecurityEstimator, SecretDistribution};
 use std::env;
 
-fn log2_u64(value: u64) -> f64 {
-    (value as f64).log2()
+/// Integer log2 floor: returns the bit-width minus 1 (floor of log2)
+fn log2_floor(value: u64) -> u32 {
+    assert!(value > 0, "log2 of zero is undefined");
+    63 - value.leading_zeros()
 }
 
-fn log2_product(primes: &[u64]) -> f64 {
-    primes.iter().map(|&p| log2_u64(p)).sum()
+/// Sum of floor(log2(p)) for each prime -- integer approximation of log2(product)
+/// Returns (integer_part, fractional_millibits) for display as "X.YY"
+fn log2_product_approx(primes: &[u64]) -> (u32, u32) {
+    // Sum bit-widths: each prime p contributes floor(log2(p)) bits
+    // For finer granularity, compute sum of (64 - leading_zeros - 1) = floor(log2(p))
+    // Plus fractional correction: for each prime, the fraction is log2(p) - floor(log2(p))
+    // We approximate the fractional part using: (p - 2^floor) * 100 / 2^floor
+    let mut total_bits: u32 = 0;
+    let mut frac_hundredths: u32 = 0;
+    for &p in primes {
+        let floor = log2_floor(p);
+        total_bits += floor;
+        // fractional part approximation in hundredths of a bit
+        let pow2 = 1u64 << floor;
+        let remainder = p - pow2;
+        // fraction ~ remainder / pow2, scaled to hundredths
+        frac_hundredths += ((remainder * 100) / pow2) as u32;
+    }
+    // Carry over fractional hundredths into integer bits
+    total_bits += frac_hundredths / 100;
+    frac_hundredths %= 100;
+    (total_bits, frac_hundredths)
 }
 
 fn log2_product_floor_bits(primes: &[u64]) -> u32 {
@@ -66,11 +88,13 @@ fn main() {
             SecretDistribution::Ternary,
             config.security_bits as u32,
         );
+        let (int_part, frac_part) = log2_product_approx(&config.primes);
         println!(
-            "{},{},{:.2},{},{}",
+            "{},{},{}.{:02},{},{}",
             name,
             config.n,
-            log2_product(&config.primes),
+            int_part,
+            frac_part,
             estimate.effective_bits,
             match cost_model {
                 CostModel::CoreSVP => "core-svp",
@@ -91,11 +115,13 @@ fn main() {
             SecretDistribution::Ternary,
             config.security_bits as u32,
         );
+        let (int_part, frac_part) = log2_product_approx(&config.primes);
         println!(
-            "| {} | {} | {:.2} | {} | {} |",
+            "| {} | {} | {}.{:02} | {} | {} |",
             name,
             config.n,
-            log2_product(&config.primes),
+            int_part,
+            frac_part,
             estimate.effective_bits,
             match cost_model {
                 CostModel::CoreSVP => "core-svp",

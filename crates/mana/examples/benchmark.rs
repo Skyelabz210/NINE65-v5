@@ -14,11 +14,15 @@ use std::time::Instant;
 const TEST_PRIME: u64 = 998244353;
 
 /// Format operations count with suffix (M = million, G = billion)
+/// Uses integer arithmetic only -- no floating-point.
 fn format_ops(ops: u128) -> String {
     if ops >= 1_000_000_000 {
-        format!("{:.1}G", ops as f64 / 1_000_000_000.0)
+        let whole = ops / 1_000_000_000;
+        let frac = (ops % 1_000_000_000) / 100_000_000; // tenths
+        format!("{}.{}G", whole, frac)
     } else if ops >= 1_000_000 {
-        format!("{:.0}M", ops as f64 / 1_000_000.0)
+        let whole = ops / 1_000_000;
+        format!("{}M", whole)
     } else {
         format!("{}", ops)
     }
@@ -82,13 +86,15 @@ fn bench_stream_add(size: usize, iterations: usize) {
         let par_ops = (size as u128 * PRIMES.len() as u128 * iterations as u128 * 1_000_000_000)
             / par_time.as_nanos().max(1);
 
+        let speedup_hundredths = (par_ops * 100) / seq_ops.max(1);
         println!(
-            "Stream Add (N={}, {} lanes): Seq={} → Rayon={} ({:.2}x)",
+            "Stream Add (N={}, {} lanes): Seq={} → Rayon={} ({}.{:02}x)",
             size,
             PRIMES.len(),
             format_ops(seq_ops),
             format_ops(par_ops),
-            par_ops as f64 / seq_ops as f64
+            speedup_hundredths / 100,
+            speedup_hundredths % 100
         );
     }
 

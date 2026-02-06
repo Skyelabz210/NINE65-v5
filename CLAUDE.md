@@ -35,6 +35,7 @@ cargo test -p nine65 security::tests -- --nocapture  # Security tests
 - **GRO timing gate**: `crates/nine65/src/security/gro_gate.rs` (requires `clockwork` feature)
 - **Key lifecycle**: `crates/nine65/src/security/key_manager.rs` (requires `clockwork` feature)
 - **Limb integrity**: `crates/nine65/src/security/integrity.rs` (requires `clockwork` feature)
+- **Integer math utilities**: `crates/nine65/src/arithmetic/integer_math.rs` - log2, sqrt, format, trig LUT
 - **Garner reconstruction**: `crates/clockwork-core/src/garner.rs` (cross-validates K-Elimination)
 - **Coq proofs**: `proofs/coq/*.v` (14 proofs, requires Coq 8.18+)
 - **Lean4 proofs**: `lean4/KElimination/` (4 proofs, requires Lean 4.x + Mathlib)
@@ -74,7 +75,30 @@ cargo +nightly fuzz run fuzz_k_elimination
 
 ## Conventions
 
-- Integer-only: No floating-point anywhere
+- Integer-only: No floating-point anywhere (zero f32/f64 in all crates)
 - Workspace uses resolver = "2"
 - Release profile: LTO fat, codegen-units=1, panic=abort
 - Proprietary license
+
+## Integer-Only Representations
+
+All values formerly expressed as floats now use exact integer representations:
+
+| Concept | Type | Scale | Example |
+|---------|------|-------|---------|
+| Noise budget (bits) | `u64` millibits | 1000 = 1 bit | `31500` = 31.5 bits |
+| Ratios (N/logQ, hit rate) | `u32` permille | 1000 = 1.0 | `28500` = 28.5 |
+| Error sigma | `u32` millibits | 1000 = 1.0 | `3200` = σ=3.2 |
+| Timing display | `Duration::as_nanos()/as_micros()` | native | integer division |
+| Trig (basin placement) | Q15 fixed-point LUT | `>> 15` | 256-entry cos/sin table |
+| Statistics (chi-squared) | `×1000` scaled | 1000 = 1.0 | `chi_sq_x1000 < 50_000` |
+
+**Key utilities** in `crates/nine65/src/arithmetic/integer_math.rs`:
+- `integer_log2(x)` / `integer_log2_u128(x)` - floor(log2) via `leading_zeros()`
+- `integer_sqrt(n)` - floor(sqrt) via Babylonian method
+- `format_millibits(mb)` - display `31500` as `"31.500"`
+- `format_ops(ops)` - display `1_234_567_890` as `"1G"`
+- `fixed_cos_sin(angle_idx)` - Q15 cos/sin lookup from 256-entry table
+- `COS_SIN_TABLE` / `GOLDEN_ANGLE_Q30` - precomputed constants
+
+**Exemption**: `compiler.rs` retains `#![allow(clippy::float_arithmetic)]` — it is a compile-time analysis tool, not runtime computation.

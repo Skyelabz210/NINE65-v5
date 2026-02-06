@@ -33,6 +33,7 @@ pub mod integer_softmax; // EXACT SUM SOFTMAX
 pub mod cyclotomic_phase; // NATIVE RING TRIGONOMETRY
 pub mod valuation;
 pub mod order_finding;    // NON-CIRCULAR BSGS (Shor's classical reduction)
+pub mod integer_math;     // INTEGER UTILITIES (log2, sqrt, format, trig LUT)
 
 pub use montgomery::MontgomeryContext;
 pub use persistent_montgomery::{PersistentMontgomery, PersistentPolynomial};
@@ -63,6 +64,11 @@ pub use order_finding::{
     factor_via_order, factor_semiprime,
     verify_order_k_elimination, KRecurrence,
     OrderResult, FactorResult, gcd,
+};
+pub use integer_math::{
+    integer_log2, integer_log2_u128, integer_sqrt,
+    format_millibits, format_ops, format_as_bits,
+    fixed_cos_sin, COS_SIN_TABLE, GOLDEN_ANGLE_Q30,
 };
 
 #[cfg(feature = "exact_rational")]

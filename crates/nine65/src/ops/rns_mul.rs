@@ -442,10 +442,11 @@ impl RNSEvaluator {
 
             #[cfg(test)]
             if i == 0 {
-                eprintln!("  [K-Elim coeff 0] v_m={} ({:.2e}), k={} ({:.2e}), delta={}",
-                    v_m, v_m as f64, k, k as f64, delta);
-                eprintln!("    A_n={:.2e}, k > A_n/2 = {}, k_signed = {}{}",
-                    a_n_product as f64, k > a_n_product / 2,
+                eprintln!("  [K-Elim coeff 0] v_m={} ({} bits), k={} ({} bits), delta={}",
+                    v_m, 128u32.saturating_sub(v_m.leading_zeros()),
+                    k, 128u32.saturating_sub(k.leading_zeros()), delta);
+                eprintln!("    A_n={} bits, k > A_n/2 = {}, k_signed = {}{}",
+                    128u32.saturating_sub(a_n_product.leading_zeros()), k > a_n_product / 2,
                     if k_signed.is_neg { "-" } else { "+" }, k_signed.magnitude);
             }
 
@@ -502,8 +503,8 @@ impl RNSEvaluator {
 
             let c0_1_val = self.rns.to_int(&c0_1_main);
             let c0_2_val = self.rns.to_int(&c0_2_main);
-            eprintln!("[Before mul] c0_1[0] = {} ({:.2e})", c0_1_val, c0_1_val as f64);
-            eprintln!("[Before mul] c0_2[0] = {} ({:.2e})", c0_2_val, c0_2_val as f64);
+            eprintln!("[Before mul] c0_1[0] = {} ({} bits)", c0_1_val, 128u32.saturating_sub(c0_1_val.leading_zeros()));
+            eprintln!("[Before mul] c0_2[0] = {} ({} bits)", c0_2_val, 128u32.saturating_sub(c0_2_val.leading_zeros()));
         }
 
         let d0 = self.dual_poly_mul(c0_1, c0_2);
@@ -516,7 +517,7 @@ impl RNSEvaluator {
             eprintln!("[After mul] d0 anchor residues [0]: {:?}", d0_anchor);
 
             let d0_val = self.rns.to_int(&d0_main);
-            eprintln!("[After mul] d0[0] from main CRT = {} ({:.2e})", d0_val, d0_val as f64);
+            eprintln!("[After mul] d0[0] from main CRT = {} ({} bits)", d0_val, 128u32.saturating_sub(d0_val.leading_zeros()));
 
             for (i, &ap) in self.dual_rns.anchor.primes.iter().enumerate() {
                 let expected_anchor = (d0_val % ap as u128) as u64;
@@ -534,12 +535,12 @@ impl RNSEvaluator {
             let k_is_neg = k > a_n_product / 2;
             let k_mag = if k_is_neg { a_n_product - k } else { k };
 
-            eprintln!("[Verification] k={} ({:.2e}), |k|={}, negative={}",
-                k, k as f64, k_mag, k_is_neg);
+            eprintln!("[Verification] k={} ({} bits), |k|={}, negative={}",
+                k, 128u32.saturating_sub(k.leading_zeros()), k_mag, k_is_neg);
 
             let delta_sq = (self.delta as u128) * (self.delta as u128);
             let expected_tensor = delta_sq * 35;
-            eprintln!("[Verification] Expected Δ²×35 = {} ({:.2e})", expected_tensor, expected_tensor as f64);
+            eprintln!("[Verification] Expected Δ²×35 = {} ({} bits)", expected_tensor, 128u32.saturating_sub(expected_tensor.leading_zeros()));
 
             for (i, &ap) in self.dual_rns.anchor.primes.iter().enumerate() {
                 let expected_from_delta_sq = (expected_tensor % ap as u128) as u64;
@@ -928,7 +929,7 @@ mod tests {
         let delta = rns_eval.delta as u128;
 
         println!("=== Trivial Ciphertext K-Elimination Test ===");
-        println!("M product: {} ({:.2e})", rns_eval.m_product, rns_eval.m_product as f64);
+        println!("M product: {} ({} bits)", rns_eval.m_product, 128u32.saturating_sub(rns_eval.m_product.leading_zeros()));
         println!("delta = {}", delta);
 
         // Test: 5 × 7 = 35
@@ -976,8 +977,8 @@ mod tests {
         let expected_tensor = encoded_a * encoded_b;  // Δ² × 35
 
         println!("\nTensor product:");
-        println!("  d0[0] (CRT) = {} ({:.2e})", d0_val, d0_val as f64);
-        println!("  Expected Δ²×{} = {} ({:.2e})", expected, expected_tensor, expected_tensor as f64);
+        println!("  d0[0] (CRT) = {} ({} bits)", d0_val, 128u32.saturating_sub(d0_val.leading_zeros()));
+        println!("  Expected Δ²×{} = {} ({} bits)", expected, expected_tensor, 128u32.saturating_sub(expected_tensor.leading_zeros()));
 
         // For trivial case, tensor should equal expected_tensor directly (no wrap)
         assert!(d0_val == expected_tensor || d0_val == expected_tensor % rns_eval.m_product,

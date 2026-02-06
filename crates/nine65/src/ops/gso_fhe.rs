@@ -24,6 +24,7 @@
 use super::rns_fhe::{RNSFHEContext, DualRNSCiphertext, DualRNSSecretKey,
                      DualRNSPublicKey, DualRNSEvalKey, DualRNSKeySet, DualRNSFullKeySet};
 use crate::arithmetic::U256;
+use crate::arithmetic::integer_math::{integer_log2, integer_sqrt, fixed_cos_sin, format_as_bits, GOLDEN_ANGLE_Q30};
 use crate::entropy::ShadowHarvester;
 
 fn u256_to_u64_saturating(value: U256) -> u64 {
@@ -152,17 +153,18 @@ pub struct AttractorBasin {
 }
 
 impl AttractorBasin {
-    /// Create basin with golden-angle placement
+    /// Create basin with golden-angle placement (integer-only, fixed-point LUT)
     pub fn new(id: u32, radius: u64, scale: u64) -> Self {
-        // Golden angle placement: uniform distribution on disk
-        let golden_angle = 2.399_963_229_728_653_f64; // 2*pi*(1 - 1/phi)
-        let angle = (id as f64) * golden_angle;
-        let r = ((id as f64 + 1.0).sqrt() * scale as f64) as i64;
+        // Golden angle placement using Q30 fixed-point and Q15 cos/sin LUT
+        // angle_index = (id * golden_angle) mapped to 0..255 table entries
+        let angle_idx = ((id as u64).wrapping_mul(GOLDEN_ANGLE_Q30) >> 30) % 256;
+        let r = (integer_sqrt(id as u64 + 1) * scale) as i64;
+        let (cos_q15, sin_q15) = fixed_cos_sin(angle_idx);
 
         Self {
             id,
-            center_x: (r as f64 * angle.cos()) as i64,
-            center_y: (r as f64 * angle.sin()) as i64,
+            center_x: (r * cos_q15 as i64) >> 15,
+            center_y: (r * sin_q15 as i64) >> 15,
             radius,
         }
     }
@@ -219,7 +221,7 @@ impl GSOSwarm {
 
         // Simplified convergence: deterministic iteration count based on basin geometry
         // Real implementation would run actual swarm dynamics
-        let iterations = (target.radius as f64).log2() as u32 + 10;
+        let iterations = integer_log2(target.radius) + 10;
 
         // Update shadow entropy (deterministic mixing)
         for i in 0..iterations {
@@ -452,10 +454,15 @@ impl GSOFHEContext {
 
     /// Get noise statistics for debugging
     pub fn noise_stats(&self, ct: &GSOCiphertext) -> NoiseStats {
+        let ratio_permille = if self.basin_radius == 0 {
+            1000
+        } else {
+            ((ct.noise.distance as u128 * 1000) / self.basin_radius as u128) as u32
+        };
         NoiseStats {
             distance: ct.noise.distance,
             basin_radius: self.basin_radius,
-            ratio: ct.noise.distance as f64 / self.basin_radius as f64,
+            ratio_permille,
             depth: ct.noise.mul_depth,
             collapses: ct.noise.collapse_count,
             needs_collapse: ct.noise.needs_collapse(self.basin_radius),
@@ -468,7 +475,8 @@ impl GSOFHEContext {
 pub struct NoiseStats {
     pub distance: u64,
     pub basin_radius: u64,
-    pub ratio: f64,
+    /// Ratio of distance/basin_radius in permille (1000 = 100%)
+    pub ratio_permille: u32,
     pub depth: u32,
     pub collapses: u32,
     pub needs_collapse: bool,
@@ -476,9 +484,11 @@ pub struct NoiseStats {
 
 impl std::fmt::Display for NoiseStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "noise={:.2e}/{:.2e} ({:.1}%), depth={}, collapses={}{}",
-               self.distance as f64, self.basin_radius as f64,
-               self.ratio * 100.0, self.depth, self.collapses,
+        write!(f, "noise={}/{} ({}.{}%), depth={}, collapses={}{}",
+               format_as_bits(self.distance as u128),
+               format_as_bits(self.basin_radius as u128),
+               self.ratio_permille / 10, self.ratio_permille % 10,
+               self.depth, self.collapses,
                if self.needs_collapse { " [COLLAPSE NEEDED]" } else { "" })
     }
 }
@@ -621,8 +631,8 @@ mod tests {
         // The GSO tracking helps us understand when collapse is needed
         if result != expected {
             println!("WARN: Depth-2 public mode still failing - noise exceeds threshold");
-            println!("       Basin radius: {:.2e}", ctx.basin_radius as f64);
-            println!("       Noise distance: {:.2e}", ct_30.noise.distance as f64);
+            println!("       Basin radius: {}", format_as_bits(ctx.basin_radius as u128));
+            println!("       Noise distance: {}", format_as_bits(ct_30.noise.distance as u128));
         }
     }
 
@@ -659,17 +669,20 @@ mod tests {
         println!("\nBasin placement (first 10):");
         for i in 0..10.min(ctx.basins.len()) {
             let basin = &ctx.basins[i];
-            println!("  Basin {}: center=({}, {}), radius={:.2e}",
-                     basin.id, basin.center_x, basin.center_y, basin.radius as f64);
+            println!("  Basin {}: center=({}, {}), radius={}",
+                     basin.id, basin.center_x, basin.center_y,
+                     format_as_bits(basin.radius as u128));
         }
 
         // Basins should be well-distributed (golden angle property)
         let b0 = &ctx.basins[0];
         let b1 = &ctx.basins[1];
-        let dist = (((b1.center_x - b0.center_x).pow(2) +
-                    (b1.center_y - b0.center_y).pow(2)) as f64).sqrt();
-        println!("Distance between basin 0 and 1: {:.2e}", dist);
-        assert!(dist > 0.0, "Basins should be separated");
+        let dx = (b1.center_x - b0.center_x) as i128;
+        let dy = (b1.center_y - b0.center_y) as i128;
+        let dist_sq = (dx * dx + dy * dy) as u64;
+        let dist = integer_sqrt(dist_sq);
+        println!("Distance between basin 0 and 1: {}", dist);
+        assert!(dist > 0, "Basins should be separated");
     }
 
     #[test]
@@ -741,9 +754,10 @@ mod depth_benchmarks {
             let stats = ctx.noise_stats(&ct);
             collapses = stats.collapses;
 
-            println!("{:5} │ {:6.2}ms │ {:6.2}% │ {:9} │ ✓",
-                     d, op_start.elapsed().as_secs_f64() * 1000.0,
-                     stats.ratio * 100.0, collapses);
+            let op_ms = op_start.elapsed().as_millis();
+            println!("{:5} │ {:6}ms │ {:3}.{}% │ {:9} │ ✓",
+                     d, op_ms,
+                     stats.ratio_permille / 10, stats.ratio_permille % 10, collapses);
 
             // Decrypt and verify every 10 depths
             if d % 10 == 0 {
@@ -757,7 +771,8 @@ mod depth_benchmarks {
         println!("SYMMETRIC MAX DEPTH: {} multiplicative levels", depth);
         println!("Total collapses: {}", collapses);
         println!("Total time: {:?}", total_time);
-        println!("Avg time/mul: {:.2}ms", total_time.as_secs_f64() * 1000.0 / depth as f64);
+        let avg_us = total_time.as_micros() / depth as u128;
+        println!("Avg time/mul: {}.{}ms", avg_us / 1000, (avg_us % 1000) / 10);
         println!("═══════════════════════════════════════════════════════════════\n");
 
         assert!(depth >= 10, "Should achieve at least depth 10 in symmetric mode");
@@ -784,10 +799,11 @@ mod depth_benchmarks {
         }
 
         let total_time = start.elapsed();
+        let avg_us = total_time.as_micros() / depth as u128;
         println!("SECURE_128 MAX DEPTH: {} multiplicative levels", depth);
         println!("Total collapses: {}", collapses);
         println!("Total time: {:?}", total_time);
-        println!("Avg time/mul: {:.2}ms", total_time.as_secs_f64() * 1000.0 / depth as f64);
+        println!("Avg time/mul: {}.{}ms", avg_us / 1000, (avg_us % 1000) / 10);
     }
 
     #[test]
@@ -811,10 +827,11 @@ mod depth_benchmarks {
         }
 
         let total_time = start.elapsed();
+        let avg_us = total_time.as_micros() / depth as u128;
         println!("SECURE_192 MAX DEPTH: {} multiplicative levels", depth);
         println!("Total collapses: {}", collapses);
         println!("Total time: {:?}", total_time);
-        println!("Avg time/mul: {:.2}ms", total_time.as_secs_f64() * 1000.0 / depth as f64);
+        println!("Avg time/mul: {}.{}ms", avg_us / 1000, (avg_us % 1000) / 10);
     }
 
     /// Benchmark entropy throughput during FHE operations
@@ -846,21 +863,21 @@ mod depth_benchmarks {
         }
 
         let elapsed = start.elapsed();
-        let ops_per_sec = ops as f64 / elapsed.as_secs_f64();
+        let ops_per_sec = (ops as u128 * 1_000_000_000) / elapsed.as_nanos().max(1);
         let entropy_bits = acc.estimated_entropy_bits();
-        let entropy_rate = entropy_bits as f64 / elapsed.as_secs_f64();
+        let entropy_rate_kbps = (entropy_bits as u128 * 1_000_000) / elapsed.as_micros().max(1);
 
         println!("Operations: {:>12}", ops);
-        println!("Time:       {:>12.3}s", elapsed.as_secs_f64());
-        println!("Ops/sec:    {:>12.2e}", ops_per_sec);
+        println!("Time:       {:>12?}", elapsed);
+        println!("Ops/sec:    {:>12}", ops_per_sec);
         println!("─────────────────────────────────");
         println!("Entropy:    {:>12} bits", entropy_bits);
-        println!("Rate:       {:>12.2} Mbit/s", entropy_rate / 1_000_000.0);
+        println!("Rate:       {:>12} kbit/s", entropy_rate_kbps);
         println!("─────────────────────────────────");
         println!("Final sig:  {}", total_sig);
         println!("Mag class:  {}", total_sig.magnitude_class());
 
-        assert!(ops_per_sec > 500_000.0, "Should exceed 500K ops/sec");
+        assert!(ops_per_sec > 500_000, "Should exceed 500K ops/sec");
     }
 
     /// Combined FHE + entropy benchmark
@@ -900,8 +917,9 @@ mod depth_benchmarks {
             if i % 5 == 0 {
                 let stats = ctx.noise_stats(&ct);
                 let entropy = shadow_rns.extract_entropy();
-                println!("Depth {:2}: noise={:.1}%, collapses={}, entropy sample={:#x}",
-                         i, stats.ratio * 100.0, stats.collapses, entropy);
+                println!("Depth {:2}: noise={}.{}%, collapses={}, entropy sample={:#x}",
+                         i, stats.ratio_permille / 10, stats.ratio_permille % 10,
+                         stats.collapses, entropy);
             }
         }
 
@@ -913,7 +931,7 @@ mod depth_benchmarks {
         println!("RESULTS:");
         println!("  FHE depth achieved:     {}", final_stats.depth);
         println!("  FHE collapses:          {}", final_stats.collapses);
-        println!("  FHE noise ratio:        {:.2}%", final_stats.ratio * 100.0);
+        println!("  FHE noise ratio:        {}.{}%", final_stats.ratio_permille / 10, final_stats.ratio_permille % 10);
         println!("  Shadow ops:             {}", shadow_stats.operations);
         println!("  Entropy harvested:      {} bits", shadow_stats.estimated_entropy);
         println!("  Total time:             {:?}", elapsed);
@@ -935,7 +953,47 @@ mod arithmetic_benchmarks {
     use crate::arithmetic::exact_divider::ExactDivider;
     use crate::arithmetic::exact_coeff::ExactContext;
     use crate::entropy::{CRTShadowContext, QuotientSignature};
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
+
+    /// Integer-only timing display helpers.
+    /// ns/op as integer
+    fn ns_per_op(d: &Duration, ops: u64) -> u128 {
+        d.as_nanos() / (ops as u128).max(1)
+    }
+    /// ms (with 2 decimal places via micros): returns (whole, frac_2digit)
+    fn ms_parts(d: &Duration) -> (u128, u128) {
+        let us = d.as_micros();
+        (us / 1000, (us % 1000) / 10)
+    }
+    /// ops/sec as integer
+    fn ops_per_sec(d: &Duration, ops: u64) -> u128 {
+        (ops as u128 * 1_000_000_000) / d.as_nanos().max(1)
+    }
+    /// ms/op (with 2 decimal places): returns (whole, frac_2digit)
+    fn ms_per_op(d: &Duration, ops: u64) -> (u128, u128) {
+        let us_per_op = d.as_micros() / (ops as u128).max(1);
+        (us_per_op / 1000, (us_per_op % 1000) / 10)
+    }
+    /// Print a ns/op benchmark row
+    fn print_ns_row(name: &str, d: &Duration, ops: u64) {
+        let (ms_w, ms_f) = ms_parts(d);
+        let o_s = ops_per_sec(d, ops);
+        let ns = ns_per_op(d, ops);
+        println!("  {:<15}│ {:>6}.{:02}ms │ {:>11} │ {:>6}",
+                 name, ms_w, ms_f, o_s, ns);
+    }
+    /// Print a ms/op benchmark row (for heavier FHE operations)
+    fn print_ms_row(name: &str, d: &Duration, ops: u64) {
+        let (ms_w, ms_f) = ms_parts(d);
+        let o_s = ops_per_sec(d, ops);
+        let (mpo_w, mpo_f) = ms_per_op(d, ops);
+        println!("  {:<15}│ {:>6}.{:02}ms │ {:>11} │ {:>3}.{:02}",
+                 name, ms_w, ms_f, o_s, mpo_w, mpo_f);
+    }
+    /// M ops/sec as integer
+    fn m_ops_per_sec(d: &Duration, ops: u64) -> u128 {
+        ops_per_sec(d, ops) / 1_000_000
+    }
 
     /// Full arithmetic operations benchmark
     #[test]
@@ -964,7 +1022,6 @@ mod arithmetic_benchmarks {
             result = ctx.add(&result, &b);
         }
         let add_time = start.elapsed();
-        let add_ops_sec = ops as f64 / add_time.as_secs_f64();
 
         // SUB
         let start = Instant::now();
@@ -973,7 +1030,6 @@ mod arithmetic_benchmarks {
             result = ctx.sub(&result, &b);
         }
         let sub_time = start.elapsed();
-        let sub_ops_sec = ops as f64 / sub_time.as_secs_f64();
 
         // MUL
         let start = Instant::now();
@@ -982,7 +1038,6 @@ mod arithmetic_benchmarks {
             result = ctx.mul(&result, &b);
         }
         let mul_time = start.elapsed();
-        let mul_ops_sec = ops as f64 / mul_time.as_secs_f64();
 
         // MUL with Signature (magnitude tracking)
         let start = Instant::now();
@@ -994,22 +1049,13 @@ mod arithmetic_benchmarks {
             _sig = s;
         }
         let mul_sig_time = start.elapsed();
-        let mul_sig_ops_sec = ops as f64 / mul_sig_time.as_secs_f64();
 
         println!("  Operation      │ Time        │ Ops/sec     │ ns/op");
         println!("  ───────────────┼─────────────┼─────────────┼────────");
-        println!("  ADD            │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 add_time.as_secs_f64() * 1000.0, add_ops_sec,
-                 add_time.as_nanos() as f64 / ops as f64);
-        println!("  SUB            │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 sub_time.as_secs_f64() * 1000.0, sub_ops_sec,
-                 sub_time.as_nanos() as f64 / ops as f64);
-        println!("  MUL            │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 mul_time.as_secs_f64() * 1000.0, mul_ops_sec,
-                 mul_time.as_nanos() as f64 / ops as f64);
-        println!("  MUL+Signature  │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 mul_sig_time.as_secs_f64() * 1000.0, mul_sig_ops_sec,
-                 mul_sig_time.as_nanos() as f64 / ops as f64);
+        print_ns_row("ADD", &add_time, ops);
+        print_ns_row("SUB", &sub_time, ops);
+        print_ns_row("MUL", &mul_time, ops);
+        print_ns_row("MUL+Signature", &mul_sig_time, ops);
 
         // ====================================================================
         // 2. EXACT DIVISION (K-Elimination)
@@ -1031,7 +1077,6 @@ mod arithmetic_benchmarks {
             let _ = divider.reconstruct_exact(m_res, a_res);
         }
         let recon_time = start.elapsed();
-        let recon_ops_sec = div_ops as f64 / recon_time.as_secs_f64();
 
         // EXACT DIVIDE (by small divisor)
         let divisible_val = 12345 * 5u128;  // divisible by 5
@@ -1041,7 +1086,6 @@ mod arithmetic_benchmarks {
             let _ = divider.exact_divide(m_div, a_div, 5);
         }
         let exact_div_time = start.elapsed();
-        let exact_div_ops_sec = div_ops as f64 / exact_div_time.as_secs_f64();
 
         // DIVMOD (quotient + remainder)
         let start = Instant::now();
@@ -1049,7 +1093,6 @@ mod arithmetic_benchmarks {
             let _ = divider.divmod(m_res, a_res, 7);
         }
         let divmod_time = start.elapsed();
-        let divmod_ops_sec = div_ops as f64 / divmod_time.as_secs_f64();
 
         // SCALE AND ROUND (BFV rescaling)
         let start = Instant::now();
@@ -1057,22 +1100,13 @@ mod arithmetic_benchmarks {
             let _ = divider.scale_and_round(m_res, a_res, 500000, 998244353);
         }
         let scale_time = start.elapsed();
-        let scale_ops_sec = div_ops as f64 / scale_time.as_secs_f64();
 
         println!("  Operation      │ Time        │ Ops/sec     │ ns/op");
         println!("  ───────────────┼─────────────┼─────────────┼────────");
-        println!("  RECONSTRUCT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 recon_time.as_secs_f64() * 1000.0, recon_ops_sec,
-                 recon_time.as_nanos() as f64 / div_ops as f64);
-        println!("  EXACT_DIVIDE   │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 exact_div_time.as_secs_f64() * 1000.0, exact_div_ops_sec,
-                 exact_div_time.as_nanos() as f64 / div_ops as f64);
-        println!("  DIVMOD         │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 divmod_time.as_secs_f64() * 1000.0, divmod_ops_sec,
-                 divmod_time.as_nanos() as f64 / div_ops as f64);
-        println!("  SCALE_ROUND    │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 scale_time.as_secs_f64() * 1000.0, scale_ops_sec,
-                 scale_time.as_nanos() as f64 / div_ops as f64);
+        print_ns_row("RECONSTRUCT", &recon_time, div_ops);
+        print_ns_row("EXACT_DIVIDE", &exact_div_time, div_ops);
+        print_ns_row("DIVMOD", &divmod_time, div_ops);
+        print_ns_row("SCALE_ROUND", &scale_time, div_ops);
 
         // ====================================================================
         // 3. EXACT COEFFICIENT ARITHMETIC
@@ -1093,7 +1127,6 @@ mod arithmetic_benchmarks {
             coeff_result = exact_ctx.add(&coeff_result, &coeff_b);
         }
         let coeff_add_time = start.elapsed();
-        let coeff_add_ops_sec = coeff_ops as f64 / coeff_add_time.as_secs_f64();
 
         // COEFF MUL
         let start = Instant::now();
@@ -1102,7 +1135,6 @@ mod arithmetic_benchmarks {
             coeff_result = exact_ctx.mul(&coeff_result, &coeff_b);
         }
         let coeff_mul_time = start.elapsed();
-        let coeff_mul_ops_sec = coeff_ops as f64 / coeff_mul_time.as_secs_f64();
 
         // COEFF EXACT DIV
         let divisible_coeff = exact_ctx.encode(12345 * 5);
@@ -1111,7 +1143,6 @@ mod arithmetic_benchmarks {
             let _ = exact_ctx.exact_div(&divisible_coeff, 5);
         }
         let coeff_div_time = start.elapsed();
-        let coeff_div_ops_sec = coeff_ops as f64 / coeff_div_time.as_secs_f64();
 
         // COEFF SCALE AND ROUND
         let start = Instant::now();
@@ -1119,22 +1150,13 @@ mod arithmetic_benchmarks {
             let _ = exact_ctx.scale_and_round(&coeff_a);
         }
         let coeff_scale_time = start.elapsed();
-        let coeff_scale_ops_sec = coeff_ops as f64 / coeff_scale_time.as_secs_f64();
 
         println!("  Operation      │ Time        │ Ops/sec     │ ns/op");
         println!("  ───────────────┼─────────────┼─────────────┼────────");
-        println!("  COEFF_ADD      │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 coeff_add_time.as_secs_f64() * 1000.0, coeff_add_ops_sec,
-                 coeff_add_time.as_nanos() as f64 / coeff_ops as f64);
-        println!("  COEFF_MUL      │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 coeff_mul_time.as_secs_f64() * 1000.0, coeff_mul_ops_sec,
-                 coeff_mul_time.as_nanos() as f64 / coeff_ops as f64);
-        println!("  COEFF_DIV      │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 coeff_div_time.as_secs_f64() * 1000.0, coeff_div_ops_sec,
-                 coeff_div_time.as_nanos() as f64 / coeff_ops as f64);
-        println!("  COEFF_SCALE    │ {:>9.2}ms │ {:>9.2e} │ {:>6.1}",
-                 coeff_scale_time.as_secs_f64() * 1000.0, coeff_scale_ops_sec,
-                 coeff_scale_time.as_nanos() as f64 / coeff_ops as f64);
+        print_ns_row("COEFF_ADD", &coeff_add_time, coeff_ops);
+        print_ns_row("COEFF_MUL", &coeff_mul_time, coeff_ops);
+        print_ns_row("COEFF_DIV", &coeff_div_time, coeff_ops);
+        print_ns_row("COEFF_SCALE", &coeff_scale_time, coeff_ops);
 
         // ====================================================================
         // 4. FHE OPERATIONS
@@ -1158,7 +1180,6 @@ mod arithmetic_benchmarks {
             cts.push(fhe_ctx.encrypt(i, &keys.public_key, &mut rng));
         }
         let fhe_enc_time = start.elapsed();
-        let fhe_enc_ops_sec = fhe_ops as f64 / fhe_enc_time.as_secs_f64();
 
         // FHE ADD
         let ct1 = fhe_ctx.encrypt(10, &keys.public_key, &mut rng);
@@ -1168,7 +1189,6 @@ mod arithmetic_benchmarks {
             let _ = fhe_ctx.add(&ct1, &ct2);
         }
         let fhe_add_time = start.elapsed();
-        let fhe_add_ops_sec = fhe_ops as f64 / fhe_add_time.as_secs_f64();
 
         // FHE MUL (symmetric)
         let start = Instant::now();
@@ -1176,7 +1196,6 @@ mod arithmetic_benchmarks {
             let _ = fhe_ctx.mul_symmetric(&ct1, &ct2, &keys.secret_key);
         }
         let fhe_mul_time = start.elapsed();
-        let fhe_mul_ops_sec = fhe_ops as f64 / fhe_mul_time.as_secs_f64();
 
         // FHE DECRYPT
         let start = Instant::now();
@@ -1184,22 +1203,13 @@ mod arithmetic_benchmarks {
             let _ = fhe_ctx.decrypt(ct, &keys.secret_key);
         }
         let fhe_dec_time = start.elapsed();
-        let fhe_dec_ops_sec = fhe_ops as f64 / fhe_dec_time.as_secs_f64();
 
         println!("  Operation      │ Time        │ Ops/sec     │ ms/op");
         println!("  ───────────────┼─────────────┼─────────────┼────────");
-        println!("  FHE_ENCRYPT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_enc_time.as_secs_f64() * 1000.0, fhe_enc_ops_sec,
-                 fhe_enc_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("  FHE_ADD        │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_add_time.as_secs_f64() * 1000.0, fhe_add_ops_sec,
-                 fhe_add_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("  FHE_MUL        │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_mul_time.as_secs_f64() * 1000.0, fhe_mul_ops_sec,
-                 fhe_mul_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("  FHE_DECRYPT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_dec_time.as_secs_f64() * 1000.0, fhe_dec_ops_sec,
-                 fhe_dec_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+        print_ms_row("FHE_ENCRYPT", &fhe_enc_time, fhe_ops);
+        print_ms_row("FHE_ADD", &fhe_add_time, fhe_ops);
+        print_ms_row("FHE_MUL", &fhe_mul_time, fhe_ops);
+        print_ms_row("FHE_DECRYPT", &fhe_dec_time, fhe_ops);
 
         // ====================================================================
         // SUMMARY
@@ -1208,26 +1218,26 @@ mod arithmetic_benchmarks {
         println!("║                      SUMMARY                                 ║");
         println!("╠══════════════════════════════════════════════════════════════╣");
         println!("║  RNS 4-lane:                                                 ║");
-        println!("║    ADD:        {:>8.0} ns   ({:>6.2}M ops/sec)               ║",
-                 add_time.as_nanos() as f64 / ops as f64, add_ops_sec / 1_000_000.0);
-        println!("║    MUL:        {:>8.0} ns   ({:>6.2}M ops/sec)               ║",
-                 mul_time.as_nanos() as f64 / ops as f64, mul_ops_sec / 1_000_000.0);
+        println!("║    ADD:        {:>8} ns   ({:>6}M ops/sec)               ║",
+                 ns_per_op(&add_time, ops), m_ops_per_sec(&add_time, ops));
+        println!("║    MUL:        {:>8} ns   ({:>6}M ops/sec)               ║",
+                 ns_per_op(&mul_time, ops), m_ops_per_sec(&mul_time, ops));
         println!("║                                                              ║");
         println!("║  K-Elimination Division:                                     ║");
-        println!("║    EXACT_DIV:  {:>8.0} ns   ({:>6.2}M ops/sec)               ║",
-                 exact_div_time.as_nanos() as f64 / div_ops as f64, exact_div_ops_sec / 1_000_000.0);
-        println!("║    SCALE:      {:>8.0} ns   ({:>6.2}M ops/sec)               ║",
-                 scale_time.as_nanos() as f64 / div_ops as f64, scale_ops_sec / 1_000_000.0);
+        println!("║    EXACT_DIV:  {:>8} ns   ({:>6}M ops/sec)               ║",
+                 ns_per_op(&exact_div_time, div_ops), m_ops_per_sec(&exact_div_time, div_ops));
+        println!("║    SCALE:      {:>8} ns   ({:>6}M ops/sec)               ║",
+                 ns_per_op(&scale_time, div_ops), m_ops_per_sec(&scale_time, div_ops));
         println!("║                                                              ║");
         println!("║  FHE Operations:                                             ║");
-        println!("║    ENCRYPT:    {:>8.2} ms                                    ║",
-                 fhe_enc_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("║    ADD:        {:>8.2} ms                                    ║",
-                 fhe_add_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("║    MUL:        {:>8.2} ms                                    ║",
-                 fhe_mul_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("║    DECRYPT:    {:>8.2} ms                                    ║",
-                 fhe_dec_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+        let (enc_w, enc_f) = ms_per_op(&fhe_enc_time, fhe_ops);
+        let (add_w, add_f) = ms_per_op(&fhe_add_time, fhe_ops);
+        let (mul_w, mul_f) = ms_per_op(&fhe_mul_time, fhe_ops);
+        let (dec_w, dec_f) = ms_per_op(&fhe_dec_time, fhe_ops);
+        println!("║    ENCRYPT:    {:>5}.{:02} ms                                    ║", enc_w, enc_f);
+        println!("║    ADD:        {:>5}.{:02} ms                                    ║", add_w, add_f);
+        println!("║    MUL:        {:>5}.{:02} ms                                    ║", mul_w, mul_f);
+        println!("║    DECRYPT:    {:>5}.{:02} ms                                    ║", dec_w, dec_f);
         println!("╚══════════════════════════════════════════════════════════════╝\n");
     }
 
@@ -1248,7 +1258,6 @@ mod arithmetic_benchmarks {
             cts.push(fhe_ctx.encrypt(i, &keys.public_key, &mut rng));
         }
         let fhe_enc_time = start.elapsed();
-        let fhe_enc_ops_sec = fhe_ops as f64 / fhe_enc_time.as_secs_f64();
 
         // FHE ADD
         let ct1 = fhe_ctx.encrypt(10, &keys.public_key, &mut rng);
@@ -1258,7 +1267,6 @@ mod arithmetic_benchmarks {
             let _ = fhe_ctx.add(&ct1, &ct2);
         }
         let fhe_add_time = start.elapsed();
-        let fhe_add_ops_sec = fhe_ops as f64 / fhe_add_time.as_secs_f64();
 
         // FHE MUL (symmetric)
         let start = Instant::now();
@@ -1266,7 +1274,6 @@ mod arithmetic_benchmarks {
             let _ = fhe_ctx.mul_symmetric(&ct1, &ct2, &keys.secret_key);
         }
         let fhe_mul_time = start.elapsed();
-        let fhe_mul_ops_sec = fhe_ops as f64 / fhe_mul_time.as_secs_f64();
 
         // FHE DECRYPT
         let start = Instant::now();
@@ -1274,22 +1281,13 @@ mod arithmetic_benchmarks {
             let _ = fhe_ctx.decrypt(ct, &keys.secret_key);
         }
         let fhe_dec_time = start.elapsed();
-        let fhe_dec_ops_sec = fhe_ops as f64 / fhe_dec_time.as_secs_f64();
 
         println!("  Operation      │ Time        │ Ops/sec     │ ms/op");
         println!("  ───────────────┼─────────────┼─────────────┼────────");
-        println!("  FHE_ENCRYPT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_enc_time.as_secs_f64() * 1000.0, fhe_enc_ops_sec,
-                 fhe_enc_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("  FHE_ADD        │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_add_time.as_secs_f64() * 1000.0, fhe_add_ops_sec,
-                 fhe_add_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("  FHE_MUL        │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_mul_time.as_secs_f64() * 1000.0, fhe_mul_ops_sec,
-                 fhe_mul_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
-        println!("  FHE_DECRYPT    │ {:>9.2}ms │ {:>9.2e} │ {:>6.2}",
-                 fhe_dec_time.as_secs_f64() * 1000.0, fhe_dec_ops_sec,
-                 fhe_dec_time.as_secs_f64() * 1000.0 / fhe_ops as f64);
+        print_ms_row("FHE_ENCRYPT", &fhe_enc_time, fhe_ops);
+        print_ms_row("FHE_ADD", &fhe_add_time, fhe_ops);
+        print_ms_row("FHE_MUL", &fhe_mul_time, fhe_ops);
+        print_ms_row("FHE_DECRYPT", &fhe_dec_time, fhe_ops);
     }
 
     #[test]

@@ -279,14 +279,17 @@ mod tests {
         }
         
         // Check variance is approximately η/2
-        let mean: f64 = samples.iter().map(|&s| s as f64).sum::<f64>() / samples.len() as f64;
-        let variance: f64 = samples.iter()
-            .map(|&s| (s as f64 - mean).powi(2))
-            .sum::<f64>() / samples.len() as f64;
-        
-        let expected_variance = eta as f64 / 2.0;
-        assert!((variance - expected_variance).abs() < 0.5,
-                "CBD variance {} far from expected {}", variance, expected_variance);
+        // Integer-only: compute mean and variance in scaled units (x1000)
+        let sum: i128 = samples.iter().map(|&s| s as i128).sum();
+        let n = samples.len() as i128;
+        let mean_x1000 = (sum * 1000) / n;
+        let var_x1000 = samples.iter()
+            .map(|&s| { let d = s as i128 * 1000 - mean_x1000; d * d })
+            .sum::<i128>() / (n * 1000);
+        let expected_var_x1000 = eta as i128 * 500; // eta/2 * 1000
+        let diff = (var_x1000 - expected_var_x1000).abs();
+        assert!(diff < 500, // 0.5 * 1000
+                "CBD variance (x1000) {} far from expected (x1000) {}", var_x1000, expected_var_x1000);
     }
     
     #[test]

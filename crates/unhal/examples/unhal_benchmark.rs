@@ -15,9 +15,12 @@ const PRIMES: [u64; 8] = [
 
 fn format_ops(ops: u128) -> String {
     if ops >= 1_000_000_000 {
-        format!("{:.1}G", ops as f64 / 1_000_000_000.0)
+        let whole = ops / 1_000_000_000;
+        let frac = (ops % 1_000_000_000) / 100_000_000; // tenths
+        format!("{}.{}G", whole, frac)
     } else if ops >= 1_000_000 {
-        format!("{:.0}M", ops as f64 / 1_000_000.0)
+        let whole = ops / 1_000_000;
+        format!("{}M", whole)
     } else {
         format!("{}", ops)
     }

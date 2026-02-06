@@ -373,8 +373,8 @@ mod tests {
         println!("Persistent (1M ops): {:?}", persistent_time);
         println!("Traditional (1M ops): {:?}", traditional_time);
         
-        let speedup = traditional_time.as_nanos() as f64 / persistent_time.as_nanos() as f64;
-        println!("Speedup: {:.2}×", speedup);
+        let speedup_x100 = (traditional_time.as_nanos() * 100) / persistent_time.as_nanos().max(1);
+        println!("Speedup: {}.{:02}×", speedup_x100 / 100, speedup_x100 % 100);
         
         // Both should produce valid results
         assert!(result_persistent < TEST_PRIME);

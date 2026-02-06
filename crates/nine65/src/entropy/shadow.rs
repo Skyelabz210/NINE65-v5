@@ -239,10 +239,11 @@ mod tests {
         let eta = 3;
         let n = 100_000;
         let sum: i64 = (0..n).map(|_| h.cbd(eta)).sum();
-        let mean = sum as f64 / n as f64;
-        
-        // Mean should be close to 0
-        assert!(mean.abs() < 0.1, "CBD mean {} too far from 0", mean);
+        // Integer-only: scale by 10000 to check |mean| < 0.1
+        let mean_x10000 = (sum as i128 * 10000) / n as i128;
+
+        // Mean should be close to 0: |mean| < 0.1 means |mean_x10000| < 1000
+        assert!(mean_x10000.unsigned_abs() < 1000, "CBD mean (x10000) {} too far from 0", mean_x10000);
     }
     
     #[test]

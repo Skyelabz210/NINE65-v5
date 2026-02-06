@@ -146,6 +146,19 @@ fn bench_sign_detection(c: &mut Criterion) {
     group.finish();
 }
 
+/// Integer square root via Newton's method (local helper for bench binary)
+fn integer_sqrt(n: u64) -> u64 {
+    if n < 2 { return n; }
+    let shift = (63 - n.leading_zeros()) / 2;
+    let mut x = 1u64 << (shift + 1);
+    loop {
+        let y = (x + n / x) / 2;
+        if y >= x { break; }
+        x = y;
+    }
+    x
+}
+
 fn bench_quantum_operations(c: &mut Criterion) {
     let mut group = c.benchmark_group("Quantum Operations");
 
@@ -158,8 +171,10 @@ fn bench_quantum_operations(c: &mut Criterion) {
             qubits,
             |bencher, _| {
                 bencher.iter(|| {
-                    // π/4 * sqrt(N)
-                    let iterations = ((std::f64::consts::PI / 4.0) * (n_states as f64).sqrt()) as u64;
+                    // Grover optimal iterations ~ (pi/4) * sqrt(N)
+                    // Integer approximation: pi/4 ~ 355/(113*4) = 355/452
+                    let sqrt_n = integer_sqrt(n_states);
+                    let iterations = (355 * sqrt_n) / 452;
                     black_box(iterations);
                 });
             }

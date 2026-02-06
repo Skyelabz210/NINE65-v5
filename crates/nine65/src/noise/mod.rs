@@ -87,14 +87,14 @@ impl NoiseSnapshot {
         }
     }
     
-    /// Get noise in bits (for display only)
-    pub fn noise_bits(&self) -> f64 {
-        self.noise_millibits as f64 / MILLIBITS_PER_BIT as f64
+    /// Get noise in millibits (same as public field, for API compat)
+    pub fn noise_bits_millibits(&self) -> i64 {
+        self.noise_millibits
     }
-    
-    /// Get budget remaining in bits (for display only)
-    pub fn budget_bits(&self) -> f64 {
-        self.budget_remaining as f64 / MILLIBITS_PER_BIT as f64
+
+    /// Get budget remaining in millibits (same as public field, for API compat)
+    pub fn budget_remaining_millibits(&self) -> i64 {
+        self.budget_remaining
     }
 }
 
@@ -283,20 +283,10 @@ impl NoiseBudgetTracker {
         self.current_noise
     }
     
-    /// Get current noise in bits (for display)
-    pub fn noise_bits(&self) -> f64 {
-        self.current_noise as f64 / MILLIBITS_PER_BIT as f64
-    }
-    
     /// Get remaining budget in millibits
     #[inline]
     pub fn budget_remaining_millibits(&self) -> i64 {
         self.initial_budget - self.current_noise
-    }
-    
-    /// Get remaining budget in bits (for display)
-    pub fn budget_remaining_bits(&self) -> f64 {
-        self.budget_remaining_millibits() as f64 / MILLIBITS_PER_BIT as f64
     }
     
     /// Get budget utilization as percentage (0-100)
@@ -664,11 +654,6 @@ impl P2QuantileEstimator {
         self.value()
     }
 
-    /// Get value in bits (as f64 for convenience)
-    pub fn value_bits(&self) -> f64 {
-        self.value() as f64 / MILLIBITS_PER_BIT as f64
-    }
-
     /// Get value as (integer_bits, milli_fraction) for display
     /// e.g., 3500 millibits -> (3, 500) meaning 3.500 bits
     pub fn value_bits_parts(&self) -> (i64, i64) {
@@ -737,41 +722,32 @@ impl NoiseDistribution {
         if self.count == 0 { 0 } else { self.sum / self.count as i64 }
     }
     
-    /// Get mean in bits
-    pub fn mean_bits(&self) -> f64 {
-        self.mean() as f64 / MILLIBITS_PER_BIT as f64
-    }
-    
-    /// Get median in bits
-    pub fn median_bits(&self) -> f64 {
-        self.median.value() as f64 / MILLIBITS_PER_BIT as f64
-    }
+    /// Get mean in millibits
+    pub fn mean_millibits(&self) -> i64 { self.mean() }
 
-    /// Get P90 in bits
-    pub fn p90_bits(&self) -> f64 {
-        self.p90.value() as f64 / MILLIBITS_PER_BIT as f64
-    }
-    
-    /// Get P95 in bits
-    pub fn p95_bits(&self) -> f64 {
-        self.p95.value() as f64 / MILLIBITS_PER_BIT as f64
-    }
+    /// Get median in millibits
+    pub fn median_millibits(&self) -> i64 { self.median.value() }
 
-    /// Get P99 in bits
-    pub fn p99_bits(&self) -> f64 {
-        self.p99.value() as f64 / MILLIBITS_PER_BIT as f64
-    }
+    /// Get P90 in millibits
+    pub fn p90_millibits(&self) -> i64 { self.p90.value() }
+
+    /// Get P95 in millibits
+    pub fn p95_millibits(&self) -> i64 { self.p95.value() }
+
+    /// Get P99 in millibits
+    pub fn p99_millibits(&self) -> i64 { self.p99.value() }
     
     /// Print distribution summary
     pub fn summary(&self) -> String {
+        use crate::arithmetic::integer_math::format_millibits;
         format!(
-            "Noise Distribution (n={}): mean={:.2} median={:.2} P90={:.2} P95={:.2} P99={:.2} bits",
+            "Noise Distribution (n={}): mean={} median={} P90={} P95={} P99={} bits",
             self.count,
-            self.mean_bits(),
-            self.median_bits(),
-            self.p90_bits(),
-            self.p95_bits(),
-            self.p99_bits()
+            format_millibits(self.mean_millibits() as u64),
+            format_millibits(self.median_millibits() as u64),
+            format_millibits(self.p90_millibits() as u64),
+            format_millibits(self.p95_millibits() as u64),
+            format_millibits(self.p99_millibits() as u64)
         )
     }
 }
@@ -903,14 +879,14 @@ mod tests {
         let mut tracker = NoiseBudgetTracker::new(100); // 100-bit budget
         
         tracker.on_encrypt();
-        assert!(tracker.noise_bits() < 5.0); // Initial noise ~3.2 bits
-        
+        assert!(tracker.noise_millibits() < 5000); // Initial noise ~3.2 bits = 3200 mb
+
         // Simulate 10 additions
         for _ in 0..10 {
             tracker.on_add();
         }
-        
-        assert!(tracker.noise_bits() < 15.0); // ~13 bits after 10 adds
+
+        assert!(tracker.noise_millibits() < 15000); // ~13 bits after 10 adds
         assert!(!tracker.is_exhausted());
     }
     
@@ -926,7 +902,7 @@ mod tests {
             tracker.on_mul(tracker.noise_millibits(), 16); // log2(t)=16
         }
         
-        println!("Final noise: {} bits", tracker.noise_bits());
+        println!("Final noise: {} millibits", tracker.noise_millibits());
         println!("Mul depth: {}", tracker.mul_depth());
         assert!(tracker.mul_depth() <= 3); // Should exhaust in ~2-3 muls
     }
@@ -999,7 +975,7 @@ mod tests {
         let median = p2.value();
         let expected = 50 * MILLIBITS_PER_BIT; // 50 bits
         
-        println!("P² median estimate: {} millibits ({} bits)", median, p2.value_bits());
+        println!("P² median estimate: {} millibits", median);
         println!("Expected: {} millibits", expected);
         
         // P² should be within 10% of true median for 100 samples
@@ -1021,7 +997,7 @@ mod tests {
         let p95 = p2.value();
         let expected = 95 * MILLIBITS_PER_BIT; // 95 bits
         
-        println!("P² P95 estimate: {} millibits ({} bits)", p95, p2.value_bits());
+        println!("P² P95 estimate: {} millibits", p95);
         println!("Expected: {} millibits", expected);
         
         // P95 should be within 15% for 100 samples
@@ -1042,13 +1018,13 @@ mod tests {
             p2.update(noise);
         }
         
-        let median = p2.value_bits();
-        println!("Median over 10k ops: {:.2} bits (expected ~26.5)", median);
-        
-        // Median of 3-50 linear sequence should be ~26.5
-        assert!(median > 20.0 && median < 35.0, 
-                "Median {} outside expected range", median);
-        
+        let median_mb = p2.value_millibits();
+        println!("Median over 10k ops: {} millibits (expected ~26500)", median_mb);
+
+        // Median of 3-50 linear sequence should be ~26.5 bits = 26500 millibits
+        assert!(median_mb > 20000 && median_mb < 35000,
+                "Median {} outside expected range", median_mb);
+
         // Verify O(1) memory - only 5 markers stored
         assert_eq!(p2.markers().len(), 5);
         assert_eq!(p2.count(), 10_000);
@@ -1069,16 +1045,16 @@ mod tests {
         println!("{}", dist.summary());
         
         // Verify ordering: median < P90 < P95 < P99
-        assert!(dist.median_bits() < dist.p90_bits(), 
+        assert!(dist.median_millibits() < dist.p90_millibits(),
                 "Median should be less than P90");
-        assert!(dist.p90_bits() < dist.p95_bits(),
+        assert!(dist.p90_millibits() < dist.p95_millibits(),
                 "P90 should be less than P95");
-        assert!(dist.p95_bits() <= dist.p99_bits(),
+        assert!(dist.p95_millibits() <= dist.p99_millibits(),
                 "P95 should be less than or equal to P99");
-        
+
         // Mean should be close to median for uniform-ish distribution
-        let mean_median_diff = (dist.mean_bits() - dist.median_bits()).abs();
-        assert!(mean_median_diff < 5.0,
+        let mean_median_diff = (dist.mean_millibits() - dist.median_millibits()).abs();
+        assert!(mean_median_diff < 5000,
                 "Mean-median difference {} too large", mean_median_diff);
     }
     
@@ -1097,12 +1073,12 @@ mod tests {
         assert_eq!(p2.count(), 100_000);
         
         // Median of 10-90 uniform should be ~50 bits
-        let median = p2.value_bits();
-        println!("Median of 100k samples (10-90 bits): {:.2} bits", median);
-        
+        let median_mb = p2.value_millibits();
+        println!("Median of 100k samples (10-90 bits): {} millibits", median_mb);
+
         // Allow reasonable tolerance for P² algorithm
-        assert!(median > 30.0 && median < 70.0,
-                "Median {} outside expected range 30-70", median);
+        assert!(median_mb > 30000 && median_mb < 70000,
+                "Median {} outside expected range 30000-70000", median_mb);
     }
     
     #[test]

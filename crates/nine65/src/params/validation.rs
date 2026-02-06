@@ -154,15 +154,15 @@ impl ParameterValidator {
     
     /// Estimate security bits (rough - use LWE estimator for precise)
     fn estimate_security_bits(&self, n: usize, log_q: u32) -> u32 {
-        let ratio = (n as f64) / (log_q as f64);
-        
-        if ratio > 30.0 {
+        let ratio_permille = ((n as u64) * 1000) / (log_q as u64);
+
+        if ratio_permille > 30_000 {
             192
-        } else if ratio > 20.0 {
+        } else if ratio_permille > 20_000 {
             128
-        } else if ratio > 15.0 {
+        } else if ratio_permille > 15_000 {
             96
-        } else if ratio > 10.0 {
+        } else if ratio_permille > 10_000 {
             64
         } else {
             32

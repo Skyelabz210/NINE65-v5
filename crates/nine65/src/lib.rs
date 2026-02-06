@@ -37,8 +37,8 @@
 //! 
 //! ## Zero Floating-Point Guarantee
 //!
-//! All cryptographic operations use exact integer arithmetic.
-//! No f32, f64, or any floating-point types in critical paths.
+//! All operations use exact integer arithmetic — zero floating-point anywhere.
+//! No f32 or f64 types in production code, tests, benchmarks, or display logic.
 //! 
 //! ## Quick Start: Production FHE
 //!

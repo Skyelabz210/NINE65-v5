@@ -189,12 +189,12 @@ mod v2_integration_tests {
         }
         let fft_time = start.elapsed();
         
-        let ntt_speedup = dft_time.as_nanos() as f64 / fft_time.as_nanos() as f64;
-        
+        let speedup_tenths = (dft_time.as_nanos() * 10) / fft_time.as_nanos().max(1);
+
         println!("NTT 256 (x100):");
         println!("  DFT (O(N²)):    {:?}", dft_time);
         println!("  FFT (O(NlogN)): {:?}", fft_time);
-        println!("  Speedup:        {:.1}×", ntt_speedup);
+        println!("  Speedup:        {}.{}x", speedup_tenths / 10, speedup_tenths % 10);
         
         // Entropy comparison
         let mut wassan = WassanNoiseField::from_shadow_seed(42);
