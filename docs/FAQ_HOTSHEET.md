@@ -81,10 +81,8 @@
 | Side Channel Resistance | `SideChannelResistance.v` | Verified |
 
 ### Lean4 Proofs (.lean)
-- MANA, WASSAN, TimeCrystal, GroverSwarm
-- CRTBigInt, PLMGRails, DCBigIntHelix
-- BinaryGCD, PersistentMontgomery, IntegerNN
-- 22 total formal proofs
+- In v5 repo: KElimination (main + Basic, ShadowEntropy, ZMod submodules) — 4 files
+- Full ecosystem (hackfate.us proofs repo): 28 core + 14 NIST = 42 Lean4 proof files
 
 ---
 

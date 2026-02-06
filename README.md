@@ -1,6 +1,6 @@
 # NINE65 - Bootstrap-Free Fully Homomorphic Encryption
 
-**High-performance FHE achieving depth-50 without bootstrapping (symmetric mode)**
+**High-performance FHE achieving depth-50 without bootstrapping. Auto mod-switch for deeper public-mode circuits.**
 
 [![Tests](https://img.shields.io/badge/tests-627%20passing-brightgreen)]()
 [![Proofs](https://img.shields.io/badge/formal%20proofs-Coq%20%2B%20Lean4-blue)]()
@@ -31,7 +31,7 @@ Public-mode depth baseline is recorded in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-0
 
 NINE65 targets post-quantum security through LWE (Learning With Errors) based cryptography:
 
-### Lattice Estimator Baseline (2026-01-27)
+### Lattice Estimator Baseline (2026-02-05)
 Rough LWE estimates (Core-SVP + GSA) for SecureConfig parameters are recorded in
 docs/LATTICE_ESTIMATOR_BASELINE_2026-02-05.md.
 
@@ -72,17 +72,18 @@ Baseline estimator outputs are recorded in docs/LATTICE_ESTIMATOR_BASELINE_2026-
 
 ---
 
-## Public Mode Depth Baseline (2026-01-27)
+## Public Mode Depth Baseline
 
-Public-key (eval-key) mode is depth-limited relative to symmetric mode. The depth sweep
+Public-key (eval-key) mode is depth-limited relative to symmetric mode. The initial depth sweep
 baseline is recorded in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md.
 
-Summary:
+As of 2026-02-06, `mul_dual_public` and `mul_dual_symmetric` automatically apply modulus
+switching after K-Elimination rescale when the ciphertext level >= 3. This enables deeper
+public-mode circuits without manual noise management.
+
+Summary (pre-mod-switch baseline):
 - `standard_128`: max depth 4 at bases 2^16/2^12/2^10; max depth 5 at base 2^8
 - `high_192`: max depth 4 at bases 2^16/2^12/2^10/2^8
-
-For deeper public-mode circuits, use symmetric mode or modulus switching with retuned
-parameters and re-run the depth sweep.
 
 ---
 
@@ -178,7 +179,7 @@ HElib            |    12     |  ~100ms   |   ~5,000ms
 ## Architecture
 
 ```
-NINE65/MANA_boosted/
+NINE65/v5/
 ├── crates/
 │   ├── nine65/           # Core FHE implementation
 │   │   └── src/
@@ -198,7 +199,9 @@ NINE65/MANA_boosted/
 │   │       ├── noise/                  # Noise budget tracking
 │   │       └── params/                 # FHE parameters
 │   ├── mana/             # Modular arithmetic accelerator
-│   └── unhal/            # Hardware abstraction layer
+│   ├── unhal/            # Hardware abstraction layer
+│   ├── nine65-python/    # PyO3 Python bindings
+│   └── nine65-wasm/      # wasm-bindgen WebAssembly bindings
 └── docs/
     ├── ENCRYPTED_QUANTUM_PAPER.md      # F4 paper
     ├── NON_CIRCULAR_ORDER_FINDING.md   # BSGS + K-elimination paper
@@ -210,8 +213,12 @@ NINE65/MANA_boosted/
 ## Workspace Crates
 
 - **`nine65`**: Core FHE implementation (dual-RNS, K-Elimination, GSO-FHE, BFV ops)
+- **`clockwork-core`**: Formal-spec RNS arithmetic (bound tracking, GRO timing, key lifecycle)
+- **`nexgen_rational`**: Exact i128 rational arithmetic (zero dependencies)
 - **`mana`**: Modular arithmetic accelerator
 - **`unhal`**: Hardware abstraction and pipeline helpers
+- **`nine65-python`**: Python bindings via PyO3 (requires `--features python`)
+- **`nine65-wasm`**: WebAssembly bindings via wasm-bindgen (requires `wasm32-unknown-unknown` target)
 
 ---
 
@@ -294,10 +301,10 @@ let result = ctx.decrypt(&ct_prod, &keys.secret_key);
 assert_eq!(result, 42 * 7);
 ```
 
-### Public Mode (Multi-Party, Depth-Limited)
+### Public Mode (Multi-Party, Auto Mod-Switch)
 
-Public mode depth is limited; see docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md for
-current baselines.
+Public mode now includes automatic modulus switching at depth 3+. Initial depth baselines
+are in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-01-27.md.
 
 ```rust
 use nine65::params::secure_configs::SecureConfig;
@@ -398,7 +405,7 @@ tar -xzvf ~/v5_proofs.tar.gz
 
 NINE65 is built on the QMNF (Quantized Modular Number Field) architecture:
 
-1. **Integer-only arithmetic**: Cryptographic runtime paths are integer-only; the circuit compiler uses f64 **only** for offline static noise analysis.
+1. **Integer-only arithmetic**: Zero f64/f32 across all workspace crates. The sole exemption is `compiler.rs` (offline static noise analysis, not runtime).
 2. **Stacked CRT**: Two-layer exact arithmetic (fast + unlimited precision)
 3. **Fused Piggyback Division**: 40x faster RNS division via anchor-first computation
 4. **Deterministic execution**: Bit-identical results across all platforms
