@@ -2,7 +2,7 @@
 
 **High-performance FHE achieving depth-50 without bootstrapping (symmetric mode)**
 
-[![Tests](https://img.shields.io/badge/tests-491%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-627%20passing-brightgreen)]()
 [![Proofs](https://img.shields.io/badge/formal%20proofs-Coq%20%2B%20Lean4-blue)]()
 [![Security](https://img.shields.io/badge/security-128--256%20bit-green)]()
 
@@ -12,13 +12,13 @@
 
 | Metric | NINE65 | Traditional FHE |
 |--------|--------|-----------------|
-| **Max Depth** | 50+ levels (symmetric) | 10-15 levels |
+| **Max Depth** | 50 levels verified (symmetric) | 10-15 levels |
 | **Bootstrap Required** | Never (0 collapses verified) | Every ~10 muls |
-| **Depth-50 Circuit** | 7.97s / 23.75s (secure_128 / secure_192) | 2,000-5,000ms |
+| **Depth-50 Circuit** | 7.74s / 23.15s (secure_128 / secure_192) | 2,000-5,000ms |
 | **Memory** | ~200MB | 1-3GB |
 | **Hardware** | CPU only | GPU recommended |
 | **Post-Quantum** | LWE-based (lattice estimator verified) | Varies |
-| **Test Coverage** | 491 tests passing | N/A |
+| **Test Coverage** | 627 tests passing (core + support crates) | N/A |
 
 Deployment status: pre-production; deployment is not recommended until timing side-channel mitigations
 and baseline artifacts are fully reconciled. Minimum evaluation config: `secure_192`.
@@ -141,17 +141,17 @@ FHE ops and depth use secure_128 and secure_192 baselines.
 #### FHE Operations (secure configs)
 | Operation | secure_128 | secure_192 | Notes |
 |-----------|------------|------------|-------|
-| Encrypt | 23.93ms | 62.14ms | baseline |
-| Add | 0.91ms | 2.18ms | baseline |
-| Mul | 125.01ms | 411.55ms | Including K-Elimination rescale |
-| Decrypt | 11.17ms | 28.88ms | baseline |
+| Encrypt | 23.70ms | 64.24ms | baseline (perf run 2026-02-05) |
+| Add | 0.87ms | 2.19ms | baseline |
+| Mul | 143.42ms | 423.06ms | Includes K-Elimination rescale |
+| Decrypt | 11.01ms | 29.76ms | baseline |
 
 ### Depth Benchmark Results (Verified 2026-02-04)
 | Config | Depth | Total time | Avg time/mul | Collapses |
 |--------|-------|------------|--------------|-----------|
 | light_rns_exact | 50 | 1.58s | 31.66ms | 0 |
-| secure_128 | 50 | 7.97s | 159.34ms | 0 |
-| secure_192 | 50 | 23.75s | 475.06ms | 0 |
+| secure_128 | 50 | 7.74s | 154.76ms | 0 |
+| secure_192 | 50 | 23.15s | 463.00ms | 0 |
 
 **Bootstraps required: 0** (symmetric mode, empirically verified)
 
@@ -231,11 +231,17 @@ NINE65/MANA_boosted/
 ## Build and Test
 
 ```bash
-# Build release
-cargo build --release --workspace
+# Build release (core + support crates)
+cargo build --release --workspace --exclude nine65-python --exclude nine65-wasm
 
-# Run all tests
-cargo test --workspace --release
+# Run all tests (core + support crates)
+cargo test --release --exclude nine65-python --exclude nine65-wasm
+
+# Build/test Python binding (requires Python toolchain)
+cargo test -p nine65-python --features python --release
+
+# Build/test WASM binding (requires wasm32 target)
+cargo test -p nine65-wasm --target wasm32-unknown-unknown --release
 
 # Run with all features
 cargo test -p nine65 --features v2,parallel,accelerated,wassan --release
@@ -392,7 +398,7 @@ tar -xzvf ~/v5_proofs.tar.gz
 
 NINE65 is built on the QMNF (Quantized Modular Number Field) architecture:
 
-1. **Integer-only arithmetic**: No floating-point in cryptographic runtime paths
+1. **Integer-only arithmetic**: Cryptographic runtime paths are integer-only; the circuit compiler uses f64 **only** for offline static noise analysis.
 2. **Stacked CRT**: Two-layer exact arithmetic (fast + unlimited precision)
 3. **Fused Piggyback Division**: 40x faster RNS division via anchor-first computation
 4. **Deterministic execution**: Bit-identical results across all platforms
@@ -401,16 +407,21 @@ NINE65 is built on the QMNF (Quantized Modular Number Field) architecture:
 
 ## Test Status
 
-**All tests passing** (verified 2026-02-04):
+**All tests passing** (verified 2026-02-06):
 
 | Crate | Tests | Status |
 |-------|-------|--------|
-| `nine65` | 424 | ✅ Pass |
+| `nine65` (core FHE) | 446 | ✅ Pass |
 | `mana` | 30 | ✅ Pass |
+| `clockwork-core` | 46 | ✅ Pass |
+| `nexgen_rational` | 95 | ✅ Pass |
 | `unhal` | 10 | ✅ Pass |
-| Integration | 22 | ✅ Pass |
-| Formalization | 5 | ✅ Pass |
-| **Total** | **491** | ✅ **All Pass** |
+| Optional crates | see note | ⚠️ Requires extra toolchains |
+| **Total (executed)** | **627** | ✅ **All Pass** |
+
+Notes:
+- `nine65-python` and `nine65-wasm` require optional toolchains/features (`python`, `wasm32-unknown-unknown`) and are not built in the default test sweep.
+- Core verification command: `cargo test -p nine65 --lib --release` (446 tests).
 
 ### Key Validations
 - ✅ Depth-50 circuits with 0 bootstraps (symmetric mode)
@@ -433,5 +444,5 @@ Old implementation reports and session updates are preserved in `archive/`.
 
 ---
 
-*Last updated: 2026-02-04*
+*Last updated: 2026-02-06*
 *NINE65 - Bootstrap-Free FHE with K-Elimination*

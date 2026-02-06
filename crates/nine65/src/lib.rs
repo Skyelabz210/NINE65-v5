@@ -38,7 +38,8 @@
 //! ## Zero Floating-Point Guarantee
 //!
 //! All operations use exact integer arithmetic — zero floating-point anywhere.
-//! No f32 or f64 types in production code, tests, benchmarks, or display logic.
+//! Integer-only runtime: cryptographic paths use no f32/f64. The circuit compiler
+//! (compiler.rs) uses f64 **only** for offline/static noise analysis.
 //! 
 //! ## Quick Start: Production FHE
 //!

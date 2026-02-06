@@ -13,7 +13,7 @@ Scope: NINE65 v5 workspace (code + docs + tests + CI)
 ## Systematic Test Coverage (Executed)
 - Command: cargo test --workspace --release
   - mana: 30 passed, 0 failed
-  - nine65: 424 passed, 0 failed
+  - nine65: 446 passed, 0 failed (core + integration)
   - unhal: 10 passed, 0 failed
   - Integration tests: 22 passed
   - Doc-tests: 2 passed, 39 ignored
