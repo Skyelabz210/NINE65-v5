@@ -30,6 +30,11 @@
 
 pub mod budget;
 
+#[cfg(feature = "exact_rational")]
+pub mod exact_noise;
+#[cfg(feature = "exact_rational")]
+pub use exact_noise::ExactNoiseTracker;
+
 // Re-export commonly used types from budget module
 pub use budget::{NoiseBudget, NoiseExhausted, NoiseOpType, NoiseOperation};
 
