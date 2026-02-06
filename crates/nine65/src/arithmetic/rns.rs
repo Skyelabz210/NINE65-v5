@@ -121,21 +121,31 @@ impl U256 {
         let lo_hi = a_lo * b_hi;
         let hi_hi = a_hi * b_hi;
 
-        let mid = hi_lo + lo_hi;
+        let (mid, mid_carry) = hi_lo.overflowing_add(lo_hi);
         let (result_lo, carry1) = lo_lo.overflowing_add(mid << 64);
         let carry2 = mid >> 64;
-        let result_hi = hi_hi + carry2 + if carry1 { 1 } else { 0 };
+        // mid_carry means the true mid sum had bit 128 set (value 2^128).
+        // In the full product, mid contributes at bit offset 64, so bit 128 of
+        // mid lands at bit 192 of the product = bit 64 of result_hi.
+        let mid_carry_hi = if mid_carry { 1u128 << 64 } else { 0 };
+        let result_hi = hi_hi + carry2 + mid_carry_hi + if carry1 { 1 } else { 0 };
 
         (result_lo, result_hi)
     }
 
-    /// Multiply by a small u64, returning the low 256 bits (exact for our usage).
+    /// Multiply by a u64, returning the low 256 bits.
+    ///
+    /// Exact when the true product fits in 256 bits (which is the case for all
+    /// K-Elimination and CRT reconstruction paths in NINE65).  A debug_assert
+    /// fires if the product overflows 256 bits.
     #[inline]
     pub(crate) fn mul_u64(self, m: u64) -> Self {
         let b = m as u128;
         let (p0_lo, p0_hi) = Self::wide_mul_256(self.lo, b);
-        let (p1_lo, _) = Self::wide_mul_256(self.hi, b);
-        let (hi, _) = p0_hi.overflowing_add(p1_lo);
+        let (p1_lo, p1_hi) = Self::wide_mul_256(self.hi, b);
+        let (hi, carry) = p0_hi.overflowing_add(p1_lo);
+        debug_assert!(p1_hi == 0 && !carry,
+            "U256::mul_u64 overflow: product exceeds 256 bits");
         Self { lo: p0_lo, hi }
     }
 
@@ -1905,5 +1915,150 @@ mod tests {
         }
 
         println!("=== 4-Prime CRT u128 Boundary Test PASSED ===");
+    }
+
+    // ========================================================================
+    // U256 Arithmetic Correctness Tests
+    // ========================================================================
+
+    #[test]
+    fn test_wide_mul_256_mid_carry_overflow() {
+        // wide_mul_256(u128::MAX, u128::MAX) computes (2^128-1)^2.
+        //
+        // Correct: (2^128-1)^2 = 2^256 - 2^129 + 1
+        //   lo = 1
+        //   hi = 2^128 - 2 = u128::MAX - 1
+        //
+        // Bug: The internal cross-term sum `mid = hi_lo + lo_hi` overflows u128
+        // when both inputs have all four 64-bit quarter-words populated (here
+        // each quarter is u64::MAX). The lost carry corrupts the result.
+        let (lo, hi) = U256::wide_mul_256(u128::MAX, u128::MAX);
+        assert_eq!(lo, 1, "lo of (2^128-1)^2 should be 1");
+        assert_eq!(hi, u128::MAX - 1, "hi of (2^128-1)^2 should be u128::MAX - 1");
+    }
+
+    #[test]
+    fn test_wide_mul_256_cross_term_boundary() {
+        // A targeted case where hi_lo + lo_hi just barely overflows u128.
+        //
+        // Choose a = (u64::MAX << 64) | u64::MAX = u128::MAX
+        //        b = (1 << 64) | u64::MAX
+        //
+        // b = 2^64 + (2^64 - 1) = 2^65 - 1
+        // a * b = (2^128-1)(2^65-1) = 2^193 - 2^128 - 2^65 + 1
+        //
+        // Decompose into (lo, hi) where value = lo + hi * 2^128:
+        //   Start:    hi = 2^65, lo = 0       (from 2^193)
+        //   -2^128:   hi = 2^65 - 1, lo = 0
+        //   -2^65:    hi = 2^65 - 2, lo = 2^128 - 2^65  (borrow from hi)
+        //   +1:       hi = 2^65 - 2, lo = 2^128 - 2^65 + 1
+        let a = u128::MAX;
+        let b = (1u128 << 64) | (u64::MAX as u128);
+        let (lo, hi) = U256::wide_mul_256(a, b);
+
+        let expected_lo = u128::MAX - (1u128 << 65) + 2; // 2^128 - 2^65 + 1
+        let expected_hi = (1u128 << 65) - 2;
+        assert_eq!(lo, expected_lo, "lo mismatch for cross-term boundary case");
+        assert_eq!(hi, expected_hi, "hi mismatch for cross-term boundary case");
+    }
+
+    #[test]
+    fn test_mul_low_large_lo_triggers_wide_mul_overflow() {
+        // mul_low delegates to wide_mul_256(self.lo, other.lo) when both .hi are 0.
+        // This exercises the same mid carry overflow path.
+        //
+        // (2^128-1)^2 = 2^256 - 2^129 + 1
+        // Low 256 bits: U256 { lo: 1, hi: u128::MAX - 1 }
+        let a = U256 { lo: u128::MAX, hi: 0 };
+        let b = U256 { lo: u128::MAX, hi: 0 };
+        let result = a.mul_low(b);
+        assert_eq!(result, U256 { lo: 1, hi: u128::MAX - 1 });
+    }
+
+    #[test]
+    fn test_mul_low_kelim_scale_values() {
+        // Simulate extract_digit_dual: k.mul_low(m_product_level) where both
+        // k.lo and m_product_level.lo have large upper 64-bit halves.
+        //
+        // Use the secure_192 scale: M_level ~= 2^150, k can be up to ~2^150.
+        // Both .lo fields are full 128-bit values with all quarters populated.
+        //
+        // Verify correctness by checking (a * b) mod several coprime u64 moduli.
+        // If wide_mul_256 is wrong, the residues won't match.
+        let a = U256 {
+            lo: 0xDEADBEEF_12345678_CAFEBABE_87654321_u128,
+            hi: 0,
+        };
+        let b = U256 {
+            lo: 0xFEDCBA98_AABBCCDD_11223344_55667788_u128,
+            hi: 0,
+        };
+        let result = a.mul_low(b);
+
+        // Cross-check: (a.lo * b.lo) mod p should equal result mod p for small primes.
+        // This works because when both .hi are 0, mul_low is just wide_mul_256.
+        let check_primes: &[u64] = &[998244353, 985661441, 754974721, 469762049];
+        for &p in check_primes {
+            let a_mod = (a.lo % p as u128) as u64;
+            let b_mod = (b.lo % p as u128) as u64;
+            let expected = ((a_mod as u128) * (b_mod as u128) % (p as u128)) as u64;
+            let got = result.mod_u64(p);
+            assert_eq!(got, expected,
+                "mul_low residue mod {} mismatch: got {}, expected {}",
+                p, got, expected);
+        }
+    }
+
+    #[test]
+    fn test_product_u64s_secure_256_primes() {
+        // Verify product_u64s correctly computes the modulus product for secure_256
+        // (7 primes, ~237 bits total). This exercises mul_u64 iteratively.
+        let primes: &[u64] = &[998244353, 985661441, 754974721, 469762049,
+                                167772161, 595591169, 645922817];
+        let product = U256::product_u64s(primes);
+
+        // Cross-check: product mod each prime should be 0
+        for &p in primes {
+            assert_eq!(product.mod_u64(p), 0,
+                "product_u64s mod prime {} should be 0", p);
+        }
+
+        // Verify bit-length is in expected range (~204 bits for these 7 primes)
+        let bl = product.bitlen();
+        assert!(bl >= 200 && bl <= 210,
+            "secure_256 product bit-length {} outside expected range 200..210", bl);
+    }
+
+    #[test]
+    fn test_mul_u64_kelim_rescale_scale() {
+        // Simulate k_mod_delta * t in k_elim_rescale_dual for secure_192.
+        //
+        // secure_192 primes: [998244353, 985661441, 754974721, 469762049, 167772161]
+        // M_level = product ≈ 2^150
+        // delta = M_level / t where t = 65537
+        // k_mod_delta < delta ≈ 2^134
+        // k_base = k_mod_delta * t ≈ 2^150 (must fit in 256 bits)
+        let primes: &[u64] = &[998244353, 985661441, 754974721, 469762049, 167772161];
+        let m_level = U256::product_u64s(primes);
+        let t: u64 = 65537;
+        let (delta, r) = m_level.div_mod_u64(t);
+
+        // Use delta - 1 as a worst-case k_mod_delta (just under the maximum)
+        let k_mod_delta = delta.sub(U256::one());
+
+        // k_base = k_mod_delta * t
+        let k_base = k_mod_delta.mul_u64(t);
+
+        // Verify: k_base < m_level (since k_mod_delta < delta = floor(M/t))
+        assert!(k_base.lt(m_level),
+            "k_base should be < m_level");
+
+        // Verify: k_base + r should approximate m_level
+        // k_mod_delta * t + k_mod_delta * r ≈ k_mod_delta * (t + r) but we just check k_base fits
+        assert!(k_base.bitlen() <= 256, "k_base should fit in 256 bits");
+
+        // k_rem = k_mod_delta * r
+        let k_rem = k_mod_delta.mul_u64(r);
+        assert!(k_rem.lt(m_level), "k_rem should be < m_level");
     }
 }
