@@ -65,18 +65,18 @@ impl Default for CulturalIdentity {
 }
 
 impl CulturalIdentity {
-    /// Create from normalized float values [0.0, 1.0]
-    pub fn from_normalized(
-        preference_weight: f64,
-        privacy_level: f64,
-        fp_tolerance: f64,
-        fn_tolerance: f64,
+    /// Create from permille values (1000 = 1.0, 700 = 0.7)
+    pub fn from_permille(
+        preference_weight_permille: i64,
+        privacy_level_permille: i64,
+        fp_tolerance_permille: i64,
+        fn_tolerance_permille: i64,
     ) -> Self {
         Self {
-            preference_weight: (preference_weight * ENTROPY_SCALE as f64) as i64,
-            privacy_level: (privacy_level * ENTROPY_SCALE as f64) as i64,
-            fp_tolerance: (fp_tolerance * ENTROPY_SCALE as f64) as i64,
-            fn_tolerance: (fn_tolerance * ENTROPY_SCALE as f64) as i64,
+            preference_weight: preference_weight_permille * ENTROPY_SCALE / 1000,
+            privacy_level: privacy_level_permille * ENTROPY_SCALE / 1000,
+            fp_tolerance: fp_tolerance_permille * ENTROPY_SCALE / 1000,
+            fn_tolerance: fn_tolerance_permille * ENTROPY_SCALE / 1000,
             region_code: 0,
         }
     }
@@ -394,12 +394,12 @@ impl SEBVAvatar {
         &self.policy
     }
     
-    /// Get classification accuracy
-    pub fn accuracy(&self) -> f64 {
+    /// Get classification accuracy as permille (1000 = 100%)
+    pub fn accuracy_permille(&self) -> u32 {
         if self.classification_count == 0 {
-            return 1.0;
+            return 1000;
         }
-        self.correct_count as f64 / self.classification_count as f64
+        (self.correct_count as u64 * 1000 / self.classification_count as u64) as u32
     }
     
     /// Generate synthetic behavioral data (for testing/training)
@@ -414,8 +414,14 @@ impl SEBVAvatar {
         
         for i in 0..length {
             // Mix structured pattern with noise (human-like)
-            let structure = ((i as f64 * 0.2).sin() * 
-                           (target.sample_entropy as f64 / 2.0)) as i64;
+            // Use integer triangle-wave approximation instead of f64 sin
+            // Period ~31 samples (close to 2π/0.2 ≈ 31.4)
+            let phase = (i % 31) as i64;
+            let half = 15i64;
+            // Triangle wave: ramps from -half to +half then back
+            let wave = if phase <= half { phase * 2 - half } else { 3 * half - phase * 2 };
+            // Scale by sample_entropy/2, normalized to half range
+            let structure = wave * target.sample_entropy / (2 * half);
             
             // LFSR-based noise
             state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
@@ -515,14 +521,14 @@ impl AvatarManager {
         }
     }
     
-    /// Get aggregate accuracy across all avatars
-    pub fn global_accuracy(&self) -> f64 {
+    /// Get aggregate accuracy across all avatars as permille (1000 = 100%)
+    pub fn global_accuracy_permille(&self) -> u32 {
         if self.avatars.is_empty() {
-            return 1.0;
+            return 1000;
         }
-        
-        let total: f64 = self.avatars.values().map(|a| a.accuracy()).sum();
-        total / self.avatars.len() as f64
+
+        let total: u32 = self.avatars.values().map(|a| a.accuracy_permille()).sum();
+        total / self.avatars.len() as u32
     }
     
     /// Get avatar count
@@ -543,7 +549,7 @@ mod tests {
     
     #[test]
     fn test_cultural_identity_weights() {
-        let identity = CulturalIdentity::from_normalized(0.7, 0.5, 0.2, 0.1);
+        let identity = CulturalIdentity::from_permille(700, 500, 200, 100);
         
         let (user_w, env_w) = identity.calculate_weights();
         
@@ -562,7 +568,7 @@ mod tests {
     
     #[test]
     fn test_avatar_with_culture() {
-        let culture = CulturalIdentity::from_normalized(0.8, 0.9, 0.1, 0.05);
+        let culture = CulturalIdentity::from_permille(800, 900, 100, 50);
         let avatar = SEBVAvatar::with_cultural_identity(123, culture);
         
         // High privacy should favor permutation entropy
@@ -685,7 +691,7 @@ mod tests {
         
         assert_eq!(avatar.classification_count, 2);
         assert_eq!(avatar.correct_count, 1);
-        assert!((avatar.accuracy() - 0.5).abs() < 0.001);
+        assert_eq!(avatar.accuracy_permille(), 500); // 50% = 500 permille
     }
     
     #[test]

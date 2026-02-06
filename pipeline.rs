@@ -148,9 +148,9 @@ impl SEBVClient {
         self.avatar.process_feedback(feedback);
     }
     
-    /// Get current avatar accuracy
-    pub fn accuracy(&self) -> f64 {
-        self.avatar.accuracy()
+    /// Get current avatar accuracy as permille (1000 = 100%)
+    pub fn accuracy_permille(&self) -> u32 {
+        self.avatar.accuracy_permille()
     }
     
     /// Get FHE context (for testing)
@@ -372,8 +372,8 @@ pub struct PipelineStats {
     pub bots: u64,
     /// Signature failures
     pub signature_failures: u64,
-    /// Average latency (mock, would need real timing)
-    pub avg_latency_ms: f64,
+    /// Average latency in microseconds (mock, would need real timing)
+    pub avg_latency_us: u64,
 }
 
 impl PipelineStats {
@@ -398,18 +398,20 @@ impl PipelineStats {
         }
     }
     
-    pub fn success_rate(&self) -> f64 {
+    /// Success rate as permille (1000 = 100%)
+    pub fn success_rate_permille(&self) -> u32 {
         if self.total_verifications == 0 {
-            return 1.0;
+            return 1000;
         }
-        self.successful as f64 / self.total_verifications as f64
+        (self.successful * 1000 / self.total_verifications) as u32
     }
-    
-    pub fn human_rate(&self) -> f64 {
+
+    /// Human classification rate as permille (1000 = 100%)
+    pub fn human_rate_permille(&self) -> u32 {
         if self.successful == 0 {
-            return 0.0;
+            return 0;
         }
-        self.humans as f64 / self.successful as f64
+        (self.humans * 1000 / self.successful) as u32
     }
 }
 

@@ -114,6 +114,7 @@ impl PySecureConfig {
         }
     }
 
+    #[cfg(any(test, debug_assertions))]
     #[staticmethod]
     fn test_fast() -> Self {
         Self {

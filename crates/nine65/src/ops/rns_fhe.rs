@@ -2181,7 +2181,15 @@ impl RNSFHEContext {
         let c0_new = self.dual_poly_add(&e0, &e2_s2);
 
         let level = c0_new.main.len();
-        DualRNSCiphertext { c0: c0_new, c1: e1, level }
+        let ct_result = DualRNSCiphertext { c0: c0_new, c1: e1, level };
+
+        // Auto modulus-switch when enough levels remain (mirrors mul_dual_public).
+        // This shrinks noise proportionally, enabling deeper symmetric circuits.
+        if level >= 3 {
+            self.mod_switch_ct_down(&ct_result).unwrap_or(ct_result)
+        } else {
+            ct_result
+        }
     }
 
     /// Backward compatibility alias (deprecated)
@@ -2244,7 +2252,16 @@ impl RNSFHEContext {
         };
 
         let level = c0_new.main.len();
-        DualRNSCiphertext { c0: c0_new, c1: c1_new, level }
+        let ct_result = DualRNSCiphertext { c0: c0_new, c1: c1_new, level };
+
+        // Step 5: Auto modulus-switch when enough levels remain
+        // This shrinks noise proportionally, enabling deeper public-mode circuits.
+        // Equivalent to what mul_dual_public_deep does, but now automatic.
+        if level >= 3 {
+            self.mod_switch_ct_down(&ct_result).unwrap_or(ct_result)
+        } else {
+            ct_result
+        }
     }
 
     /// Homomorphic addition for dual-track ciphertexts
@@ -2622,28 +2639,13 @@ pub fn mod_switch_down_dual(&self, poly: &DualRNSPoly) -> Option<DualRNSPoly> {
 
     /// Public mode multiplication with modulus switching for deeper circuits
     ///
-    /// This combines:
-    /// 1. Tensor product
-    /// 2. Relinearization (using eval keys)
-    /// 3. K-Elimination rescale (divide by Δ)
-    /// 4. Modulus switch (drop q_L, shrink noise relative to new Q)
-    ///
-    /// The modulus switch after multiplication is key to deeper public mode:
-    /// - Standard rescale: ct' = ct / Δ (maintains message, scales down ct)
-    /// - Modulus switch: ct'' = round(ct' / q_L) (shrinks Q, proportionally shrinks noise)
-    ///
-    /// Together, they enable depth 5-10+ in public mode (vs depth 1 without mod switch).
+    /// **Deprecated**: `mul_dual_public` now automatically applies modulus switching
+    /// when enough levels remain (level >= 3). This function is kept for backward
+    /// compatibility but simply delegates to `mul_dual_public`.
+    #[deprecated(note = "Use mul_dual_public instead — it now auto-applies modulus switching")]
     pub fn mul_dual_public_deep(&self, ct1: &DualRNSCiphertext, ct2: &DualRNSCiphertext,
                                 evk: &DualRNSEvalKey) -> DualRNSCiphertext {
-        // Standard public multiplication: tensor → relin → rescale
-        let ct_mul = self.mul_dual_public(ct1, ct2, evk);
-
-        // Apply modulus switch to shrink noise
-        // If mod_switch fails (only 1 prime left), return the result without switching
-        if ct_mul.level < ct1.level {
-            return ct_mul;
-        }
-        self.mod_switch_ct_down(&ct_mul).unwrap_or(ct_mul)
+        self.mul_dual_public(ct1, ct2, evk)
     }
 
     // ========================================================================
@@ -2682,7 +2684,12 @@ pub fn mod_switch_down_dual(&self, poly: &DualRNSPoly) -> Option<DualRNSPoly> {
 
     /// Tracked deep multiplication: includes modulus switch
     ///
+    /// **Deprecated**: `mul_dual_public_tracked` now delegates to `mul_dual_public`,
+    /// which auto-applies modulus switching. This function detects that and avoids
+    /// double switching, but is functionally equivalent to `mul_dual_public_tracked`.
+    ///
     /// Returns `Err(NoiseExhausted)` if there's insufficient budget.
+    #[deprecated(note = "Use mul_dual_public_tracked instead — it now auto-applies modulus switching")]
     pub fn mul_dual_public_deep_tracked(
         &self,
         ct1: &DualRNSCiphertext,
@@ -3801,7 +3808,7 @@ mod tests {
         println!("\n  Checking dual-RNS invariant after public mul:");
         let main_c0_0: Vec<u64> = ct6_pub.c0.main.iter().map(|l| l[0]).collect();
         let anchor_c0_0: Vec<u64> = ct6_pub.c0.anchor.iter().map(|l| l[0]).collect();
-        let v_m = ctx.rns.to_int(&main_c0_0);
+        let v_m = ctx.rns.to_int_level(&main_c0_0, ct6_pub.level);
         let k = ctx.dual_rns.extract_k_rns(v_m, &anchor_c0_0);
 
         let num_primes_for_sign = ctx.dual_rns.anchor.primes.len().min(3);
@@ -3816,7 +3823,7 @@ mod tests {
         println!("\n  Checking dual-RNS invariant after symmetric mul:");
         let main_c0_0_sym: Vec<u64> = ct6_sym.c0.main.iter().map(|l| l[0]).collect();
         let anchor_c0_0_sym: Vec<u64> = ct6_sym.c0.anchor.iter().map(|l| l[0]).collect();
-        let v_m_sym = ctx.rns.to_int(&main_c0_0_sym);
+        let v_m_sym = ctx.rns.to_int_level(&main_c0_0_sym, ct6_sym.level);
         let k_sym = ctx.dual_rns.extract_k_rns(v_m_sym, &anchor_c0_0_sym);
         println!("    v_m = {} ({})", v_m_sym, sci_notation_u128(v_m_sym));
         println!("    k = {} ({})", k_sym, sci_notation_u128(k_sym));
@@ -3859,7 +3866,7 @@ mod tests {
         println!("\n  Checking dual-RNS invariant after DEPTH-2 public mul:");
         let main_d2_pub: Vec<u64> = ct120_pub.c0.main.iter().map(|l| l[0]).collect();
         let anchor_d2_pub: Vec<u64> = ct120_pub.c0.anchor.iter().map(|l| l[0]).collect();
-        let v_m_d2_pub = ctx.rns.to_int(&main_d2_pub);
+        let v_m_d2_pub = ctx.rns.to_int_level(&main_d2_pub, ct120_pub.level);
         let k_d2_pub = ctx.dual_rns.extract_k_rns(v_m_d2_pub, &anchor_d2_pub);
         println!("    v_m = {} ({})", v_m_d2_pub, sci_notation_u128(v_m_d2_pub));
         println!("    k = {} ({})", k_d2_pub, sci_notation_u128(k_d2_pub));
@@ -3867,7 +3874,7 @@ mod tests {
         println!("\n  Checking dual-RNS invariant after DEPTH-2 symmetric mul:");
         let main_d2_sym: Vec<u64> = ct120_sym.c0.main.iter().map(|l| l[0]).collect();
         let anchor_d2_sym: Vec<u64> = ct120_sym.c0.anchor.iter().map(|l| l[0]).collect();
-        let v_m_d2_sym = ctx.rns.to_int(&main_d2_sym);
+        let v_m_d2_sym = ctx.rns.to_int_level(&main_d2_sym, ct120_sym.level);
         let k_d2_sym = ctx.dual_rns.extract_k_rns(v_m_d2_sym, &anchor_d2_sym);
         println!("    v_m = {} ({})", v_m_d2_sym, sci_notation_u128(v_m_d2_sym));
         println!("    k = {} ({})", k_d2_sym, sci_notation_u128(k_d2_sym));
@@ -8029,6 +8036,7 @@ mod tests {
 
         // Try to compute 2^n via repeated squaring until budget exhausted
         while depth < 5 {  // Limit to depth 5 for test
+            #[allow(deprecated)]
             match ctx.mul_dual_public_deep_tracked(&ct, &ct, &keys.eval_key, &mut budget) {
                 Ok(ct_new) => {
                     ct = ct_new;
@@ -8077,5 +8085,181 @@ mod tests {
         assert_eq!(result, 42, "20 + 22 should decrypt to 42");
 
         println!("=== Tracked addition test PASSED ===");
+    }
+
+    // ========================================================================
+    // PUBLIC-MODE AUTO MOD-SWITCH TESTS (TDD from audit analysis)
+    // ========================================================================
+
+    #[test]
+    fn test_mul_dual_public_auto_mod_switch_depth2() {
+        // TDD RED: mul_dual_public should automatically apply modulus switching
+        // when enough levels exist, enabling depth-2 without needing _deep variant.
+        //
+        // Uses depth2_128 config (4 primes) which gives enough headroom for
+        // mod-switch after the first multiplication.
+        let config = FHEConfig::depth2_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(7777);
+
+        // Use a smaller decomposition base for reduced relin noise
+        let decomp_base = 1u64 << 10;
+        let keys = ctx.generate_keys_dual_full_with_base(&mut rng, decomp_base);
+
+        // Encrypt base value
+        let base = 3u64;
+        let ct_base = ctx.encrypt_dual(base, &keys.public_key, &mut rng);
+
+        // Depth-1: 3^2 = 9
+        let ct_depth1 = ctx.mul_dual_public(&ct_base, &ct_base, &keys.eval_key);
+        let expected_depth1 = (base * base) % config.t;
+        let dec_depth1 = ctx.decrypt_dual(&ct_depth1, &keys.secret_key);
+        assert_eq!(dec_depth1, expected_depth1,
+            "Depth-1 should decrypt correctly: {} * {} = {} (mod {})",
+            base, base, expected_depth1, config.t);
+
+        // Depth-2: 9^2 = 81 — this is the critical test
+        // Without auto mod-switch in mul_dual_public, noise overwhelms at depth-2
+        let ct_depth2 = ctx.mul_dual_public(&ct_depth1, &ct_depth1, &keys.eval_key);
+        let expected_depth2 = (expected_depth1 * expected_depth1) % config.t;
+        let dec_depth2 = ctx.decrypt_dual(&ct_depth2, &keys.secret_key);
+        assert_eq!(dec_depth2, expected_depth2,
+            "Depth-2 via mul_dual_public should decrypt correctly: {} * {} = {} (mod {})",
+            expected_depth1, expected_depth1, expected_depth2, config.t);
+
+        println!("=== mul_dual_public auto mod-switch depth-2 PASSED ===");
+    }
+
+    #[test]
+    fn test_mul_dual_public_depth3_chain() {
+        // TDD RED: Test depth-3 chain through mul_dual_public with auto mod-switch.
+        // Uses depth3_128 (5 primes, N=8192) for sufficient headroom.
+        let config = FHEConfig::depth3_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(8888);
+
+        let decomp_base = 1u64 << 8; // Small base for minimal relin noise
+        let keys = ctx.generate_keys_dual_full_with_base(&mut rng, decomp_base);
+
+        let base = 2u64;
+        let mut expected = base % config.t;
+        let mut ct = ctx.encrypt_dual(base, &keys.public_key, &mut rng);
+
+        for depth in 1..=3 {
+            ct = ctx.mul_dual_public(&ct, &ct, &keys.eval_key);
+            expected = ((expected as u128 * expected as u128) % config.t as u128) as u64;
+            let dec = ctx.decrypt_dual(&ct, &keys.secret_key);
+            assert_eq!(dec, expected,
+                "Depth-{} via mul_dual_public failed: got {}, expected {}",
+                depth, dec, expected);
+        }
+        // After depth-3: 2^8 = 256
+        assert_eq!(expected, 256);
+        println!("=== mul_dual_public depth-3 chain PASSED (2^8 = 256) ===");
+    }
+
+    // ========================================================================
+    // SYMMETRIC MODE OVERFLOW TESTS (TDD from audit analysis)
+    // ========================================================================
+
+    #[test]
+    fn test_mul_dual_symmetric_large_values_secure_128() {
+        // TDD: Verify mul_dual_symmetric handles large plaintext values near t-1
+        // at production N=4096 (secure_128). Previous tests only used small values
+        // (2*3, 5*7). Large values stress the K-Elimination arithmetic near
+        // modular boundaries where intermediate products are maximized.
+        use crate::params::secure_configs::SecureConfig;
+
+        let secure_config = SecureConfig::secure_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&secure_config.config);
+        let mut rng = ShadowHarvester::with_seed(9999);
+        let keys = ctx.generate_keys_dual(&mut rng);
+
+        let t = ctx.t;
+        // Test with values near t-1 (worst case for intermediate product size)
+        let cases = [
+            (t - 1, t - 1),  // max × max
+            (t - 1, 2),      // max × small
+            (t / 2, t / 2),  // half × half
+            (t - 2, t - 3),  // near-max × near-max
+        ];
+
+        for (a, b) in cases {
+            let ct_a = ctx.encrypt_dual(a, &keys.public_key, &mut rng);
+            let ct_b = ctx.encrypt_dual(b, &keys.public_key, &mut rng);
+            let ct_prod = ctx.mul_dual_symmetric(&ct_a, &ct_b, &keys.secret_key);
+            let result = ctx.decrypt_dual(&ct_prod, &keys.secret_key);
+            let expected = ((a as u128 * b as u128) % t as u128) as u64;
+            assert_eq!(result, expected,
+                "secure_128 symmetric mul overflow: {}*{} expected {} got {} (mod {})",
+                a, b, expected, result, t);
+        }
+        println!("=== mul_dual_symmetric large values secure_128 PASSED ===");
+    }
+
+    #[test]
+    fn test_mul_dual_symmetric_depth2_secure_128_deep() {
+        // TDD: Test depth-2 chaining in symmetric mode at N=4096.
+        // secure_128_deep has 4 primes (~120-bit Q), giving headroom for 2 muls.
+        // Note: symmetric mode has NO auto mod-switch (unlike public mode),
+        // so this tests whether the K-Elimination rescale alone maintains
+        // correctness across two consecutive multiplications.
+        use crate::params::secure_configs::SecureConfig;
+
+        let secure_config = SecureConfig::secure_128_deep();
+        let ctx = RNSFHEContext::new_coeff_domain(&secure_config.config);
+        let mut rng = ShadowHarvester::with_seed(12345);
+        let keys = ctx.generate_keys_dual(&mut rng);
+
+        let t = ctx.t;
+        let base = 3u64;
+        let ct_base = ctx.encrypt_dual(base, &keys.public_key, &mut rng);
+
+        // Depth-1: 3^2 = 9
+        let ct_d1 = ctx.mul_dual_symmetric(&ct_base, &ct_base, &keys.secret_key);
+        let expected_d1 = ((base as u128 * base as u128) % t as u128) as u64;
+        let dec_d1 = ctx.decrypt_dual(&ct_d1, &keys.secret_key);
+        assert_eq!(dec_d1, expected_d1,
+            "Depth-1 symmetric: expected {}, got {}", expected_d1, dec_d1);
+
+        // Depth-2: 9^2 = 81
+        let ct_d2 = ctx.mul_dual_symmetric(&ct_d1, &ct_d1, &keys.secret_key);
+        let expected_d2 = ((expected_d1 as u128 * expected_d1 as u128) % t as u128) as u64;
+        let dec_d2 = ctx.decrypt_dual(&ct_d2, &keys.secret_key);
+        assert_eq!(dec_d2, expected_d2,
+            "Depth-2 symmetric: expected {}, got {}", expected_d2, dec_d2);
+
+        println!("=== mul_dual_symmetric depth-2 secure_128_deep PASSED ===");
+    }
+
+    #[test]
+    fn test_mul_dual_symmetric_secure_192_u256_path() {
+        // TDD: Verify symmetric multiplication works at secure_192 (N=8192,
+        // 5 primes, Q > u128). This exercises the full U256 K-Elimination path
+        // because q_product=0 (overflow sentinel). The k_elim_rescale_dual
+        // function must handle U256 arithmetic correctly.
+        use crate::params::secure_configs::SecureConfig;
+
+        let secure_config = SecureConfig::secure_192();
+        let ctx = RNSFHEContext::new_coeff_domain(&secure_config.config);
+        let mut rng = ShadowHarvester::with_seed(54321);
+        let keys = ctx.generate_keys_dual(&mut rng);
+
+        // Confirm we're on the U256 path
+        assert_eq!(ctx.q_product, 0, "secure_192 must use overflow sentinel");
+
+        let t = ctx.t;
+        let cases = [(3u64, 7u64), (t - 1, 2), (100, 200)];
+        for (a, b) in cases {
+            let ct_a = ctx.encrypt_dual(a, &keys.public_key, &mut rng);
+            let ct_b = ctx.encrypt_dual(b, &keys.public_key, &mut rng);
+            let ct_prod = ctx.mul_dual_symmetric(&ct_a, &ct_b, &keys.secret_key);
+            let result = ctx.decrypt_dual(&ct_prod, &keys.secret_key);
+            let expected = ((a as u128 * b as u128) % t as u128) as u64;
+            assert_eq!(result, expected,
+                "secure_192 symmetric mul: {}*{} expected {} got {} (mod {})",
+                a, b, expected, result, t);
+        }
+        println!("=== mul_dual_symmetric secure_192 U256 path PASSED ===");
     }
 }
