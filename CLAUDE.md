@@ -3,7 +3,7 @@
 ## Build & Test
 
 ```bash
-cargo build --release --workspace        # Build all 4 crates (nine65, nexgen_rational, mana, unhal)
+cargo build --release --workspace        # Build all 5 crates (nine65, nexgen_rational, clockwork-core, mana, unhal)
 cargo test --workspace --release          # Run all tests
 cargo test -p nine65 --lib --release      # Core crate only
 cargo test -p nine65 security::tests -- --nocapture  # Security tests
@@ -14,6 +14,7 @@ cargo test -p nine65 security::tests -- --nocapture  # Security tests
 | Crate | Path | Purpose |
 |-------|------|---------|
 | `nine65` | `crates/nine65/` | Core FHE: arithmetic, ring, ops, security, entropy, keys, noise, params |
+| `clockwork-core` | `crates/clockwork-core/` | Formal-spec RNS arithmetic: bound tracking, GRO timing, key lifecycle, Garner, integrity (46 tests) |
 | `mana` | `crates/mana/` | FHE stream accelerator (lane-parallel via Rayon) |
 | `nexgen_rational` | `crates/nexgen_rational/` | Exact i128 rational arithmetic (zero-dep) |
 | `unhal` | `crates/unhal/` | Hardware abstraction layer |
@@ -30,6 +31,11 @@ cargo test -p nine65 security::tests -- --nocapture  # Security tests
 - **Rational bridge**: `crates/nine65/src/arithmetic/rational_bridge.rs` (requires `exact_rational` feature)
 - **Exact noise**: `crates/nine65/src/noise/exact_noise.rs` (requires `exact_rational` feature)
 - **Exact delta**: `crates/nine65/src/params/exact_params.rs` (requires `exact_rational` feature)
+- **Bound tracking**: `crates/nine65/src/arithmetic/bounded_rns.rs` (requires `clockwork` feature)
+- **GRO timing gate**: `crates/nine65/src/security/gro_gate.rs` (requires `clockwork` feature)
+- **Key lifecycle**: `crates/nine65/src/security/key_manager.rs` (requires `clockwork` feature)
+- **Limb integrity**: `crates/nine65/src/security/integrity.rs` (requires `clockwork` feature)
+- **Garner reconstruction**: `crates/clockwork-core/src/garner.rs` (cross-validates K-Elimination)
 - **Coq proofs**: `proofs/coq/*.v` (14 proofs, requires Coq 8.18+)
 - **Lean4 proofs**: `lean4/KElimination/` (4 proofs, requires Lean 4.x + Mathlib)
 
@@ -42,6 +48,7 @@ cargo test -p nine65 security::tests -- --nocapture  # Security tests
 - `serde` - Serialization support (JSON + bincode)
 - `deterministic_rng` - Reproducible testing via rand_chacha
 - `exact_rational` - Enable NexGen rational bridge (exact noise tracking, BFV delta)
+- `clockwork` - Enable Clockwork-Core integration (bound tracking, GRO timing, key lifecycle, integrity)
 - `slow_tests` - Enable expensive tests
 - Defaults: `ntt_fft`, `parallel` (Rayon)
 
