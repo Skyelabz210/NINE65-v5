@@ -37,6 +37,11 @@ pub mod validation;
 pub mod security_estimator;
 pub mod secure_configs;
 
+#[cfg(feature = "exact_rational")]
+pub mod exact_params;
+#[cfg(feature = "exact_rational")]
+pub use exact_params::ExactDelta;
+
 pub use primes::*;
 pub use validation::{validate_params, assert_params_valid, ParameterValidator, ValidationResult};
 pub use security_estimator::{
