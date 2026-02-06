@@ -414,6 +414,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "clockwork-core",
+ "crc32fast",
  "criterion",
  "getrandom 0.2.16",
  "mana",

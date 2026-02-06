@@ -13,6 +13,21 @@ pub mod secret_data;
 
 pub use secret_data::{SecretData, SecretPoly, SecretScalar};
 
+#[cfg(feature = "clockwork")]
+pub mod gro_gate;
+#[cfg(feature = "clockwork")]
+pub use gro_gate::TimingGate;
+
+#[cfg(feature = "clockwork")]
+pub mod key_manager;
+#[cfg(feature = "clockwork")]
+pub use key_manager::KeyManager;
+
+#[cfg(feature = "clockwork")]
+pub mod integrity;
+#[cfg(feature = "clockwork")]
+pub use integrity::{compute_limb_checksum, verify_limb_checksum};
+
 use crate::params::FHEConfig;
 
 /// LWE parameters for security estimation
