@@ -49,15 +49,6 @@ impl KeyManager {
         self.inner.record_operation()
     }
 
-    /// Check if resharing is needed based on operation count.
-    pub fn needs_reshare(&self) -> bool {
-        // Access the inner state to check — record_operation returns
-        // true on the exact threshold, but we need a check-only method
-        self.inner.state() == KeyState::Active
-            && self.inner.reshare_count() == 0
-            && false // conservative: rely on record_operation() return value
-    }
-
     /// Reshare with fresh randomness.
     ///
     /// Old shares are zeroed, new shares computed such that

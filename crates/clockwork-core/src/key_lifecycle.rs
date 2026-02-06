@@ -93,7 +93,7 @@ impl KeySharePair {
     /// WARNING: This puts s in memory. Only call during Decrypt or rekey.
     /// The result MUST be zeroed after use.
     pub fn reconstruct(&self) -> u64 {
-        (self.share_a as u128 + self.share_b as u128 % self.q as u128) as u64 % self.q
+        ((self.share_a as u128 + self.share_b as u128) % self.q as u128) as u64
     }
 
     /// Re-share with fresh randomness.
@@ -108,8 +108,8 @@ impl KeySharePair {
     pub fn reshare(&self, r: u64) -> KeySharePair {
         debug_assert!(r < self.q, "Randomness must be < q");
 
-        let new_a = (self.share_a as u128 + r as u128) as u64 % self.q;
-        let new_b = (self.share_b as u128 + self.q as u128 - r as u128) as u64 % self.q;
+        let new_a = ((self.share_a as u128 + r as u128) % self.q as u128) as u64;
+        let new_b = ((self.share_b as u128 + self.q as u128 - r as u128) % self.q as u128) as u64;
 
         KeySharePair {
             share_a: new_a,
