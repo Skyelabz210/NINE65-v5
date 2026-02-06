@@ -86,7 +86,7 @@ pub struct ProductionConfig128 {
     pub primes: Vec<u64>,
     pub special_primes: Vec<u64>,  // For key switching
     pub t: u64,                     // Plaintext modulus
-    pub sigma: f64,                 // Error std dev (conceptual, we use integer CBD)
+    pub sigma_millibits: u32,       // Error std dev × 1000 (3200 = σ=3.2, integer CBD)
     pub eta: usize,                 // CBD parameter
     pub max_depth: usize,           // Multiplicative depth
 }
@@ -102,7 +102,7 @@ impl ProductionConfig128 {
             primes: PRODUCTION_PRIMES_30BIT[0..7].to_vec(),
             special_primes: PRODUCTION_PRIMES_30BIT[7..10].to_vec(),
             t: 65537,  // 2^16 + 1, prime
-            sigma: 3.2,
+            sigma_millibits: 3200,
             eta: 3,
             max_depth: 6,  // Each mul consumes ~1 level
         }
@@ -118,7 +118,7 @@ impl ProductionConfig128 {
             primes: PRODUCTION_PRIMES_30BIT[0..14].to_vec(),
             special_primes: vec![PRODUCTION_PRIMES_30BIT[14]],
             t: 65537,
-            sigma: 3.2,
+            sigma_millibits: 3200,
             eta: 4,
             max_depth: 13,
         }
@@ -134,7 +134,7 @@ impl ProductionConfig128 {
             primes: PRODUCTION_PRIMES_30BIT.to_vec(),
             special_primes: vec![754974721, 469762049, 167772161, 104857601],
             t: 65537,
-            sigma: 3.2,
+            sigma_millibits: 3200,
             eta: 5,
             max_depth: 14,
         }
@@ -178,7 +178,7 @@ impl ProductionConfig128 {
             65536 => 1770,
             _ => {
                 // Interpolate: roughly logQ_max ≈ n / 37.5 for 128-bit
-                (n as f64 / 37.5) as usize
+                (n * 1000) / 37_500
             }
         };
         
