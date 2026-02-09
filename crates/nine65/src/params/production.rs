@@ -3,47 +3,6 @@
 //! Based on HomomorphicEncryption.org standards and lattice-estimator validation.
 //! These are NOT toy parameters.
 
-/// DEPRECATED: These values contain bit errors and are NOT prime
-///
-/// WARNING: Do NOT use these values for cryptographic operations!
-/// Verification shows these constants are COMPOSITE (not prime).
-///
-/// Example: 1152921504606846977 was claimed to be 2^60 - 2^14 + 1,
-/// but the actual value of 2^60 - 2^14 + 1 = 1152921504606830593.
-///
-/// Use PRODUCTION_PRIMES_30BIT or validated 51-bit primes instead:
-/// - Verified 51-bit NTT prime: 1125899906990081 (q ≡ 1 mod 16384)
-///
-/// These constants are preserved for backwards compatibility only.
-/// They will be removed in a future version.
-#[deprecated(
-    since = "0.2.0",
-    note = "CRITICAL: These values are NOT prime. Use PRODUCTION_PRIMES_30BIT instead."
-)]
-pub const PRODUCTION_PRIMES_60BIT: [u64; 20] = [
-    // INVALID - DO NOT USE - preserved only for backwards compatibility
-    1152921504606846977,  // NOT PRIME - claimed 2^60 - 2^14 + 1
-    1152921504606584833,  // NOT VERIFIED
-    1152921504606322689,  // NOT VERIFIED
-    1152921504606060545,  // NOT VERIFIED
-    1152921504605798401,  // NOT VERIFIED
-    1152921504605536257,  // NOT VERIFIED
-    1152921504605274113,  // NOT VERIFIED
-    1152921504605011969,  // NOT VERIFIED
-    1152921504604749825,  // NOT VERIFIED
-    1152921504604487681,  // NOT VERIFIED
-    1152921504604225537,  // NOT VERIFIED
-    1152921504603963393,  // NOT VERIFIED
-    1152921504603701249,  // NOT VERIFIED
-    1152921504603439105,  // NOT VERIFIED
-    1152921504603176961,  // NOT VERIFIED
-    1099511627777,        // NOT VERIFIED
-    1099511627553,        // NOT VERIFIED
-    1099511627329,        // NOT VERIFIED
-    1099511627105,        // NOT VERIFIED
-    1099511626881,        // NOT VERIFIED
-];
-
 /// Verified NTT-friendly primes for high-security configurations
 ///
 /// These primes have been validated (2026-01-25):
@@ -59,22 +18,25 @@ pub const VERIFIED_PRIMES_51BIT: [u64; 5] = [
 ];
 
 /// 30-bit NTT primes (for lighter operations, still secure with enough of them)
+///
+/// All values verified prime with deterministic Miller-Rabin (2026-02-06).
+/// All satisfy q ≡ 1 (mod 65536) for NTT compatibility with N up to 32768.
 pub const PRODUCTION_PRIMES_30BIT: [u64; 15] = [
     998244353,    // 2^23 * 7 * 17 + 1  - the classic
     985661441,    // 2^22 * 5 * 47 + 1
-    975175681,    // 
-    962592769,    //
-    950009857,    //
-    943718401,    //
-    935329793,    //
-    924844033,    //
-    918552577,    //
-    910163969,    //
-    897581057,    //
-    886046721,    //
-    876609537,    //
-    866123777,    //
-    855638017,    //
+    975175681,    // verified prime
+    962592769,    // verified prime
+    950009857,    // verified prime
+    943718401,    // verified prime
+    935329793,    // verified prime
+    924844033,    // verified prime
+    918552577,    // verified prime
+    908328961,    // verified prime, q ≡ 1 mod 65536 (N=32768 compatible)
+    897581057,    // verified prime
+    902627329,    // verified prime, q ≡ 1 mod 65536 (N=32768 compatible)
+    909770753,    // verified prime
+    909377537,    // verified prime
+    909180929,    // verified prime
 ];
 
 /// Production configuration for 128-bit classical security
@@ -342,6 +304,42 @@ mod tests {
             for &b in PRODUCTION_PRIMES_30BIT.iter().skip(i + 1) {
                 assert_ne!(a, b, "Duplicate primes");
             }
+        }
+    }
+
+    #[test]
+    fn test_production_30bit_primes_are_prime() {
+        use crate::params::primes::is_prime;
+        for (i, &p) in PRODUCTION_PRIMES_30BIT.iter().enumerate() {
+            assert!(is_prime(p),
+                    "PRODUCTION_PRIMES_30BIT[{}] = {} is NOT prime", i, p);
+        }
+    }
+
+    #[test]
+    fn test_verified_51bit_primes_are_prime() {
+        use crate::params::primes::is_prime;
+        for (i, &p) in VERIFIED_PRIMES_51BIT.iter().enumerate() {
+            assert!(is_prime(p),
+                    "VERIFIED_PRIMES_51BIT[{}] = {} is NOT prime", i, p);
+        }
+    }
+
+    #[test]
+    fn test_verified_51bit_ntt_compatible() {
+        for &p in &VERIFIED_PRIMES_51BIT {
+            assert_eq!((p - 1) % 16384, 0,
+                       "51-bit prime {} not NTT-compatible (q ≢ 1 mod 16384)", p);
+        }
+    }
+
+    /// All PRODUCTION_PRIMES_30BIT must satisfy q ≡ 1 (mod 65536) for N=32768.
+    /// The high_security() config uses N=32768, so this is a hard requirement.
+    #[test]
+    fn test_production_30bit_ntt_compatible_n32768() {
+        for (i, &p) in PRODUCTION_PRIMES_30BIT.iter().enumerate() {
+            assert_eq!((p - 1) % 65536, 0,
+                       "PRODUCTION_PRIMES_30BIT[{}] = {} not NTT-compatible for N=32768 (q ≢ 1 mod 65536)", i, p);
         }
     }
 }

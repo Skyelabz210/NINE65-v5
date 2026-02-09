@@ -198,7 +198,13 @@ mod tests {
     #[test]
     fn test_primes_are_prime() {
         for &p in &PRIMES_1024 {
-            assert!(is_prime(p), "{} should be prime", p);
+            assert!(is_prime(p), "PRIMES_1024: {} should be prime", p);
+        }
+        for &p in &PRIMES_4096 {
+            assert!(is_prime(p), "PRIMES_4096: {} should be prime", p);
+        }
+        for &p in &PRIMES_8192 {
+            assert!(is_prime(p), "PRIMES_8192: {} should be prime", p);
         }
     }
     

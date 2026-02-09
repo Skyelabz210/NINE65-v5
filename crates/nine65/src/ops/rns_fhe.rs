@@ -266,6 +266,14 @@ const MAX_RNS_LIMBS: usize = 64;
 /// Maximum ciphertext level to prevent invalid state
 const MAX_LEVEL: usize = 32;
 
+/// Maximum payload sizes (bytes) for deserialization pre-flight checks.
+/// Prevents unbounded allocation before validation runs.
+/// A max-params ciphertext (N=32768, 64 limbs, 2 systems, 2 polys) is ~64MB binary.
+#[cfg(feature = "serde")]
+pub(crate) const MAX_BINCODE_PAYLOAD: usize = 64 * 1024 * 1024; // 64 MB
+#[cfg(feature = "serde")]
+pub(crate) const MAX_JSON_PAYLOAD: usize = 128 * 1024 * 1024; // 128 MB
+
 impl DualRNSPoly {
     /// Validate the polynomial structure
     ///
@@ -445,6 +453,15 @@ impl DualRNSCiphertext {
     /// - DoS attacks via excessive allocation
     /// - Inconsistent internal state
     pub fn from_json_validated(s: &str) -> Nine65Result<Self> {
+        // Pre-flight size check: reject before allocating
+        if s.len() > MAX_JSON_PAYLOAD {
+            return Err(Nine65Error::DeserializationError {
+                message: format!(
+                    "JSON payload size {} exceeds maximum {} bytes",
+                    s.len(), MAX_JSON_PAYLOAD
+                ),
+            });
+        }
         let ct: Self = serde_json::from_str(s)
             .map_err(|e| Nine65Error::DeserializationError {
                 message: format!("JSON parse error: {}", e),
@@ -474,6 +491,15 @@ impl DualRNSCiphertext {
     /// - DoS attacks via excessive allocation
     /// - Inconsistent internal state
     pub fn from_bytes_validated(bytes: &[u8]) -> Nine65Result<Self> {
+        // Pre-flight size check: reject before allocating
+        if bytes.len() > MAX_BINCODE_PAYLOAD {
+            return Err(Nine65Error::DeserializationError {
+                message: format!(
+                    "Bincode payload size {} exceeds maximum {} bytes",
+                    bytes.len(), MAX_BINCODE_PAYLOAD
+                ),
+            });
+        }
         let ct: Self = bincode::deserialize(bytes)
             .map_err(|e| Nine65Error::DeserializationError {
                 message: format!("Bincode parse error: {}", e),
@@ -857,6 +883,22 @@ impl RNSFHEContext {
     /// Decrypt using the appropriate regime
     pub fn decrypt_auto(&self, ct: &AutoCiphertext, keys: &AutoKeys) -> u64 {
         self.decrypt_auto_with_diagnostics(ct, keys).0
+    }
+
+    /// Checked auto-decryption: returns `Err(NoiseExhausted)` if noise budget
+    /// is exhausted, instead of silently returning garbage.
+    pub fn try_decrypt_auto(&self, ct: &AutoCiphertext, keys: &AutoKeys) -> Result<u64, crate::noise::budget::NoiseExhausted> {
+        let (decoded, margin) = self.decrypt_auto_with_diagnostics(ct, keys);
+        if margin < 0 {
+            Err(crate::noise::budget::NoiseExhausted {
+                required_mb: (-margin) as i64,
+                available_mb: 0,
+                operation_count: 0,
+                last_op: crate::noise::budget::NoiseOpType::MulCt,
+            })
+        } else {
+            Ok(decoded)
+        }
     }
 
     /// Decrypt with diagnostics: returns (decrypted, rounding_margin)
@@ -1922,6 +1964,26 @@ impl RNSFHEContext {
         self.decrypt_dual_with_diagnostics(ct, sk).0
     }
 
+    /// Checked decryption: returns `Err(NoiseExhausted)` when noise budget is
+    /// exhausted (rounding margin negative), instead of silently returning garbage.
+    ///
+    /// The rounding margin from `decrypt_dual_with_diagnostics` indicates how
+    /// close the noise is to causing a decryption failure. A negative margin
+    /// means the error exceeded Δ/2 and the decoded value is unreliable.
+    pub fn try_decrypt_dual(&self, ct: &DualRNSCiphertext, sk: &DualRNSSecretKey) -> Result<u64, crate::noise::budget::NoiseExhausted> {
+        let (decoded, margin) = self.decrypt_dual_with_diagnostics(ct, sk);
+        if margin < 0 {
+            Err(crate::noise::budget::NoiseExhausted {
+                required_mb: (-margin) as i64,
+                available_mb: 0,
+                operation_count: 0,
+                last_op: crate::noise::budget::NoiseOpType::MulCt,
+            })
+        } else {
+            Ok(decoded)
+        }
+    }
+
     /// Project a polynomial to a lower level (keep only first `level` main limbs)
     fn project_poly_to_level(&self, poly: &DualRNSPoly, level: usize) -> DualRNSPoly {
         let main: Vec<Vec<u64>> = poly.main.iter().take(level).cloned().collect();
@@ -2125,17 +2187,33 @@ impl RNSFHEContext {
         let rns_coeff: Vec<u64> = inner.main.iter().map(|limb| limb[0]).collect();
         let full_value = self.rns.to_int_level(&rns_coeff, ct_level);
 
-        // Decode: round(inner * t / Q_level) mod t
+        let delta = q_level / self.t as u128;
+        let delta_half = delta / 2;
         let q_half = q_level / 2;
-        let decoded = if full_value > q_half {
+
+        // Decode: round(inner * t / Q_level) mod t, with margin computation
+        let (decoded, margin) = if full_value > q_half {
             let neg_magnitude = q_level - full_value;
             let scaled_neg = (neg_magnitude * self.t as u128 + q_half) / q_level;
-            if scaled_neg == 0 { 0 } else { self.t - (scaled_neg % self.t as u128) as u64 }
+            let decoded = if scaled_neg == 0 { 0 } else { self.t - (scaled_neg % self.t as u128) as u64 };
+
+            let ideal_point = q_level.saturating_sub(decoded as u128 * delta);
+            let error = if full_value > ideal_point {
+                (full_value - ideal_point) as i128
+            } else {
+                -((ideal_point - full_value) as i128)
+            };
+            (decoded, delta_half as i128 - error.abs())
         } else {
             let scaled = (full_value * self.t as u128 + q_half) / q_level;
-            (scaled % self.t as u128) as u64
+            let decoded = (scaled % self.t as u128) as u64;
+
+            let ideal_point = decoded as u128 * delta;
+            let error = (full_value as i128) - (ideal_point as i128);
+            (decoded, delta_half as i128 - error.abs())
         };
-        (decoded, 0) // No diagnostics in release
+
+        (decoded, margin)
     }
 
     /// Homomorphic multiplication using K-Elimination - SYMMETRIC MODE
@@ -2278,9 +2356,13 @@ impl RNSFHEContext {
         evk.rlk.first().map(|(c0, _)| c0.main.len()).unwrap_or(0)
     }
 
-    /// Modulus-switch an evaluation key down to the target level
-    fn mod_switch_eval_key_to_level(&self, evk: &DualRNSEvalKey, target_level: usize) -> DualRNSEvalKey {
-        assert!(target_level >= 2, "Target level must leave at least 2 primes");
+    /// Modulus-switch an evaluation key down to the target level.
+    /// Returns `None` if mod-switch cannot proceed (e.g., target level < 2
+    /// or the polynomial cannot be switched further).
+    fn mod_switch_eval_key_to_level(&self, evk: &DualRNSEvalKey, target_level: usize) -> Option<DualRNSEvalKey> {
+        if target_level < 2 {
+            return None;
+        }
 
         let mut rlk = Vec::with_capacity(evk.rlk.len());
         for (rlk0, rlk1) in evk.rlk.iter() {
@@ -2288,18 +2370,18 @@ impl RNSFHEContext {
             let mut c1 = rlk1.clone();
 
             while c0.main.len() > target_level {
-                c0 = self.mod_switch_down_dual(&c0).expect("Eval key mod-switch failed");
-                c1 = self.mod_switch_down_dual(&c1).expect("Eval key mod-switch failed");
+                c0 = self.mod_switch_down_dual(&c0)?;
+                c1 = self.mod_switch_down_dual(&c1)?;
             }
 
             rlk.push((c0, c1));
         }
 
-        DualRNSEvalKey {
+        Some(DualRNSEvalKey {
             rlk,
             decomp_base: evk.decomp_base,
             num_digits: evk.num_digits,
-        }
+        })
     }
 
     /// Relinearize a degree-2 term using evaluation keys
@@ -2321,10 +2403,26 @@ impl RNSFHEContext {
         let evk = if evk_level == poly_level {
             evk
         } else if evk_level > poly_level {
-            evk_down = self.mod_switch_eval_key_to_level(evk, poly_level);
-            &evk_down
+            match self.mod_switch_eval_key_to_level(evk, poly_level) {
+                Some(switched) => {
+                    evk_down = switched;
+                    &evk_down
+                }
+                None => {
+                    // Cannot mod-switch eval key to target level; use the original.
+                    // This can happen if the target level is too low (< 2 primes).
+                    evk
+                }
+            }
         } else {
-            panic!("Eval key level {} < ciphertext level {}", evk_level, poly_level);
+            // Eval key has fewer limbs than ciphertext — using it would silently
+            // truncate ciphertext limbs via zip, producing a corrupted result.
+            panic!(
+                "eval key level ({}) < ciphertext poly level ({}): \
+                 regenerate eval keys at the correct level or mod-switch \
+                 the ciphertext before relinearization",
+                evk_level, poly_level
+            );
         };
 
         // Initialize accumulators to zero
@@ -7953,6 +8051,96 @@ mod tests {
         assert_eq!(restored, 42, "Validated JSON roundtrip failed");
     }
 
+    /// Verify malformed JSON is rejected by from_json_validated
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_malformed_json_rejected() {
+        // Invalid JSON
+        let result = DualRNSCiphertext::from_json_validated("not valid json");
+        assert!(result.is_err(), "Invalid JSON must be rejected");
+
+        // Empty JSON object
+        let result = DualRNSCiphertext::from_json_validated("{}");
+        assert!(result.is_err(), "Empty JSON object must be rejected");
+    }
+
+    /// Verify validation catches tampered ciphertext fields
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_tampered_ciphertext_rejected_by_validated_deserialize() {
+        let config = FHEConfig::light_rns_exact();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(12345);
+
+        let keys = ctx.generate_keys_dual(&mut rng);
+        let ct = ctx.encrypt_dual(42, &keys.public_key, &mut rng);
+
+        // Serialize to JSON, tamper with it, try to deserialize
+        let json = ct.to_json().expect("Serialization failed");
+
+        // Tamper: set n to 0 (must be rejected by validate)
+        let tampered = json.replace(
+            &format!("\"n\":{}", ct.c0.n),
+            "\"n\":0"
+        );
+        if tampered != json {
+            let result = DualRNSCiphertext::from_json_validated(&tampered);
+            assert!(result.is_err(), "Ciphertext with n=0 must be rejected");
+        }
+
+        // Tamper: set n to non-power-of-2
+        let tampered2 = json.replace(
+            &format!("\"n\":{}", ct.c0.n),
+            "\"n\":3"
+        );
+        if tampered2 != json {
+            let result = DualRNSCiphertext::from_json_validated(&tampered2);
+            assert!(result.is_err(), "Ciphertext with non-power-of-2 n must be rejected");
+        }
+    }
+
+    /// Verify validate() catches structurally inconsistent ciphertexts
+    #[test]
+    fn test_ciphertext_validate_catches_inconsistency() {
+        use super::*;
+
+        // Build a ciphertext with mismatched c0/c1 degrees
+        let poly_ok = DualRNSPoly {
+            main: vec![vec![0u64; 8]],
+            anchor: vec![vec![0u64; 8]],
+            n: 8,
+        };
+        let poly_bad_n = DualRNSPoly {
+            main: vec![vec![0u64; 16]],
+            anchor: vec![vec![0u64; 16]],
+            n: 16,
+        };
+
+        let ct = DualRNSCiphertext {
+            c0: poly_ok,
+            c1: poly_bad_n,
+            level: 1,
+        };
+
+        let result = ct.validate();
+        assert!(result.is_err(), "Mismatched c0.n != c1.n must be rejected");
+    }
+
+    /// Verify DualRNSPoly::validate catches oversized limbs
+    #[test]
+    fn test_poly_validate_catches_oversized() {
+        use super::*;
+
+        let poly = DualRNSPoly {
+            main: vec![vec![0u64; 8]; 200],  // 200 limbs > MAX_RNS_LIMBS
+            anchor: vec![],
+            n: 8,
+        };
+
+        let result = poly.validate();
+        assert!(result.is_err(), "200 main limbs must exceed MAX_RNS_LIMBS");
+    }
+
     // ========================================================================
     // HIGH-003: Noise Budget Tracked Operations Tests
     // ========================================================================
@@ -8261,5 +8449,134 @@ mod tests {
                 a, b, expected, result, t);
         }
         println!("=== mul_dual_symmetric secure_192 U256 path PASSED ===");
+    }
+
+    /// Verify try_decrypt_dual returns Err when noise is exhausted.
+    ///
+    /// The audit (Section 2.7) identified that decrypt_dual silently returns
+    /// garbage when noise budget is exhausted. try_decrypt_dual must signal
+    /// failure via Result instead.
+    #[test]
+    fn test_try_decrypt_dual_returns_err_on_noise_exhaustion() {
+        use crate::params::secure_configs::SecureConfig;
+
+        let secure_config = SecureConfig::secure_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&secure_config.config);
+        let mut rng = ShadowHarvester::with_seed(99999);
+        let full_keys = ctx.generate_keys_dual_full(&mut rng);
+
+        let t = ctx.t;
+
+        // Encrypt two values and multiply repeatedly until noise is exhausted
+        let ct_a = ctx.encrypt_dual(42, &full_keys.public_key, &mut rng);
+        let ct_b = ctx.encrypt_dual(7, &full_keys.public_key, &mut rng);
+
+        // First multiplication should succeed
+        let ct_mul1 = ctx.mul_dual_public(&ct_a, &ct_b, &full_keys.eval_key);
+        let result1 = ctx.try_decrypt_dual(&ct_mul1, &full_keys.secret_key);
+        assert!(result1.is_ok(), "First mul should decrypt cleanly: {:?}", result1);
+        assert_eq!(result1.unwrap(), (42 * 7) % t, "First mul should produce correct result");
+
+        // Chain multiplications to exhaust noise budget
+        // After enough depth, try_decrypt_dual must return Err
+        let mut ct = ct_mul1;
+        let ct_two = ctx.encrypt_dual(2, &full_keys.public_key, &mut rng);
+        let mut found_error = false;
+        for depth in 2..=20 {
+            ct = ctx.mul_dual_public(&ct, &ct_two, &full_keys.eval_key);
+            let result = ctx.try_decrypt_dual(&ct, &full_keys.secret_key);
+            if result.is_err() {
+                println!("Noise exhaustion detected at depth {} as expected", depth);
+                found_error = true;
+                break;
+            }
+        }
+
+        assert!(found_error, "try_decrypt_dual must return Err when noise is exhausted, not silently return garbage");
+    }
+
+    /// Verify try_decrypt_dual returns Ok for valid decryptions.
+    #[test]
+    fn test_try_decrypt_dual_returns_ok_for_valid_ciphertext() {
+        use crate::params::secure_configs::SecureConfig;
+
+        let secure_config = SecureConfig::secure_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&secure_config.config);
+        let mut rng = ShadowHarvester::with_seed(77777);
+        let keys = ctx.generate_keys_dual(&mut rng);
+
+        for &val in &[0u64, 1, 42, 100, 255] {
+            let ct = ctx.encrypt_dual(val, &keys.public_key, &mut rng);
+            let result = ctx.try_decrypt_dual(&ct, &keys.secret_key);
+            assert!(result.is_ok(), "Fresh ciphertext of {} should decrypt cleanly", val);
+            assert_eq!(result.unwrap(), val, "Decrypted value mismatch for {}", val);
+        }
+    }
+
+    /// Pre-flight size check: from_bytes_validated must reject oversized payloads
+    /// BEFORE allocating memory for the deserialized struct.
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_from_bytes_validated_rejects_oversized_payload() {
+        // Create a payload just over the 64MB bincode limit.
+        let oversized = vec![0u8; super::MAX_BINCODE_PAYLOAD + 1];
+        let result = DualRNSCiphertext::from_bytes_validated(&oversized);
+        assert!(result.is_err(), "Should reject oversized payload before allocating");
+        if let Err(ref e) = result {
+            let msg = format!("{}", e);
+            assert!(
+                msg.contains("exceeds maximum") || msg.contains("payload size"),
+                "Expected size limit error, got: {}", msg
+            );
+        }
+    }
+
+    /// Pre-flight size check: from_json_validated must reject oversized JSON
+    /// strings BEFORE parsing.
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_from_json_validated_rejects_oversized_input() {
+        // Create a string just over the 128MB JSON limit.
+        let oversized = " ".repeat(super::MAX_JSON_PAYLOAD + 1);
+        let result = DualRNSCiphertext::from_json_validated(&oversized);
+        assert!(result.is_err(), "Should reject oversized JSON before parsing");
+        if let Err(ref e) = result {
+            let msg = format!("{}", e);
+            assert!(
+                msg.contains("exceeds maximum") || msg.contains("payload size"),
+                "Expected size limit error, got: {}", msg
+            );
+        }
+    }
+
+    /// Relinearization must refuse to proceed when the eval key has fewer limbs
+    /// than the ciphertext. Previously this was silent truncation via zip.
+    #[test]
+    #[should_panic(expected = "eval key level")]
+    fn test_relinearize_rejects_undersized_eval_key() {
+        let config = FHEConfig::depth2_128();
+        let ctx = RNSFHEContext::new_coeff_domain(&config);
+        let mut rng = ShadowHarvester::with_seed(42);
+
+        let full_keys = ctx.generate_keys_dual_full(&mut rng);
+
+        // Create a truncated eval key with fewer limbs
+        let mut truncated_evk = full_keys.eval_key.clone();
+        for (rlk0, rlk1) in truncated_evk.rlk.iter_mut() {
+            // Remove the last main limb from each rlk component
+            if rlk0.main.len() > 1 {
+                rlk0.main.pop();
+            }
+            if rlk1.main.len() > 1 {
+                rlk1.main.pop();
+            }
+        }
+
+        // Encrypt two values — their ciphertexts will have full limbs
+        let ct1 = ctx.encrypt_dual(5, &full_keys.public_key, &mut rng);
+        let ct2 = ctx.encrypt_dual(7, &full_keys.public_key, &mut rng);
+
+        // This should panic because the eval key has fewer limbs than the ciphertext
+        let _result = ctx.mul_dual_public(&ct1, &ct2, &truncated_evk);
     }
 }

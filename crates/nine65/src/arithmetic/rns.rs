@@ -368,19 +368,32 @@ impl RNSContext {
     ///
     /// This is used for level-aware decryption after modulus switching.
     /// The `rns` slice should have exactly `level` elements.
+    ///
+    /// # Panics
+    /// Panics if the partial prime product overflows u128. Callers that may
+    /// exceed u128 should use `to_u256_level` or `try_to_int_level` instead.
     pub fn to_int_level(&self, rns: &[u64], level: usize) -> u128 {
+        self.try_to_int_level(rns, level)
+            .expect("Partial product overflow: use to_u256_level for large-Q configs")
+    }
+
+    /// Fallible variant: returns `None` if the partial prime product overflows u128.
+    pub fn try_to_int_level(&self, rns: &[u64], level: usize) -> Option<u128> {
         assert!(level <= self.primes.len(), "Level cannot exceed number of primes");
         assert_eq!(rns.len(), level, "RNS representation must have exactly `level` elements");
 
         if level == self.primes.len() {
-            return self.to_int(rns);
+            // If the full product overflows u128 (sentinel value 0), return None.
+            if self.product == 0 {
+                return None;
+            }
+            return Some(self.to_int(rns));
         }
 
         // Compute partial product Q_level = q_0 * q_1 * ... * q_{level-1}
         let partial_primes = &self.primes[..level];
         let partial_product: u128 = partial_primes.iter()
-            .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))
-            .expect("Partial product overflow: prime product exceeded u128");
+            .try_fold(1u128, |acc, &p| acc.checked_mul(p as u128))?;
 
         // Compute CRT reconstruction for partial primes
         // For each prime q_i: M_i = partial_product / q_i, M_i_inv = M_i^(-1) mod q_i
@@ -393,7 +406,7 @@ impl RNSContext {
             result = (result + contribution) % partial_product;
         }
 
-        result
+        Some(result)
     }
 
 /// Reconstruct at a given level into a 256-bit integer (exact if the level product fits in 256 bits).
@@ -2060,5 +2073,73 @@ mod tests {
         // k_rem = k_mod_delta * r
         let k_rem = k_mod_delta.mul_u64(r);
         assert!(k_rem.lt(m_level), "k_rem should be < m_level");
+    }
+
+    #[test]
+    fn test_try_to_int_level_returns_some_for_valid_configs() {
+        use crate::params::secure_configs::SecureConfig;
+        let config = SecureConfig::secure_128().into_config();
+        let rns = RNSContext::new(config.primes.clone(), config.n);
+
+        // secure_128 has 3 x 30-bit primes, product fits u128
+        let level = config.primes.len();
+        let residues: Vec<u64> = config.primes.iter().map(|&p| 42 % p).collect();
+
+        for lvl in 1..=level {
+            let sub_residues: Vec<u64> = residues[..lvl].to_vec();
+            let result = rns.try_to_int_level(&sub_residues, lvl);
+            assert!(result.is_some(), "Level {} should succeed for secure_128", lvl);
+        }
+    }
+
+    #[test]
+    fn test_try_to_int_level_matches_to_int_level() {
+        let primes = vec![998244353u64, 985661441, 754974721];
+        let n = 4096;
+        let rns = RNSContext::new(primes.clone(), n);
+
+        for level in 1..=3 {
+            let residues: Vec<u64> = primes[..level].iter().map(|&p| 42 % p).collect();
+            let try_result = rns.try_to_int_level(&residues, level);
+            assert!(try_result.is_some());
+            let direct_result = rns.to_int_level(&residues, level);
+            assert_eq!(try_result.unwrap(), direct_result,
+                "try_to_int_level and to_int_level must agree at level {}", level);
+        }
+    }
+
+    /// When the full chain's product overflows u128, try_to_int_level at full level
+    /// must return None rather than panicking.
+    #[test]
+    fn test_try_to_int_level_returns_none_for_overflow_chain() {
+        use crate::params::production::PRODUCTION_PRIMES_30BIT;
+        // Use all 15 primes — product is ~450 bits, way beyond u128
+        let primes: Vec<u64> = PRODUCTION_PRIMES_30BIT.to_vec();
+        let n = 8192;
+        let rns = RNSContext::new(primes.clone(), n);
+        // The RNS context's product should be 0 (overflow sentinel)
+        assert_eq!(rns.product, 0, "15x30-bit primes should overflow u128");
+
+        // Residues at full level
+        let residues: Vec<u64> = primes.iter().map(|&p| 42 % p).collect();
+        let result = rns.try_to_int_level(&residues, primes.len());
+        assert!(result.is_none(),
+            "try_to_int_level at full overflow chain must return None, got {:?}", result);
+    }
+
+    /// Partial levels of a large chain that still fit in u128 should still work.
+    #[test]
+    fn test_try_to_int_level_partial_overflow_chain_works() {
+        use crate::params::production::PRODUCTION_PRIMES_30BIT;
+        let primes: Vec<u64> = PRODUCTION_PRIMES_30BIT.to_vec();
+        let n = 8192;
+        let rns = RNSContext::new(primes.clone(), n);
+
+        // 4 primes × 30 bits = 120 bits — fits in u128
+        let level = 4;
+        let residues: Vec<u64> = primes[..level].iter().map(|&p| 42 % p).collect();
+        let result = rns.try_to_int_level(&residues, level);
+        assert!(result.is_some(),
+            "4 primes (120 bits) should fit in u128");
     }
 }
