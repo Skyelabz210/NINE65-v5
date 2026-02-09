@@ -2,7 +2,7 @@
 
 **High-performance FHE achieving depth-50 without bootstrapping. Auto mod-switch for deeper public-mode circuits.**
 
-[![Tests](https://img.shields.io/badge/tests-627%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-640%20passing-brightgreen)]()
 [![Proofs](https://img.shields.io/badge/formal%20proofs-Coq%20%2B%20Lean4-blue)]()
 [![Security](https://img.shields.io/badge/security-128--256%20bit-green)]()
 
@@ -14,7 +14,7 @@
 |--------|--------|-----------------|
 | **Max Depth** | 50 levels verified (symmetric) | 10-15 levels |
 | **Bootstrap Required** | Never (0 collapses verified) | Every ~10 muls |
-| **Depth-50 Circuit** | 7.74s / 23.15s (secure_128 / secure_192) | 2,000-5,000ms |
+| **Depth-50 Circuit** | 6.12s / 9.79s (secure_128 / secure_192) | 2,000-5,000ms |
 | **Memory** | ~200MB | 1-3GB |
 | **Hardware** | CPU only | GPU recommended |
 | **Post-Quantum** | LWE-based (lattice estimator verified) | Varies |
@@ -31,9 +31,9 @@ Public-mode depth baseline is recorded in docs/PUBLIC_MODE_DEPTH_BASELINE_2026-0
 
 NINE65 targets post-quantum security through LWE (Learning With Errors) based cryptography:
 
-### Lattice Estimator Baseline (2026-02-05)
+### Lattice Estimator Baseline (2026-02-09)
 Rough LWE estimates (Core-SVP + GSA) for SecureConfig parameters are recorded in
-docs/LATTICE_ESTIMATOR_BASELINE_2026-02-05.md.
+docs/LATTICE_ESTIMATOR_BASELINE_2026-02-09.md.
 
 | SecureConfig | n | log2(q) | min attack log2(rop) |
 |--------------|---|---------|----------------------|
@@ -68,7 +68,7 @@ cargo test -p nine65 security::tests -- --nocapture
 
 **Note**: These are parameter estimates based on standard LWE security analysis.
 For formal guarantees, external audits and independent estimator runs are recommended.
-Baseline estimator outputs are recorded in docs/LATTICE_ESTIMATOR_BASELINE_2026-02-05.md.
+Baseline estimator outputs are recorded in docs/LATTICE_ESTIMATOR_BASELINE_2026-02-09.md.
 
 ---
 
@@ -118,7 +118,7 @@ Classical period finding without circular dependencies:
 ## Performance Benchmarks
 
 Performance numbers are from internal release benchmarks. Reproduce and gate via
-docs/RELEASE_CHECKLIST.md. Latest baseline: docs/PERFORMANCE_BASELINE_2026-02-05.md.
+docs/RELEASE_CHECKLIST.md. Latest baseline: docs/PERFORMANCE_BASELINE_2026-02-09.md.
 FHE ops and depth use secure_128 and secure_192 baselines.
 
 ### Arithmetic Operations (Single-threaded, Release Build)
@@ -142,17 +142,16 @@ FHE ops and depth use secure_128 and secure_192 baselines.
 #### FHE Operations (secure configs)
 | Operation | secure_128 | secure_192 | Notes |
 |-----------|------------|------------|-------|
-| Encrypt | 23.70ms | 64.24ms | baseline (perf run 2026-02-05) |
-| Add | 0.87ms | 2.19ms | baseline |
-| Mul | 143.42ms | 423.06ms | Includes K-Elimination rescale |
-| Decrypt | 11.01ms | 29.76ms | baseline |
+| Encrypt | 22.57ms | 60.15ms | baseline (perf run 2026-02-09) |
+| Add | 0.82ms | 2.03ms | baseline |
+| Mul | 146.38ms | 444.23ms | Includes K-Elimination rescale |
+| Decrypt | 10.36ms | 28.01ms | baseline |
 
-### Depth Benchmark Results (Verified 2026-02-04)
+### Depth Benchmark Results (Verified 2026-02-09)
 | Config | Depth | Total time | Avg time/mul | Collapses |
 |--------|-------|------------|--------------|-----------|
-| light_rns_exact | 50 | 1.58s | 31.66ms | 0 |
-| secure_128 | 50 | 7.74s | 154.76ms | 0 |
-| secure_192 | 50 | 23.15s | 463.00ms | 0 |
+| secure_128 | 50 | 6.12s | 122.37ms | 0 |
+| secure_192 | 50 | 9.79s | 195.71ms | 0 |
 
 **Bootstraps required: 0** (symmetric mode, empirically verified)
 
@@ -165,7 +164,7 @@ Methodology and sources are documented in docs/FHE_BENCHMARK_COMPARISON.md.
 ```
 Library          | Max Depth | Bootstrap | Depth-50 Time (symmetric)
 -----------------+-----------+-----------+--------------
-NINE65           |    50+    |   Never   |    6.15s / 22.62s
+NINE65           |    50+    |   Never   |    6.12s / 9.79s
 OpenFHE (BGV)    |    15     |   ~50ms   |   ~2,500ms
 Microsoft SEAL   |    12     |    N/A    |   (limited)
 TFHE-rs (GPU)    | Unlimited |   <1ms    |    ~200ms*
@@ -228,7 +227,8 @@ NINE65/v5/
 |---------|-------------|
 | `ntt_fft` (default) | FFT-based NTT implementation |
 | `parallel` (default) | Rayon-based parallel paths |
-| `accelerated` (default) | MANA + UNHAL integration |
+| `accelerated` | MANA + UNHAL integration (opt-in) |
+| `exact_transcendentals_backend` | Route transcendental ops through exact CORDIC backend |
 | `wassan` | WASSAN holographic noise field (144 phi-harmonic) |
 | `v2` | V2 integration tests |
 | `secure-keygen` | Secure key generation (CSPRNG) |
@@ -250,8 +250,8 @@ cargo test -p nine65-python --features python --release
 # Build/test WASM binding (requires wasm32 target)
 cargo test -p nine65-wasm --target wasm32-unknown-unknown --release
 
-# Run with all features
-cargo test -p nine65 --features v2,parallel,accelerated,wassan --release
+# Run with key optional features
+cargo test -p nine65 --features v2,accelerated,wassan,exact_transcendentals_backend --release
 
 # Run depth benchmark
 cargo test --package nine65 --lib --release \
@@ -414,21 +414,22 @@ NINE65 is built on the QMNF (Quantized Modular Number Field) architecture:
 
 ## Test Status
 
-**All tests passing** (verified 2026-02-06):
+**All tests passing** (verified 2026-02-09):
 
 | Crate | Tests | Status |
 |-------|-------|--------|
-| `nine65` (core FHE) | 446 | ✅ Pass |
+| `nine65` (core FHE) | 459 | ✅ Pass |
 | `mana` | 30 | ✅ Pass |
 | `clockwork-core` | 46 | ✅ Pass |
 | `nexgen_rational` | 95 | ✅ Pass |
 | `unhal` | 10 | ✅ Pass |
 | Optional crates | see note | ⚠️ Requires extra toolchains |
-| **Total (executed)** | **627** | ✅ **All Pass** |
+| **Total (executed)** | **640** | ✅ **All Pass** |
 
 Notes:
 - `nine65-python` and `nine65-wasm` require optional toolchains/features (`python`, `wasm32-unknown-unknown`) and are not built in the default test sweep.
-- Core verification command: `cargo test -p nine65 --lib --release` (446 tests).
+- Core verification command: `cargo test -p nine65 --lib --release` (459 tests).
+- Exact transcendental backend validation: `cargo test -p nine65 --lib --release --features exact_transcendentals_backend` (461 tests).
 
 ### Key Validations
 - ✅ Depth-50 circuits with 0 bootstraps (symmetric mode)
@@ -451,5 +452,5 @@ Old implementation reports and session updates are preserved in `archive/`.
 
 ---
 
-*Last updated: 2026-02-06*
+*Last updated: 2026-02-09*
 *NINE65 - Bootstrap-Free FHE with K-Elimination*

@@ -275,6 +275,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "exact_transcendentals"
+version = "1.0.0"
+dependencies = [
+ "criterion",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -422,6 +429,7 @@ dependencies = [
  "clockwork-core",
  "crc32fast",
  "criterion",
+ "exact_transcendentals",
  "getrandom 0.2.16",
  "mana",
  "nexgen_rational",

@@ -1,6 +1,6 @@
 # NINE65 v5 Comprehensive Test Report
 
-Date: 2026-02-06
+Date: 2026-02-09
 Target: NINE65 v5 (core + supporting crates)
 Profile: release
 
@@ -20,7 +20,8 @@ This report covers the public crates in the NINE65 v5 workspace:
 3) `cargo test -p clockwork-core --release`
 4) `cargo test -p nexgen_rational --release`
 5) `cargo test -p unhal --release`
-6) `cd lean4/KElimination && lake build`
+6) `cargo test -p nine65 --lib --release --features exact_transcendentals_backend`
+7) `cd lean4/KElimination && lake build`
 
 Optional (not executed):
 - `cargo test -p nine65-python --features python`
@@ -28,7 +29,8 @@ Optional (not executed):
 
 ## Results Summary
 ### Unit / Integration Tests (release)
-- nine65 (core): **446 passed**, 0 failed, 0 ignored (includes integration tests + KATs)
+- nine65 (core): **459 passed**, 0 failed, 0 ignored (includes integration tests + KATs)
+- nine65 (exact backend): **461 passed**, 0 failed, 0 ignored (`--features exact_transcendentals_backend`)
 - mana: **30 passed**, 0 failed, 0 ignored
 - clockwork-core: **46 passed**, 0 failed, 0 ignored
 - nexgen_rational: **95 passed**, 0 failed, 0 ignored
