@@ -1,7 +1,7 @@
 // NINE65 Rust vs NINE65-SEAL Performance Comparison
 // Compares native Rust implementations against C++ SEAL integration
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use nine65::prelude::*;
 use std::time::Duration;
 
@@ -56,20 +56,15 @@ fn bench_order_finding(c: &mut Criterion) {
     // Small cases
     group.bench_function("ord_63(2)", |bencher| {
         bencher.iter(|| {
-            let order = nine65::arithmetic::multiplicative_order(
-                black_box(2u64),
-                black_box(63u64)
-            );
+            let order = nine65::arithmetic::multiplicative_order(black_box(2u64), black_box(63u64));
             black_box(order);
         });
     });
 
     group.bench_function("ord_1000(3)", |bencher| {
         bencher.iter(|| {
-            let order = nine65::arithmetic::multiplicative_order(
-                black_box(3u64),
-                black_box(1000u64)
-            );
+            let order =
+                nine65::arithmetic::multiplicative_order(black_box(3u64), black_box(1000u64));
             black_box(order);
         });
     });
@@ -77,20 +72,14 @@ fn bench_order_finding(c: &mut Criterion) {
     // Factoring
     group.bench_function("factor_15", |bencher| {
         bencher.iter(|| {
-            let factors = nine65::arithmetic::factor_semiprime(
-                black_box(15u64),
-                black_box(10)
-            );
+            let factors = nine65::arithmetic::factor_semiprime(black_box(15u64), black_box(10));
             black_box(factors);
         });
     });
 
     group.bench_function("factor_3233", |bencher| {
         bencher.iter(|| {
-            let factors = nine65::arithmetic::factor_semiprime(
-                black_box(3233u64),
-                black_box(20)
-            );
+            let factors = nine65::arithmetic::factor_semiprime(black_box(3233u64), black_box(20));
             black_box(factors);
         });
     });
@@ -105,16 +94,20 @@ fn bench_polynomial_operations(c: &mut Criterion) {
         // Create test polynomials
         let coeffs: Vec<i64> = (0..*size).map(|i| (i % 100) as i64).collect();
 
-        group.bench_with_input(BenchmarkId::new("Polynomial eval", size), size, |bencher, _| {
-            bencher.iter(|| {
-                let x = 2i64;
-                let mut result = 0i64;
-                for (i, &coeff) in coeffs.iter().enumerate() {
-                    result = result.wrapping_add(coeff.wrapping_mul(x.wrapping_pow(i as u32)));
-                }
-                black_box(result);
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("Polynomial eval", size),
+            size,
+            |bencher, _| {
+                bencher.iter(|| {
+                    let x = 2i64;
+                    let mut result = 0i64;
+                    for (i, &coeff) in coeffs.iter().enumerate() {
+                        result = result.wrapping_add(coeff.wrapping_mul(x.wrapping_pow(i as u32)));
+                    }
+                    black_box(result);
+                });
+            },
+        );
     }
 
     group.finish();
@@ -148,12 +141,16 @@ fn bench_sign_detection(c: &mut Criterion) {
 
 /// Integer square root via Newton's method (local helper for bench binary)
 fn integer_sqrt(n: u64) -> u64 {
-    if n < 2 { return n; }
+    if n < 2 {
+        return n;
+    }
     let shift = (63 - n.leading_zeros()) / 2;
     let mut x = 1u64 << (shift + 1);
     loop {
         let y = (x + n / x) / 2;
-        if y >= x { break; }
+        if y >= x {
+            break;
+        }
         x = y;
     }
     x
@@ -177,7 +174,7 @@ fn bench_quantum_operations(c: &mut Criterion) {
                     let iterations = (355 * sqrt_n) / 452;
                     black_box(iterations);
                 });
-            }
+            },
         );
     }
 
@@ -201,7 +198,7 @@ fn bench_ml_operations(c: &mut Criterion) {
                     let result = softmax.compute(black_box(&logits));
                     black_box(result);
                 });
-            }
+            },
         );
     }
 
@@ -333,11 +330,8 @@ fn bench_fhe_operations(c: &mut Criterion) {
     // Benchmark homomorphic multiplication (K-Elimination rescale)
     group.bench_function("mul_k_elim", |bencher| {
         bencher.iter(|| {
-            let ct_prod = ctx.mul_dual_symmetric(
-                black_box(&ct_a),
-                black_box(&ct_b),
-                &keys.secret_key
-            );
+            let ct_prod =
+                ctx.mul_dual_symmetric(black_box(&ct_a), black_box(&ct_b), &keys.secret_key);
             black_box(ct_prod);
         });
     });

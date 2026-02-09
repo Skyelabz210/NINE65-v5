@@ -6,9 +6,9 @@
 //!
 //! Run with: cargo bench -p nine65 --bench throughput --features parallel
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use nine65::prelude::*;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use nine65::params::SecureConfig;
+use nine65::prelude::*;
 
 /// Benchmark batch encoding/decoding throughput
 fn bench_batch_encoding(c: &mut Criterion) {
@@ -26,18 +26,18 @@ fn bench_batch_encoding(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(batch_size as u64));
 
-        group.bench_with_input(BenchmarkId::new("encode", batch_size), &batch_size, |b, _| {
-            b.iter(|| {
-                black_box(batch_encoder.encode(&values).unwrap())
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("encode", batch_size),
+            &batch_size,
+            |b, _| b.iter(|| black_box(batch_encoder.encode(&values).unwrap())),
+        );
 
         let encoded = batch_encoder.encode(&values).unwrap();
-        group.bench_with_input(BenchmarkId::new("decode", batch_size), &batch_size, |b, _| {
-            b.iter(|| {
-                black_box(batch_encoder.decode(&encoded, batch_size))
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("decode", batch_size),
+            &batch_size,
+            |b, _| b.iter(|| black_box(batch_encoder.decode(&encoded, batch_size))),
+        );
     }
 
     group.finish();
@@ -46,7 +46,7 @@ fn bench_batch_encoding(c: &mut Criterion) {
 /// Benchmark sequential vs parallel encryption throughput
 fn bench_parallel_encryption(c: &mut Criterion) {
     let mut group = c.benchmark_group("parallel_encryption");
-    group.sample_size(10);  // Fewer samples for slower operations
+    group.sample_size(10); // Fewer samples for slower operations
 
     let config = SecureConfig::secure_128().into_config();
     let ntt = NTTEngine::new(config.q, config.n);
@@ -66,22 +66,27 @@ fn bench_parallel_encryption(c: &mut Criterion) {
         group.throughput(Throughput::Elements(batch_size as u64));
 
         // Sequential baseline
-        group.bench_with_input(BenchmarkId::new("sequential", batch_size), &batch_size, |b, _| {
-            let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
-            b.iter(|| {
-                let cts: Vec<_> = messages.iter().map(|&m| {
-                    encryptor.encrypt_secure(m)
-                }).collect();
-                black_box(cts)
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("sequential", batch_size),
+            &batch_size,
+            |b, _| {
+                let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
+                b.iter(|| {
+                    let cts: Vec<_> = messages
+                        .iter()
+                        .map(|&m| encryptor.encrypt_secure(m))
+                        .collect();
+                    black_box(cts)
+                })
+            },
+        );
 
         // Parallel
-        group.bench_with_input(BenchmarkId::new("parallel", batch_size), &batch_size, |b, _| {
-            b.iter(|| {
-                black_box(parallel_enc.encrypt_batch_par_secure(&messages))
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("parallel", batch_size),
+            &batch_size,
+            |b, _| b.iter(|| black_box(parallel_enc.encrypt_batch_par_secure(&messages))),
+        );
     }
 
     group.finish();
@@ -112,22 +117,24 @@ fn bench_parallel_decryption(c: &mut Criterion) {
         group.throughput(Throughput::Elements(batch_size as u64));
 
         // Sequential baseline
-        group.bench_with_input(BenchmarkId::new("sequential", batch_size), &batch_size, |b, _| {
-            let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
-            b.iter(|| {
-                let msgs: Vec<_> = ciphertexts.iter().map(|ct| {
-                    decryptor.decrypt(ct)
-                }).collect();
-                black_box(msgs)
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("sequential", batch_size),
+            &batch_size,
+            |b, _| {
+                let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
+                b.iter(|| {
+                    let msgs: Vec<_> = ciphertexts.iter().map(|ct| decryptor.decrypt(ct)).collect();
+                    black_box(msgs)
+                })
+            },
+        );
 
         // Parallel
-        group.bench_with_input(BenchmarkId::new("parallel", batch_size), &batch_size, |b, _| {
-            b.iter(|| {
-                black_box(parallel_dec.decrypt_batch_par(&ciphertexts))
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("parallel", batch_size),
+            &batch_size,
+            |b, _| b.iter(|| black_box(parallel_dec.decrypt_batch_par(&ciphertexts))),
+        );
     }
 
     group.finish();
@@ -154,13 +161,17 @@ fn bench_roundtrip_throughput(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(batch_size as u64));
 
-        group.bench_with_input(BenchmarkId::new("parallel_roundtrip", batch_size), &batch_size, |b, _| {
-            b.iter(|| {
-                let cts = parallel_enc.encrypt_batch_par_secure(&messages);
-                let decrypted = parallel_dec.decrypt_batch_par(&cts);
-                black_box(decrypted)
-            })
-        });
+        group.bench_with_input(
+            BenchmarkId::new("parallel_roundtrip", batch_size),
+            &batch_size,
+            |b, _| {
+                b.iter(|| {
+                    let cts = parallel_enc.encrypt_batch_par_secure(&messages);
+                    let decrypted = parallel_dec.decrypt_batch_par(&cts);
+                    black_box(decrypted)
+                })
+            },
+        );
     }
 
     group.finish();

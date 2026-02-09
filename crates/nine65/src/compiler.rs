@@ -51,12 +51,13 @@ impl Circuit {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn add_node(&mut self, op_type: OpType, inputs: Vec<usize>) -> usize {
         let id = self.nodes.len();
-        
+
         // Calculate depth - use unwrap_or(0) to avoid panic paths
-        let depth = inputs.iter()
+        let depth = inputs
+            .iter()
             .map(|&i| self.nodes[i].depth)
             .max()
             .map(|d| d + 1)
@@ -64,18 +65,20 @@ impl Circuit {
 
         // Calculate multiplicative depth - use unwrap_or(0) to avoid panic paths
         let mult_depth = if op_type == OpType::Multiply {
-            inputs.iter()
+            inputs
+                .iter()
                 .map(|&i| self.nodes[i].multiplicative_depth)
                 .max()
                 .map(|d| d + 1)
                 .unwrap_or(0)
         } else {
-            inputs.iter()
+            inputs
+                .iter()
                 .map(|&i| self.nodes[i].multiplicative_depth)
                 .max()
                 .unwrap_or(0)
         };
-        
+
         self.nodes.push(CircuitNode {
             id,
             op_type,
@@ -83,20 +86,20 @@ impl Circuit {
             depth,
             multiplicative_depth: mult_depth,
         });
-        
+
         self.max_depth = self.max_depth.max(depth);
         self.max_multiplicative_depth = self.max_multiplicative_depth.max(mult_depth);
-        
+
         if op_type == OpType::Input {
             self.input_nodes.push(id);
         }
         if op_type == OpType::Output {
             self.output_nodes.push(id);
         }
-        
+
         id
     }
-    
+
     /// Count operations by type
     pub fn operation_counts(&self) -> HashMap<OpType, usize> {
         let mut counts = HashMap::new();
@@ -126,14 +129,14 @@ impl NoiseModel {
     pub fn conservative() -> Self {
         Self {
             add_noise_bits: 2.0,
-            mul_noise_bits: 25.0,      // Conservative: log2(t) + overhead
+            mul_noise_bits: 25.0, // Conservative: log2(t) + overhead
             relin_noise_bits: 15.0,
             rescale_reduction_bits: 60.0, // Typical CKKS scale
             rotate_noise_bits: 5.0,
-            safety_factor: 1.3,         // 30% safety margin
+            safety_factor: 1.3, // 30% safety margin
         }
     }
-    
+
     pub fn noise_for_op(&self, op_type: OpType) -> f64 {
         let base = match op_type {
             OpType::Add => self.add_noise_bits,
@@ -160,39 +163,40 @@ impl NoiseAnalyzer {
             node_noise: HashMap::new(),
         }
     }
-    
+
     /// Analyze circuit and compute noise at each node
     pub fn analyze(&mut self, circuit: &Circuit) -> NoiseAnalysisResult {
         self.node_noise.clear();
-        
+
         let mut max_noise: f64 = 0.0;
         let mut noise_at_output: f64 = 0.0;
-        
+
         // Topological traversal
         for node in &circuit.nodes {
             let mut node_noise = if node.inputs.is_empty() {
                 3.2 // Initial encryption noise (std dev)
             } else {
                 // Max noise from inputs - use fold to avoid panic paths
-                node.inputs.iter()
+                node.inputs
+                    .iter()
                     .map(|&i| self.node_noise.get(&i).copied().unwrap_or(0.0))
                     .fold(0.0_f64, f64::max)
             };
-            
+
             // Add noise from this operation
             node_noise += self.model.noise_for_op(node.op_type);
-            
+
             // Ensure non-negative
             node_noise = node_noise.max(0.0);
-            
+
             self.node_noise.insert(node.id, node_noise);
             max_noise = max_noise.max(node_noise);
-            
+
             if node.op_type == OpType::Output {
                 noise_at_output = node_noise;
             }
         }
-        
+
         NoiseAnalysisResult {
             max_noise_bits: max_noise,
             output_noise_bits: noise_at_output,
@@ -225,25 +229,27 @@ impl ParameterSelector {
             plaintext_bits,
         }
     }
-    
+
     /// Select parameters to support circuit without bootstrap
-    pub fn select_for_circuit(&self, circuit: &Circuit, noise_analysis: &NoiseAnalysisResult) 
-        -> FHEParameters {
-        
+    pub fn select_for_circuit(
+        &self,
+        circuit: &Circuit,
+        noise_analysis: &NoiseAnalysisResult,
+    ) -> FHEParameters {
         // Required total modulus bits = max_noise + plaintext + security + safety
         let required_bits = noise_analysis.max_noise_bits
-                          + self.plaintext_bits as f64
-                          + self.security_level as f64
-                          + 20.0; // Extra safety margin
-        
+            + self.plaintext_bits as f64
+            + self.security_level as f64
+            + 20.0; // Extra safety margin
+
         let required_bits = required_bits.ceil() as usize;
-        
+
         // Determine number of 60-bit modulus primes needed
         let modulus_count = required_bits.div_ceil(60);
-        
+
         // Generate modulus chain
         let modulus_chain = self.generate_modulus_chain(modulus_count);
-        
+
         // Polynomial degree based on security level
         let poly_degree = match self.security_level {
             128 => 8192,
@@ -251,20 +257,21 @@ impl ParameterSelector {
             256 => 32768,
             _ => 8192,
         };
-        
+
         FHEParameters {
             poly_degree,
             modulus_chain: modulus_chain.clone(),
             plaintext_modulus: 1 << self.plaintext_bits,
             security_bits: self.security_level,
-            total_modulus_bits: modulus_chain.iter()
+            total_modulus_bits: modulus_chain
+                .iter()
                 .map(|&m| 64 - m.leading_zeros() as usize)
                 .sum(),
             multiplicative_depth_supported: circuit.max_multiplicative_depth,
             bootstrap_free: true,
         }
     }
-    
+
     /// Generate chain of 60-bit primes for CKKS/BFV
     fn generate_modulus_chain(&self, count: usize) -> Vec<u64> {
         // Pre-selected 60-bit primes (coprime, NTT-friendly)
@@ -280,7 +287,7 @@ impl ParameterSelector {
             1152921504606845683, // 2^60 - 1293
             1152921504606845627, // 2^60 - 1349
         ];
-        
+
         primes.into_iter().take(count).collect()
     }
 }
@@ -336,54 +343,61 @@ impl BootstrapFreeFHECompiler {
             noise_model: NoiseModel::conservative(),
         }
     }
-    
+
     /// Main compilation pipeline
     pub fn compile(&self, circuit: &Circuit) -> CompilationResult {
         println!("=== Bootstrap-Free FHE Compilation ===\n");
-        
+
         // Step 1: Analyze circuit
         println!("Step 1: Circuit Analysis");
         println!("  Total nodes: {}", circuit.nodes.len());
         println!("  Max depth: {}", circuit.max_depth);
         println!("  Max mult depth: {}", circuit.max_multiplicative_depth);
-        
+
         let op_counts = circuit.operation_counts();
         println!("  Operations:");
         for (op, count) in &op_counts {
             println!("    {:?}: {}", op, count);
         }
         println!();
-        
+
         // Step 2: Noise analysis
         println!("Step 2: Static Noise Analysis");
         let mut analyzer = NoiseAnalyzer::new(self.noise_model.clone());
         let noise_result = analyzer.analyze(circuit);
-        
+
         println!("  Max noise: {:.2} bits", noise_result.max_noise_bits);
         println!("  Output noise: {:.2} bits", noise_result.output_noise_bits);
         println!();
-        
+
         // Step 3: Parameter selection
         println!("Step 3: Parameter Selection");
         let selector = ParameterSelector::new(self.security_level, self.plaintext_bits);
         let params = selector.select_for_circuit(circuit, &noise_result);
-        
+
         println!("{}", params.summary());
         println!();
-        
+
         // Step 4: Verify bootstrap-free guarantee
         println!("Step 4: Bootstrap-Free Verification");
-        let budget = params.total_modulus_bits as f64 
-                   - self.plaintext_bits as f64
-                   - self.security_level as f64;
-        
+        let budget = params.total_modulus_bits as f64
+            - self.plaintext_bits as f64
+            - self.security_level as f64;
+
         let sufficient = budget >= noise_result.max_noise_bits;
         println!("  Available budget: {:.2} bits", budget);
         println!("  Required: {:.2} bits", noise_result.max_noise_bits);
         println!("  Margin: {:.2} bits", budget - noise_result.max_noise_bits);
-        println!("  Bootstrap-free: {}", if sufficient { "✓ GUARANTEED" } else { "✗ INSUFFICIENT" });
+        println!(
+            "  Bootstrap-free: {}",
+            if sufficient {
+                "✓ GUARANTEED"
+            } else {
+                "✗ INSUFFICIENT"
+            }
+        );
         println!();
-        
+
         CompilationResult {
             circuit: circuit.clone(),
             parameters: params,
@@ -391,22 +405,24 @@ impl BootstrapFreeFHECompiler {
             bootstrap_free_guaranteed: sufficient,
         }
     }
-    
+
     /// Estimate speedup vs traditional FHE
     pub fn estimate_speedup(&self, result: &CompilationResult) -> f64 {
         // Traditional FHE: bootstrap every ~10-20 mult depth
         let bootstrap_interval = 15.0;
-        let traditional_bootstraps = (result.circuit.max_multiplicative_depth as f64 / bootstrap_interval).ceil();
-        
+        let traditional_bootstraps =
+            (result.circuit.max_multiplicative_depth as f64 / bootstrap_interval).ceil();
+
         // Bootstrap cost: ~1000-10000× regular operation
         let bootstrap_cost = 5000.0;
-        
+
         // Total cost with bootstrap
-        let with_bootstrap = result.circuit.nodes.len() as f64 + traditional_bootstraps * bootstrap_cost;
-        
+        let with_bootstrap =
+            result.circuit.nodes.len() as f64 + traditional_bootstraps * bootstrap_cost;
+
         // Total cost without bootstrap
         let without_bootstrap = result.circuit.nodes.len() as f64;
-        
+
         with_bootstrap / without_bootstrap
     }
 }
@@ -425,49 +441,49 @@ pub struct CompilationResult {
 
 pub fn example_polynomial_circuit() -> Circuit {
     let mut circuit = Circuit::new();
-    
+
     // Input: x
     let x = circuit.add_node(OpType::Input, vec![]);
-    
+
     // Compute x^2
     let x2 = circuit.add_node(OpType::Multiply, vec![x, x]);
     let x2_relin = circuit.add_node(OpType::Relinearize, vec![x2]);
     let x2_rescale = circuit.add_node(OpType::Rescale, vec![x2_relin]);
-    
+
     // Compute x^3 = x^2 * x
     let x3 = circuit.add_node(OpType::Multiply, vec![x2_rescale, x]);
     let x3_relin = circuit.add_node(OpType::Relinearize, vec![x3]);
     let x3_rescale = circuit.add_node(OpType::Rescale, vec![x3_relin]);
-    
+
     // Compute x^4 = x^2 * x^2
     let x4 = circuit.add_node(OpType::Multiply, vec![x2_rescale, x2_rescale]);
     let x4_relin = circuit.add_node(OpType::Relinearize, vec![x4]);
     let x4_rescale = circuit.add_node(OpType::Rescale, vec![x4_relin]);
-    
+
     // Result: x + x^2 + x^3 + x^4
     let sum1 = circuit.add_node(OpType::Add, vec![x, x2_rescale]);
     let sum2 = circuit.add_node(OpType::Add, vec![sum1, x3_rescale]);
     let result = circuit.add_node(OpType::Add, vec![sum2, x4_rescale]);
-    
+
     circuit.add_node(OpType::Output, vec![result]);
-    
+
     circuit
 }
 
 pub fn example_deep_circuit(depth: usize) -> Circuit {
     let mut circuit = Circuit::new();
-    
+
     let input = circuit.add_node(OpType::Input, vec![]);
     let mut current = input;
-    
+
     for _ in 0..depth {
         let mul = circuit.add_node(OpType::Multiply, vec![current, current]);
         let relin = circuit.add_node(OpType::Relinearize, vec![mul]);
         current = circuit.add_node(OpType::Rescale, vec![relin]);
     }
-    
+
     circuit.add_node(OpType::Output, vec![current]);
-    
+
     circuit
 }
 
@@ -478,41 +494,46 @@ pub fn example_deep_circuit(depth: usize) -> Circuit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_polynomial_circuit_compilation() {
         let circuit = example_polynomial_circuit();
         let compiler = BootstrapFreeFHECompiler::new(128, 16);
-        
+
         let result = compiler.compile(&circuit);
-        
+
         println!("\n{}", result.parameters.summary());
-        println!("\nEstimated speedup vs traditional FHE: {:.1}×", 
-                 compiler.estimate_speedup(&result));
-        
+        println!(
+            "\nEstimated speedup vs traditional FHE: {:.1}×",
+            compiler.estimate_speedup(&result)
+        );
+
         assert!(result.bootstrap_free_guaranteed);
     }
-    
+
     #[test]
     fn test_deep_circuit_compilation() {
         let depths = vec![5, 10, 20];
-        
+
         for depth in depths {
             println!("\n=== Testing depth {} ===", depth);
-            
+
             let circuit = example_deep_circuit(depth);
             let compiler = BootstrapFreeFHECompiler::new(128, 16);
-            
+
             let result = compiler.compile(&circuit);
-            
+
             println!("Bootstrap-free: {}", result.bootstrap_free_guaranteed);
             println!("Speedup: {:.1}×", compiler.estimate_speedup(&result));
-            
-            assert!(result.bootstrap_free_guaranteed, 
-                   "Depth {} should be bootstrap-free", depth);
+
+            assert!(
+                result.bootstrap_free_guaranteed,
+                "Depth {} should be bootstrap-free",
+                depth
+            );
         }
     }
-    
+
     #[test]
     fn test_parameter_scaling() {
         let circuit = example_deep_circuit(10);
@@ -561,7 +582,10 @@ mod tests {
         println!("Modulus bits: {}", result.parameters.total_modulus_bits);
         println!("Poly degree N: {}", result.parameters.poly_degree);
         println!("Bootstrap-free: {}", result.bootstrap_free_guaranteed);
-        println!("Estimated speedup vs TFHE: {:.1}×", compiler.estimate_speedup(&result));
+        println!(
+            "Estimated speedup vs TFHE: {:.1}×",
+            compiler.estimate_speedup(&result)
+        );
 
         // The key assertion: depth-50 IS achievable bootstrap-free
         assert!(

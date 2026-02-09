@@ -38,22 +38,22 @@ impl ParameterValidator {
         let ke = KElimination::for_fhe(0);
         let total_capacity = ke.alpha_cap.saturating_mul(ke.beta_cap);
         let capacity_bits = 128 - total_capacity.leading_zeros();
-        
+
         Self {
             ke_capacity_bits: capacity_bits,
             ke_total_capacity: total_capacity,
         }
     }
-    
+
     /// Validate FHE parameters
     pub fn validate(&self, n: usize, q: u64, t: u64) -> ValidationResult {
         let mut messages = Vec::new();
-        
+
         // 1. Orbital Boundary Check
         let max_tensor_value = self.max_tensor_intermediate(q, n);
         let tensor_bits = 128 - max_tensor_value.leading_zeros();
         let orbital_safe = max_tensor_value < self.ke_total_capacity;
-        
+
         if orbital_safe {
             let margin = if max_tensor_value == 0 {
                 u128::MAX
@@ -71,12 +71,12 @@ impl ParameterValidator {
             ));
             messages.push("  → Reduce q or N, or increase K-Elimination moduli".to_string());
         }
-        
+
         // 2. HE Standard Compliance
         let log_q = 64 - q.leading_zeros();
         let max_log_q = self.he_standard_max_log_q(n);
         let he_standard_compliant = log_q <= max_log_q;
-        
+
         if he_standard_compliant {
             messages.push(format!(
                 "✓ HE Standard: log(q)={} ≤ max {} for N={}",
@@ -88,14 +88,14 @@ impl ParameterValidator {
                 log_q, max_log_q, n
             ));
         }
-        
+
         // 3. Security Estimate
         let estimated_security_bits = self.estimate_security_bits(n, log_q);
         messages.push(format!(
             "  Security estimate: {} bits (rough, use LWE estimator for precise)",
             estimated_security_bits
         ));
-        
+
         // 4. Noise Budget Check
         let delta = q / t;
         let noise_bits = 64 - delta.leading_zeros();
@@ -110,12 +110,12 @@ impl ParameterValidator {
                 delta, noise_bits
             ));
         }
-        
+
         // 5. Calculate max safe N
         let max_safe_n = self.max_safe_n_for_q(q);
-        
-        let valid = orbital_safe;  // Orbital safety is critical
-        
+
+        let valid = orbital_safe; // Orbital safety is critical
+
         ValidationResult {
             valid,
             orbital_safe,
@@ -125,7 +125,7 @@ impl ParameterValidator {
             messages,
         }
     }
-    
+
     /// Calculate maximum tensor product intermediate value
     fn max_tensor_intermediate(&self, q: u64, n: usize) -> u128 {
         // After tensor product of two N-coefficient polynomials:
@@ -134,7 +134,7 @@ impl ParameterValidator {
         let n128 = n as u128;
         n128.saturating_mul(q128).saturating_mul(q128)
     }
-    
+
     /// HE Standard maximum log(q) for given N (128-bit classical security)
     fn he_standard_max_log_q(&self, n: usize) -> u32 {
         match n {
@@ -151,7 +151,7 @@ impl ParameterValidator {
             }
         }
     }
-    
+
     /// Estimate security bits (rough - use LWE estimator for precise)
     fn estimate_security_bits(&self, n: usize, log_q: u32) -> u32 {
         let ratio_permille = ((n as u64) * 1000) / (log_q as u64);
@@ -168,7 +168,7 @@ impl ParameterValidator {
             32
         }
     }
-    
+
     /// Maximum safe N for given q
     fn max_safe_n_for_q(&self, q: u64) -> usize {
         // Solve: n * q^2 < ke_total_capacity
@@ -180,7 +180,7 @@ impl ParameterValidator {
         } else {
             self.ke_total_capacity / q_sq
         };
-        
+
         // Round down to power of 2
         let log_max = 128 - max_n.leading_zeros();
         if log_max > 1 {
@@ -205,14 +205,16 @@ pub fn validate_params(n: usize, q: u64, t: u64) -> ValidationResult {
 /// Assert parameters are valid (panics if not)
 pub fn assert_params_valid(n: usize, q: u64, t: u64) {
     let result = validate_params(n, q, t);
-    
+
     if !result.valid {
         panic!(
             "INVALID FHE PARAMETERS!\n\
              N={}, q={}, t={}\n\
              {}\n\
              This would cause the Hidden Orbital Problem.",
-            n, q, t,
+            n,
+            q,
+            t,
             result.messages.join("\n")
         );
     }
@@ -221,27 +223,27 @@ pub fn assert_params_valid(n: usize, q: u64, t: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_standard_params_valid() {
         let result = validate_params(1024, 998244353, 500000);
         assert!(result.orbital_safe, "Standard params should be safe");
         println!("{:#?}", result);
     }
-    
+
     #[test]
     fn test_large_n_valid() {
         let result = validate_params(4096, 998244353, 500000);
         assert!(result.orbital_safe, "N=4096 should be safe");
     }
-    
+
     #[test]
     fn test_large_q_fails() {
         // This should fail - 62-bit q is too large
         let result = validate_params(1024, 4611686018427387903, 500000);
         assert!(!result.orbital_safe, "Large q should fail orbital check");
     }
-    
+
     #[test]
     fn test_max_safe_n() {
         let validator = ParameterValidator::new();
@@ -249,18 +251,24 @@ mod tests {
         println!("Max safe N for q=998244353: {}", max_n);
         assert!(max_n >= 4096, "Should support at least N=4096");
     }
-    
+
     #[test]
     fn test_he_standard_compliance() {
         // N=1024 with q=30-bit exceeds HE Standard
         let result = validate_params(1024, 998244353, 500000);
-        assert!(!result.he_standard_compliant, "N=1024 q=30bit should exceed HE Standard");
-        
+        assert!(
+            !result.he_standard_compliant,
+            "N=1024 q=30bit should exceed HE Standard"
+        );
+
         // N=2048 with q=30-bit is compliant
         let result = validate_params(2048, 998244353, 500000);
-        assert!(result.he_standard_compliant, "N=2048 q=30bit should be compliant");
+        assert!(
+            result.he_standard_compliant,
+            "N=2048 q=30bit should be compliant"
+        );
     }
-    
+
     #[test]
     #[should_panic(expected = "INVALID FHE PARAMETERS")]
     fn test_assert_invalid_panics() {

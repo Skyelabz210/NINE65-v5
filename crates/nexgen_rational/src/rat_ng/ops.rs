@@ -18,9 +18,9 @@
 //! ## Integer-Only Guarantee
 //! Zero floating-point operations. All arithmetic is i128 checked.
 
-use super::types::NexGenRat;
 use super::error::ArithmeticError;
-use super::normalize::{should_normalize, normalize};
+use super::normalize::{normalize, should_normalize};
+use super::types::NexGenRat;
 use crate::exact_coeff::ExactCoeff;
 
 // ============================================================================
@@ -61,18 +61,26 @@ fn finalize(num: ExactCoeff, den: ExactCoeff) -> Result<NexGenRat, ArithmeticErr
 /// # T3 (pending): value(add(a/b, c/d)) = value(a/b) + value(c/d)
 pub fn add(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticError> {
     // a*d (checked)
-    let ad = lhs.num.0.checked_mul(rhs.den.0).ok_or(ArithmeticError::Overflow {
-        operation: "add: a*d",
-        left: lhs.num.0,
-        right: rhs.den.0,
-    })?;
+    let ad = lhs
+        .num
+        .0
+        .checked_mul(rhs.den.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "add: a*d",
+            left: lhs.num.0,
+            right: rhs.den.0,
+        })?;
 
     // b*c (checked)
-    let bc = lhs.den.0.checked_mul(rhs.num.0).ok_or(ArithmeticError::Overflow {
-        operation: "add: b*c",
-        left: lhs.den.0,
-        right: rhs.num.0,
-    })?;
+    let bc = lhs
+        .den
+        .0
+        .checked_mul(rhs.num.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "add: b*c",
+            left: lhs.den.0,
+            right: rhs.num.0,
+        })?;
 
     // a*d + b*c (checked)
     let num = ad.checked_add(bc).ok_or(ArithmeticError::Overflow {
@@ -82,11 +90,15 @@ pub fn add(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticErro
     })?;
 
     // b*d (checked)
-    let den = lhs.den.0.checked_mul(rhs.den.0).ok_or(ArithmeticError::Overflow {
-        operation: "add: b*d",
-        left: lhs.den.0,
-        right: rhs.den.0,
-    })?;
+    let den = lhs
+        .den
+        .0
+        .checked_mul(rhs.den.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "add: b*d",
+            left: lhs.den.0,
+            right: rhs.den.0,
+        })?;
 
     finalize(ExactCoeff(num), ExactCoeff(den))
 }
@@ -97,17 +109,25 @@ pub fn add(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticErro
 
 /// Subtract two rationals with I4 overflow protection.
 pub fn sub(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticError> {
-    let ad = lhs.num.0.checked_mul(rhs.den.0).ok_or(ArithmeticError::Overflow {
-        operation: "sub: a*d",
-        left: lhs.num.0,
-        right: rhs.den.0,
-    })?;
+    let ad = lhs
+        .num
+        .0
+        .checked_mul(rhs.den.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "sub: a*d",
+            left: lhs.num.0,
+            right: rhs.den.0,
+        })?;
 
-    let bc = lhs.den.0.checked_mul(rhs.num.0).ok_or(ArithmeticError::Overflow {
-        operation: "sub: b*c",
-        left: lhs.den.0,
-        right: rhs.num.0,
-    })?;
+    let bc = lhs
+        .den
+        .0
+        .checked_mul(rhs.num.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "sub: b*c",
+            left: lhs.den.0,
+            right: rhs.num.0,
+        })?;
 
     let num = ad.checked_sub(bc).ok_or(ArithmeticError::Overflow {
         operation: "sub: ad-bc",
@@ -115,11 +135,15 @@ pub fn sub(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticErro
         right: bc,
     })?;
 
-    let den = lhs.den.0.checked_mul(rhs.den.0).ok_or(ArithmeticError::Overflow {
-        operation: "sub: b*d",
-        left: lhs.den.0,
-        right: rhs.den.0,
-    })?;
+    let den = lhs
+        .den
+        .0
+        .checked_mul(rhs.den.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "sub: b*d",
+            left: lhs.den.0,
+            right: rhs.den.0,
+        })?;
 
     finalize(ExactCoeff(num), ExactCoeff(den))
 }
@@ -132,17 +156,25 @@ pub fn sub(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticErro
 ///
 /// # T4 (pending): value(mul(a/b, c/d)) = value(a/b) * value(c/d)
 pub fn mul(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticError> {
-    let num = lhs.num.0.checked_mul(rhs.num.0).ok_or(ArithmeticError::Overflow {
-        operation: "mul: a*c",
-        left: lhs.num.0,
-        right: rhs.num.0,
-    })?;
+    let num = lhs
+        .num
+        .0
+        .checked_mul(rhs.num.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "mul: a*c",
+            left: lhs.num.0,
+            right: rhs.num.0,
+        })?;
 
-    let den = lhs.den.0.checked_mul(rhs.den.0).ok_or(ArithmeticError::Overflow {
-        operation: "mul: b*d",
-        left: lhs.den.0,
-        right: rhs.den.0,
-    })?;
+    let den = lhs
+        .den
+        .0
+        .checked_mul(rhs.den.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "mul: b*d",
+            left: lhs.den.0,
+            right: rhs.den.0,
+        })?;
 
     finalize(ExactCoeff(num), ExactCoeff(den))
 }
@@ -162,17 +194,25 @@ pub fn div(lhs: &NexGenRat, rhs: &NexGenRat) -> Result<NexGenRat, ArithmeticErro
         return Err(ArithmeticError::DivideByZero);
     }
 
-    let num = lhs.num.0.checked_mul(rhs.den.0).ok_or(ArithmeticError::Overflow {
-        operation: "div: a*d",
-        left: lhs.num.0,
-        right: rhs.den.0,
-    })?;
+    let num = lhs
+        .num
+        .0
+        .checked_mul(rhs.den.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "div: a*d",
+            left: lhs.num.0,
+            right: rhs.den.0,
+        })?;
 
-    let den = lhs.den.0.checked_mul(rhs.num.0).ok_or(ArithmeticError::Overflow {
-        operation: "div: b*c",
-        left: lhs.den.0,
-        right: rhs.num.0,
-    })?;
+    let den = lhs
+        .den
+        .0
+        .checked_mul(rhs.num.0)
+        .ok_or(ArithmeticError::Overflow {
+            operation: "div: b*c",
+            left: lhs.den.0,
+            right: rhs.num.0,
+        })?;
 
     finalize(ExactCoeff(num), ExactCoeff(den))
 }
@@ -258,8 +298,8 @@ mod tests {
 
     #[test]
     fn add_basic() {
-        let a = rat(1, 2);  // 1/2
-        let b = rat(1, 3);  // 1/3
+        let a = rat(1, 2); // 1/2
+        let b = rat(1, 3); // 1/3
         let result = (&a + &b).unwrap();
         // 1/2 + 1/3 = 5/6
         assert_eq!(result, rat(5, 6));

@@ -25,9 +25,9 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 use crate::arithmetic::NTTEngine;
 use crate::entropy::ShadowHarvester;
 use crate::keys::KeySet;
-use crate::ops::encrypt::{BFVEncoder, BFVEncryptor, BFVDecryptor};
+use crate::ops::encrypt::{BFVDecryptor, BFVEncoder, BFVEncryptor};
 use crate::params::FHEConfig;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 /// Known Answer Test vector
 #[derive(Debug, Clone)]
@@ -112,11 +112,10 @@ pub const STANDARD_KATS: &[KATVector] = &[
         n: 1024,
         q: 998244353,
         t: 2053,
-        plaintext: 2052,  // t - 1
+        plaintext: 2052, // t - 1
         expected_result: 2052,
         operation: KATOperation::EncryptDecrypt,
     },
-    
     // Homomorphic addition with plaintext
     KATVector {
         name: "add_plain_100_plus_50",
@@ -128,7 +127,6 @@ pub const STANDARD_KATS: &[KATVector] = &[
         expected_result: 150,
         operation: KATOperation::HomomorphicAdd { addend: 50 },
     },
-    
     // Multiply by plaintext
     KATVector {
         name: "mul_plain_17_times_3",
@@ -140,7 +138,6 @@ pub const STANDARD_KATS: &[KATVector] = &[
         expected_result: 51,
         operation: KATOperation::MulPlain { multiplier: 3 },
     },
-    
     // Ciphertext-ciphertext addition
     KATVector {
         name: "ct_ct_add_25_plus_75",
@@ -152,7 +149,6 @@ pub const STANDARD_KATS: &[KATVector] = &[
         expected_result: 100,
         operation: KATOperation::CtCtAdd { other: 75 },
     },
-    
     // Different seed (should still work)
     KATVector {
         name: "encrypt_decrypt_different_seed",
@@ -173,23 +169,24 @@ pub fn run_kat(kat: &KATVector) -> KATResult {
         kat.n,
         vec![kat.q],
         kat.t,
-        2,  // eta
-    ).expect("Invalid KAT config");
-    
+        2, // eta
+    )
+    .expect("Invalid KAT config");
+
     let ntt = NTTEngine::new(config.q, config.n);
     let mut harvester = ShadowHarvester::with_seed(kat.seed);
-    
+
     // Generate keys
     let keys = KeySet::generate(&config, &ntt, &mut harvester);
-    
+
     // Setup encoder/encryptor/decryptor
     let encoder = BFVEncoder::new(&config);
     let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
     let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
-    
+
     // Fresh harvester for encryption
     let mut enc_harvester = ShadowHarvester::with_seed(kat.seed.wrapping_add(1));
-    
+
     // Execute operation
     let (actual, ct_hash) = match kat.operation {
         KATOperation::EncryptDecrypt => {
@@ -197,37 +194,37 @@ pub fn run_kat(kat: &KATVector) -> KATResult {
             let hash = hash_ciphertext(&ct.c0.coeffs);
             let result = decryptor.decrypt(&ct);
             (result, Some(hash))
-        },
+        }
         KATOperation::HomomorphicAdd { addend } => {
             use crate::ops::homomorphic::BFVEvaluator;
             let evaluator = BFVEvaluator::new(&ntt, &encoder, Some(&keys.eval_key));
-            
+
             let ct = encryptor.encrypt(kat.plaintext, &mut enc_harvester);
             let ct_sum = evaluator.add_plain(&ct, addend);
             let result = decryptor.decrypt(&ct_sum);
             (result, None)
-        },
+        }
         KATOperation::MulPlain { multiplier } => {
             use crate::ops::homomorphic::BFVEvaluator;
             let evaluator = BFVEvaluator::new(&ntt, &encoder, Some(&keys.eval_key));
-            
+
             let ct = encryptor.encrypt(kat.plaintext, &mut enc_harvester);
             let ct_prod = evaluator.mul_plain(&ct, multiplier);
             let result = decryptor.decrypt(&ct_prod);
             (result, None)
-        },
+        }
         KATOperation::CtCtAdd { other } => {
             use crate::ops::homomorphic::BFVEvaluator;
             let evaluator = BFVEvaluator::new(&ntt, &encoder, Some(&keys.eval_key));
-            
+
             let ct1 = encryptor.encrypt(kat.plaintext, &mut enc_harvester);
             let ct2 = encryptor.encrypt(other, &mut enc_harvester);
             let ct_sum = evaluator.add(&ct1, &ct2);
             let result = decryptor.decrypt(&ct_sum);
             (result, None)
-        },
+        }
     };
-    
+
     KATResult {
         name: kat.name.to_string(),
         passed: actual == kat.expected_result,
@@ -261,71 +258,101 @@ pub fn print_kat_results(results: &[KATResult]) {
     println!("╔═══════════════════════════════════════════════════════════════╗");
     println!("║                    QMNF FHE Known Answer Tests                ║");
     println!("╠═══════════════════════════════════════════════════════════════╣");
-    
+
     let mut passed = 0;
     let mut failed = 0;
-    
+
     for result in results {
-        let status = if result.passed { "✓ PASS" } else { "✗ FAIL" };
+        let status = if result.passed {
+            "✓ PASS"
+        } else {
+            "✗ FAIL"
+        };
         let status_color = if result.passed { "" } else { " <!>" };
-        
+
         println!("║ {:6} │ {:<40}{}", status, result.name, status_color);
-        
+
         if !result.passed {
-            println!("║        │   Expected: {}, Got: {}", result.expected, result.actual);
+            println!(
+                "║        │   Expected: {}, Got: {}",
+                result.expected, result.actual
+            );
             failed += 1;
         } else {
             passed += 1;
         }
     }
-    
+
     println!("╠═══════════════════════════════════════════════════════════════╣");
-    println!("║ Results: {} passed, {} failed                                  ║", passed, failed);
+    println!(
+        "║ Results: {} passed, {} failed                                  ║",
+        passed, failed
+    );
     println!("╚═══════════════════════════════════════════════════════════════╝");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_all_kats() {
         let results = run_all_kats();
         print_kat_results(&results);
-        
+
         let failed: Vec<_> = results.iter().filter(|r| !r.passed).collect();
-        assert!(failed.is_empty(), 
-                "KATs failed: {:?}", 
-                failed.iter().map(|r| &r.name).collect::<Vec<_>>());
+        assert!(
+            failed.is_empty(),
+            "KATs failed: {:?}",
+            failed.iter().map(|r| &r.name).collect::<Vec<_>>()
+        );
     }
-    
+
     #[test]
     fn test_kat_deterministic() {
         // Run same KAT twice, verify identical results
         let kat = &STANDARD_KATS[0];
-        
+
         let result1 = run_kat(kat);
         let result2 = run_kat(kat);
-        
-        assert_eq!(result1.actual, result2.actual, "KATs should be deterministic");
-        assert_eq!(result1.ct_hash, result2.ct_hash, "Ciphertext hashes should match");
+
+        assert_eq!(
+            result1.actual, result2.actual,
+            "KATs should be deterministic"
+        );
+        assert_eq!(
+            result1.ct_hash, result2.ct_hash,
+            "Ciphertext hashes should match"
+        );
     }
-    
+
     #[test]
     fn test_kat_encrypt_decrypt() {
-        for kat in STANDARD_KATS.iter().filter(|k| matches!(k.operation, KATOperation::EncryptDecrypt)) {
+        for kat in STANDARD_KATS
+            .iter()
+            .filter(|k| matches!(k.operation, KATOperation::EncryptDecrypt))
+        {
             let result = run_kat(kat);
-            assert!(result.passed, "KAT {} failed: expected {}, got {}", 
-                    kat.name, kat.expected_result, result.actual);
+            assert!(
+                result.passed,
+                "KAT {} failed: expected {}, got {}",
+                kat.name, kat.expected_result, result.actual
+            );
         }
     }
-    
+
     #[test]
     fn test_kat_homomorphic_ops() {
-        for kat in STANDARD_KATS.iter().filter(|k| !matches!(k.operation, KATOperation::EncryptDecrypt)) {
+        for kat in STANDARD_KATS
+            .iter()
+            .filter(|k| !matches!(k.operation, KATOperation::EncryptDecrypt))
+        {
             let result = run_kat(kat);
-            assert!(result.passed, "KAT {} failed: expected {}, got {}", 
-                    kat.name, kat.expected_result, result.actual);
+            assert!(
+                result.passed,
+                "KAT {} failed: expected {}, got {}",
+                kat.name, kat.expected_result, result.actual
+            );
         }
     }
 }

@@ -16,20 +16,20 @@
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
 
-pub mod lane;
-pub mod stream;
 pub mod anchor;
 pub mod gso;
+pub mod lane;
+pub mod stream;
 
 #[cfg(feature = "parallel")]
 pub mod parallel;
 
 pub mod prelude {
     //! Common imports
+    pub use crate::anchor::{AnchorContext, KAnchor};
+    pub use crate::gso::{GsoSwarm, QbitAgent};
     pub use crate::lane::{Lane, LaneOps};
     pub use crate::stream::{ManaStream, StreamOps};
-    pub use crate::anchor::{KAnchor, AnchorContext};
-    pub use crate::gso::{GsoSwarm, QbitAgent};
 
     #[cfg(feature = "parallel")]
     pub use crate::parallel::ParallelStream;

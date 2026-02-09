@@ -7,7 +7,7 @@
 //! Integer-Only Guarantee: All operations delegate to i128 checked arithmetic.
 
 use std::fmt;
-use std::ops::{Add, Sub, Mul, Neg};
+use std::ops::{Add, Mul, Neg, Sub};
 
 /// Exact integer coefficient backed by i128.
 ///
@@ -132,7 +132,11 @@ mod tests {
         let a = ExactCoeff(2);
         let b = ExactCoeff(3);
         let c = ExactCoeff(5);
-        assert_eq!((a * b) * c, a * (b * c), "Multiplication must be associative");
+        assert_eq!(
+            (a * b) * c,
+            a * (b * c),
+            "Multiplication must be associative"
+        );
     }
 
     #[test]
@@ -166,13 +170,21 @@ mod tests {
     #[test]
     fn checked_add_overflow() {
         let max = ExactCoeff(i128::MAX);
-        assert_eq!(max.checked_add(ExactCoeff(1)), None, "Overflow must return None");
+        assert_eq!(
+            max.checked_add(ExactCoeff(1)),
+            None,
+            "Overflow must return None"
+        );
     }
 
     #[test]
     fn checked_mul_overflow() {
         let large = ExactCoeff(i128::MAX / 2 + 1);
-        assert_eq!(large.checked_mul(ExactCoeff(2)), None, "Overflow must return None");
+        assert_eq!(
+            large.checked_mul(ExactCoeff(2)),
+            None,
+            "Overflow must return None"
+        );
     }
 
     #[test]

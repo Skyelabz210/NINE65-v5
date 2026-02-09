@@ -4,12 +4,7 @@
 //! proof-to-code linkage alive in CI.
 
 use nine65::arithmetic::{
-    ExactDivider,
-    IntegerSoftmax,
-    MobiusInt,
-    PadeEngine,
-    PADE_SCALE,
-    SOFTMAX_SCALE,
+    ExactDivider, IntegerSoftmax, MobiusInt, PadeEngine, PADE_SCALE, SOFTMAX_SCALE,
 };
 
 #[test]

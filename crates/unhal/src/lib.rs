@@ -50,17 +50,17 @@
 //! ```
 
 pub mod accelerator;
-pub mod pipeline;
 pub mod batch;
+pub mod pipeline;
 
 pub mod prelude {
     //! Common imports
     pub use crate::accelerator::{Accelerator, AcceleratorConfig, ExecutionMode};
-    pub use crate::pipeline::{Pipeline, PipelineBuilder, Stage};
     pub use crate::batch::BatchProcessor;
+    pub use crate::pipeline::{Pipeline, PipelineBuilder, Stage};
 
     // Re-export key MANA types
-    pub use mana::stream::ManaStream;
+    pub use mana::anchor::{AnchorContext, KAnchor};
     pub use mana::lane::Lane;
-    pub use mana::anchor::{KAnchor, AnchorContext};
+    pub use mana::stream::ManaStream;
 }

@@ -192,11 +192,7 @@ impl LaneOps for Lane {
     fn scalar_add(&self, scalar: u64) -> Self {
         let q = self.prime;
         let s = scalar % q;
-        let coeffs: Vec<u64> = self
-            .coeffs
-            .iter()
-            .map(|&a| mod_add(a, s, q))
-            .collect();
+        let coeffs: Vec<u64> = self.coeffs.iter().map(|&a| mod_add(a, s, q)).collect();
 
         Self::from_coeffs(coeffs, q)
     }
@@ -278,7 +274,12 @@ impl MontgomeryLane {
         let r2 = Self::compute_r2(q);
         let q_inv_neg = Self::compute_q_inv_neg(q);
 
-        Self { q, r, r2, q_inv_neg }
+        Self {
+            q,
+            r,
+            r2,
+            q_inv_neg,
+        }
     }
 
     fn compute_r(q: u64) -> u64 {
@@ -327,7 +328,11 @@ impl MontgomeryLane {
         let m = (t as u64).wrapping_mul(self.q_inv_neg);
         let t = (t + m as u128 * self.q as u128) >> 64;
         let result = t as u64;
-        if result >= self.q { result - self.q } else { result }
+        if result >= self.q {
+            result - self.q
+        } else {
+            result
+        }
     }
 }
 
@@ -358,15 +363,19 @@ impl PersistentLane {
     /// Create from standard coefficients (converts to ⊗ form ONCE)
     pub fn from_standard(coeffs: &[u64], q: u64) -> Self {
         let mont = Arc::new(MontgomeryLane::new(q));
-        let mont_coeffs: Vec<u64> = coeffs.iter()
-            .map(|&c| mont.to_mont(c % q))
-            .collect();
-        Self { coeffs: mont_coeffs, mont }
+        let mont_coeffs: Vec<u64> = coeffs.iter().map(|&c| mont.to_mont(c % q)).collect();
+        Self {
+            coeffs: mont_coeffs,
+            mont,
+        }
     }
 
     /// Create from coefficients already in Montgomery form
     pub fn from_montgomery(coeffs: Vec<u64>, mont: MontgomeryLane) -> Self {
-        Self { coeffs, mont: Arc::new(mont) }
+        Self {
+            coeffs,
+            mont: Arc::new(mont),
+        }
     }
 
     /// Create from coefficients with shared Arc context
@@ -377,7 +386,10 @@ impl PersistentLane {
     /// Create zero lane in Montgomery form
     pub fn zero(n: usize, q: u64) -> Self {
         let mont = Arc::new(MontgomeryLane::new(q));
-        Self { coeffs: vec![0; n], mont }  // 0 in standard = 0 in Montgomery
+        Self {
+            coeffs: vec![0; n],
+            mont,
+        } // 0 in standard = 0 in Montgomery
     }
 
     /// Number of coefficients
@@ -407,14 +419,23 @@ impl PersistentLane {
     pub fn add(&self, other: &Self) -> Self {
         debug_assert_eq!(self.mont.q, other.mont.q);
         let q = self.mont.q;
-        let coeffs: Vec<u64> = self.coeffs.iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .iter()
             .zip(other.coeffs.iter())
             .map(|(&a, &b)| {
                 let sum = a + b;
-                if sum >= q { sum - q } else { sum }
+                if sum >= q {
+                    sum - q
+                } else {
+                    sum
+                }
             })
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     /// ⊗ Subtract: stays in Montgomery form
@@ -422,23 +443,31 @@ impl PersistentLane {
     pub fn sub(&self, other: &Self) -> Self {
         debug_assert_eq!(self.mont.q, other.mont.q);
         let q = self.mont.q;
-        let coeffs: Vec<u64> = self.coeffs.iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .iter()
             .zip(other.coeffs.iter())
-            .map(|(&a, &b)| {
-                if a >= b { a - b } else { q - b + a }
-            })
+            .map(|(&a, &b)| if a >= b { a - b } else { q - b + a })
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     /// ⊗ Negate: stays in Montgomery form
     #[inline]
     pub fn neg(&self) -> Self {
         let q = self.mont.q;
-        let coeffs: Vec<u64> = self.coeffs.iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .iter()
             .map(|&a| if a == 0 { 0 } else { q - a })
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     /// ⊗ Multiply: Montgomery mul, result stays in ⊗ form
@@ -446,29 +475,44 @@ impl PersistentLane {
     #[inline]
     pub fn mul(&self, other: &Self) -> Self {
         debug_assert_eq!(self.mont.q, other.mont.q);
-        let coeffs: Vec<u64> = self.coeffs.iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .iter()
             .zip(other.coeffs.iter())
             .map(|(&a, &b)| self.mont.mont_mul(a, b))
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     /// ⊗ Scalar multiply (scalar must be in Montgomery form)
     #[inline]
     pub fn scalar_mul(&self, scalar_mont: u64) -> Self {
-        let coeffs: Vec<u64> = self.coeffs.iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .iter()
             .map(|&c| self.mont.mont_mul(c, scalar_mont))
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     /// ⊗ Square all coefficients
     #[inline]
     pub fn square(&self) -> Self {
-        let coeffs: Vec<u64> = self.coeffs.iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .iter()
             .map(|&a| self.mont.mont_mul(a, a))
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     // =========================================================================
@@ -477,7 +521,8 @@ impl PersistentLane {
 
     /// Convert to standard form (only at output!)
     pub fn to_standard(&self) -> Vec<u64> {
-        self.coeffs.iter()
+        self.coeffs
+            .iter()
             .map(|&c| self.mont.from_mont(c))
             .collect()
     }
@@ -502,14 +547,23 @@ impl PersistentLane {
     pub fn add_par(&self, other: &Self) -> Self {
         debug_assert_eq!(self.mont.q, other.mont.q);
         let q = self.mont.q;
-        let coeffs: Vec<u64> = self.coeffs.par_iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .par_iter()
             .zip(other.coeffs.par_iter())
             .map(|(&a, &b)| {
                 let sum = a + b;
-                if sum >= q { sum - q } else { sum }
+                if sum >= q {
+                    sum - q
+                } else {
+                    sum
+                }
             })
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 
     /// ⊗ Parallel multiply - the money operation
@@ -517,11 +571,16 @@ impl PersistentLane {
     pub fn mul_par(&self, other: &Self) -> Self {
         debug_assert_eq!(self.mont.q, other.mont.q);
         let mont = &self.mont;
-        let coeffs: Vec<u64> = self.coeffs.par_iter()
+        let coeffs: Vec<u64> = self
+            .coeffs
+            .par_iter()
             .zip(other.coeffs.par_iter())
             .map(|(&a, &b)| mont.mont_mul(a, b))
             .collect();
-        Self { coeffs, mont: Arc::clone(&self.mont) }
+        Self {
+            coeffs,
+            mont: Arc::clone(&self.mont),
+        }
     }
 }
 
@@ -628,9 +687,9 @@ mod tests {
         let b = PersistentLane::from_standard(&[2, 3, 4], TEST_PRIME);
 
         // (a + b) * a - stays in Montgomery form throughout
-        let sum = a.add(&b);      // [12, 23, 34]
-        let prod = sum.mul(&a);   // [120, 460, 1020]
-        let result = prod.sub(&b);  // [118, 457, 1016]
+        let sum = a.add(&b); // [12, 23, 34]
+        let prod = sum.mul(&a); // [120, 460, 1020]
+        let result = prod.sub(&b); // [118, 457, 1016]
 
         assert_eq!(result.to_standard(), vec![118, 457, 1016]);
     }

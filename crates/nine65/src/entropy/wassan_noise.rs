@@ -27,7 +27,7 @@ const NUM_BANDS: usize = 144;
 const SAMPLES_PER_BAND: usize = 4096;
 
 /// WASSAN Holographic Noise Field
-/// 
+///
 /// Pre-computed interference pattern across 144 φ-harmonic bands.
 /// Retrieval is O(1) - just a memory read.
 #[derive(Clone, Debug)]
@@ -131,7 +131,7 @@ impl WassanNoiseField {
             current_band: 0,
         }
     }
-    
+
     /// Create from OS entropy (one syscall, then infinite stream)
     ///
     /// # Panics
@@ -141,31 +141,36 @@ impl WassanNoiseField {
     pub fn from_os_seed() -> Self {
         use getrandom::getrandom;
         let mut seed_bytes = [0u8; 8];
-        getrandom(&mut seed_bytes).expect("CRITICAL: OS entropy source failed - system CSPRNG unavailable");
+        getrandom(&mut seed_bytes)
+            .expect("CRITICAL: OS entropy source failed - system CSPRNG unavailable");
         let seed = u64::from_le_bytes(seed_bytes);
         Self::from_shadow_seed(seed)
     }
-    
+
     /// Compute φⁿ as integer (scaled)
     #[inline]
     fn phi_power(n: usize) -> u64 {
         // Use recurrence: φⁿ = φⁿ⁻¹ + φⁿ⁻²
         // Start with φ⁰ = 1, φ¹ = φ
-        if n == 0 { return PHI_DEN; }
-        if n == 1 { return PHI_NUM; }
-        
-        let mut a = PHI_DEN;  // φ⁰
-        let mut b = PHI_NUM;  // φ¹
-        
+        if n == 0 {
+            return PHI_DEN;
+        }
+        if n == 1 {
+            return PHI_NUM;
+        }
+
+        let mut a = PHI_DEN; // φ⁰
+        let mut b = PHI_NUM; // φ¹
+
         for _ in 2..=n {
             let next = a.wrapping_add(b);
             a = b;
             b = next;
         }
-        
+
         b
     }
-    
+
     /// Sample single value - O(1) memory read
     #[inline]
     pub fn sample(&mut self) -> u64 {
@@ -180,7 +185,7 @@ impl WassanNoiseField {
 
         self.interference_pattern[band][pos]
     }
-    
+
     /// Sample from specific band
     #[inline]
     pub fn sample_band(&mut self, band: usize) -> u64 {
@@ -189,7 +194,7 @@ impl WassanNoiseField {
         self.phase_position[band] = (pos + 1) & (SAMPLES_PER_BAND - 1);
         self.interference_pattern[band][pos]
     }
-    
+
     /// Sample bounded value [0, bound)
     #[inline]
     pub fn sample_bounded(&mut self, bound: u64) -> u64 {
@@ -197,58 +202,62 @@ impl WassanNoiseField {
         // (slight bias acceptable for FHE noise, not for keys)
         self.sample() % bound
     }
-    
+
     /// Generate ternary value {-1, 0, 1} for secret key
     #[inline]
     pub fn ternary(&mut self) -> i64 {
         let r = self.sample() % 3;
         (r as i64) - 1
     }
-    
+
     /// Generate ternary vector (for secret key generation)
     pub fn ternary_vec(&mut self, n: usize) -> Vec<i64> {
         (0..n).map(|_| self.ternary()).collect()
     }
-    
+
     /// Generate FHE noise polynomial with bounded coefficients
-    /// 
+    ///
     /// For BFV/BGV: coefficients in [0, q) representing small errors
     pub fn fhe_noise_polynomial(&mut self, n: usize, q: u64, bound: u64) -> Vec<u64> {
-        (0..n).map(|_| {
-            // Small bounded noise
-            let noise = self.sample_bounded(2 * bound + 1);
-            // Center around 0: if noise > bound, it's negative mod q
-            if noise > bound {
-                q - (noise - bound)
-            } else {
-                noise
-            }
-        }).collect()
+        (0..n)
+            .map(|_| {
+                // Small bounded noise
+                let noise = self.sample_bounded(2 * bound + 1);
+                // Center around 0: if noise > bound, it's negative mod q
+                if noise > bound {
+                    q - (noise - bound)
+                } else {
+                    noise
+                }
+            })
+            .collect()
     }
-    
+
     /// Generate discrete Gaussian-like noise via CBD (Central Binomial)
-    /// 
+    ///
     /// Sum of η uniform bits minus η uniform bits gives approximate Gaussian
     pub fn cbd_noise(&mut self, n: usize, q: u64, eta: usize) -> Vec<u64> {
-        (0..n).map(|_| {
-            let mut sum: i64 = 0;
-            for _ in 0..eta {
-                sum += (self.sample() & 1) as i64;
-                sum -= (self.sample() & 1) as i64;
-            }
-            if sum >= 0 {
-                sum as u64
-            } else {
-                (q as i64 + sum) as u64
-            }
-        }).collect()
+        (0..n)
+            .map(|_| {
+                let mut sum: i64 = 0;
+                for _ in 0..eta {
+                    sum += (self.sample() & 1) as i64;
+                    sum -= (self.sample() & 1) as i64;
+                }
+                if sum >= 0 {
+                    sum as u64
+                } else {
+                    (q as i64 + sum) as u64
+                }
+            })
+            .collect()
     }
-    
+
     /// Generate uniform polynomial [0, q)
     pub fn uniform_polynomial(&mut self, n: usize, q: u64) -> Vec<u64> {
         (0..n).map(|_| self.sample_bounded(q)).collect()
     }
-    
+
     /// Reset all phase positions (for reproducibility)
     pub fn reset(&mut self) {
         self.phase_position = [0; NUM_BANDS];
@@ -290,12 +299,12 @@ impl WassanNoiseField {
             })
             .collect()
     }
-    
+
     /// Get current state for checkpointing
     pub fn checkpoint(&self) -> ([usize; NUM_BANDS], usize) {
         (self.phase_position, self.current_band)
     }
-    
+
     /// Restore from checkpoint
     pub fn restore(&mut self, checkpoint: ([usize; NUM_BANDS], usize)) {
         self.phase_position = checkpoint.0;
@@ -324,66 +333,66 @@ mod tests {
             .filter(|value| *value > 0)
             .unwrap_or(default)
     }
-    
+
     #[test]
     fn test_creation() {
         let field = WassanNoiseField::from_shadow_seed(42);
         assert_eq!(field.phase_position, [0; NUM_BANDS]);
     }
-    
+
     #[test]
     fn test_sample_deterministic() {
         let mut field1 = WassanNoiseField::from_shadow_seed(12345);
         let mut field2 = WassanNoiseField::from_shadow_seed(12345);
-        
+
         for _ in 0..1000 {
             assert_eq!(field1.sample(), field2.sample());
         }
     }
-    
+
     #[test]
     fn test_ternary_distribution() {
         let mut field = WassanNoiseField::from_shadow_seed(42);
         let mut counts = [0u64; 3]; // -1, 0, 1
-        
+
         for _ in 0..30000 {
             let t = field.ternary();
             counts[(t + 1) as usize] += 1;
         }
-        
+
         // Should be roughly uniform
         for c in counts.iter() {
             assert!(*c > 8000 && *c < 12000, "Ternary not uniform: {:?}", counts);
         }
     }
-    
+
     #[test]
     fn test_polynomial_generation() {
         let mut field = WassanNoiseField::from_shadow_seed(42);
         let q = 998244353u64;
-        
+
         let poly = field.fhe_noise_polynomial(1024, q, 8);
-        
+
         assert_eq!(poly.len(), 1024);
         for &coeff in &poly {
             assert!(coeff < q);
         }
     }
-    
+
     #[test]
     fn test_cbd_noise() {
         let mut field = WassanNoiseField::from_shadow_seed(42);
         let q = 998244353u64;
-        
+
         let noise = field.cbd_noise(1024, q, 3);
-        
+
         assert_eq!(noise.len(), 1024);
         // CBD(3) gives values in [-3, 3], so mod q gives [0, 3] or [q-3, q-1]
         for &coeff in &noise {
             assert!(coeff <= 3 || coeff >= q - 3);
         }
     }
-    
+
     #[test]
     fn test_benchmark_vs_shadow() {
         if !perf_tests_enabled() {
@@ -391,22 +400,26 @@ mod tests {
             return;
         }
         let mut field = WassanNoiseField::from_shadow_seed(42);
-        
+
         let start = std::time::Instant::now();
         let mut sum = 0u64;
         for _ in 0..1_000_000 {
             sum = sum.wrapping_add(field.sample());
         }
         let elapsed = start.elapsed();
-        
+
         println!("WASSAN 1M samples: {:?}", elapsed);
         println!("Per sample: {:?}", elapsed / 1_000_000);
         println!("Sum (prevent optimization): {}", sum);
-        
+
         // Target: < 120ms for 1M samples (with parallel test execution overhead)
         // In isolation: ~20ns/sample. Under test load: ~100ns/sample is acceptable.
         let max_ms = perf_limit_ms(120, "NINE65_WASSAN_1M_MAX_MS");
-        assert!(elapsed.as_millis() < max_ms, "WASSAN too slow: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < max_ms,
+            "WASSAN too slow: {:?}",
+            elapsed
+        );
     }
 
     #[test]
@@ -429,6 +442,10 @@ mod tests {
 
         // Target: < 400ms for 1000 polys (4M samples + Vec allocs + modulo ops + test load)
         let max_ms = perf_limit_ms(400, "NINE65_WASSAN_POLY_MAX_MS");
-        assert!(elapsed.as_millis() < max_ms, "Polynomial generation too slow: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < max_ms,
+            "Polynomial generation too slow: {:?}",
+            elapsed
+        );
     }
 }

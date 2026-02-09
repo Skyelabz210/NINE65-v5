@@ -23,19 +23,19 @@
 // #![deny(clippy::float_cmp)]
 
 pub mod basis;
-pub mod garner;
-pub mod gearstack;
 pub mod bound_tracker;
 pub mod decode_to_q;
-pub mod integrity;
+pub mod garner;
+pub mod gearstack;
 pub mod gro;
+pub mod integrity;
 pub mod key_lifecycle;
 
 // Re-exports for convenience
 pub use basis::RnsBasis;
-pub use gearstack::GearStack;
-pub use garner::k_eliminate;
 pub use bound_tracker::Bound;
 pub use decode_to_q::DecodeToQ;
-pub use integrity::TripleRedundant;
+pub use garner::k_eliminate;
+pub use gearstack::GearStack;
 pub use gro::GroGate;
+pub use integrity::TripleRedundant;

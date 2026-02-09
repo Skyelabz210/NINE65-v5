@@ -131,7 +131,8 @@ impl GarnerDigits {
     /// Check that all digits are in valid range.
     pub fn is_valid(&self) -> bool {
         self.digits.len() == self.moduli.len()
-            && self.digits
+            && self
+                .digits
                 .iter()
                 .zip(self.moduli.iter())
                 .all(|(&d, &p)| d < p)
@@ -154,7 +155,11 @@ impl GarnerDigits {
 /// # Returns
 /// `GarnerDigits` containing the mixed-radix expansion.
 pub fn garner_decompose(residues: &[u64], moduli: &[u64]) -> GarnerDigits {
-    assert_eq!(residues.len(), moduli.len(), "Residue/moduli length mismatch");
+    assert_eq!(
+        residues.len(),
+        moduli.len(),
+        "Residue/moduli length mismatch"
+    );
     let k = moduli.len();
 
     if k == 0 {

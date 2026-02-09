@@ -16,8 +16,8 @@
 //! let result = pipeline.execute(&input_a, &input_b);
 //! ```
 
-use mana::stream::{ManaStream, StreamOps};
 use crate::accelerator::Accelerator;
+use mana::stream::{ManaStream, StreamOps};
 
 /// Pipeline stage operations
 #[derive(Clone, Debug)]

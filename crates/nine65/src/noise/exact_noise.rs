@@ -48,7 +48,8 @@ impl ExactNoiseTracker {
 
     /// Remaining budget as exact rational.
     pub fn remaining_budget_rational(&self) -> RationalBridge {
-        self.total_budget.sub(&self.current_noise)
+        self.total_budget
+            .sub(&self.current_noise)
             .unwrap_or_else(|_| RationalBridge::from_integer(0))
     }
 
@@ -101,7 +102,9 @@ impl ExactNoiseTracker {
     pub fn on_rescale(&mut self, dropped_modulus: u64) {
         self.flush_additions();
         let reduction = RationalBridge::from_integer(ilog2_exact(dropped_modulus));
-        self.current_noise = self.current_noise.sub(&reduction)
+        self.current_noise = self
+            .current_noise
+            .sub(&reduction)
             .unwrap_or_else(|_| RationalBridge::from_integer(0));
     }
 
@@ -128,7 +131,9 @@ impl ExactNoiseTracker {
         }
         let add_noise_bits = ilog2_exact(self.add_count + 1);
         let add_noise = RationalBridge::from_integer(add_noise_bits);
-        self.current_noise = self.current_noise.add(&add_noise)
+        self.current_noise = self
+            .current_noise
+            .add(&add_noise)
             .unwrap_or(self.current_noise.clone());
         self.add_count = 0;
     }
@@ -160,9 +165,10 @@ mod tests {
         tracker.on_mul(16); // plaintext modulus t=16, log2(t)=4
         let after = tracker.remaining_budget_rational();
         // Multiplication increases noise, reducing budget
-        assert!(after.numerator() < before.numerator()
-            || after.denominator() > before.denominator(),
-            "Budget must decrease after multiplication");
+        assert!(
+            after.numerator() < before.numerator() || after.denominator() > before.denominator(),
+            "Budget must decrease after multiplication"
+        );
     }
 
     #[test]
@@ -170,7 +176,10 @@ mod tests {
         let mut tracker = ExactNoiseTracker::new(152);
         let depth = tracker.remaining_depth_estimate(16);
         // With 152-bit budget and t=16, should support many levels
-        assert!(depth > 10, "Should support at least 10 levels with 152-bit budget");
+        assert!(
+            depth > 10,
+            "Should support at least 10 levels with 152-bit budget"
+        );
     }
 
     #[test]
@@ -183,6 +192,9 @@ mod tests {
         let after = tracker.remaining_budget_bits_approx();
         // 100 additions should consume roughly 7 bits (log2(100) ≈ 6.6)
         let consumed = before - after;
-        assert!(consumed < 10, "100 additions should consume < 10 bits, got {consumed}");
+        assert!(
+            consumed < 10,
+            "100 additions should consume < 10 bits, got {consumed}"
+        );
     }
 }

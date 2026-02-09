@@ -25,10 +25,10 @@
 //! let ct = encryptor.encrypt_with_rng(42, &mut rng);
 //! ```
 
-use super::shadow::ShadowHarvester;
-use super::secure::SecureRng;
 #[cfg(any(test, feature = "deterministic_rng"))]
 use super::deterministic::DeterministicRng;
+use super::secure::SecureRng;
+use super::shadow::ShadowHarvester;
 
 /// Trait for FHE-compatible random number generators
 ///

@@ -81,24 +81,24 @@ fn main() {
     if format == "csv" {
         println!("config,n,log2(q),effective_bits,cost_model");
         for (name, config) in configs {
-        let log_q_bits = log2_product_floor_bits(&config.primes);
-        let estimate = estimator.estimate(
-            config.n,
-            log_q_bits,
-            SecretDistribution::Ternary,
-            config.security_bits as u32,
-        );
-        let (int_part, frac_part) = log2_product_approx(&config.primes);
-        println!(
-            "{},{},{}.{:02},{},{}",
-            name,
-            config.n,
-            int_part,
-            frac_part,
-            estimate.effective_bits,
-            match cost_model {
-                CostModel::CoreSVP => "core-svp",
-                CostModel::MATZOV => "matzov",
+            let log_q_bits = log2_product_floor_bits(&config.primes);
+            let estimate = estimator.estimate(
+                config.n,
+                log_q_bits,
+                SecretDistribution::Ternary,
+                config.security_bits as u32,
+            );
+            let (int_part, frac_part) = log2_product_approx(&config.primes);
+            println!(
+                "{},{},{}.{:02},{},{}",
+                name,
+                config.n,
+                int_part,
+                frac_part,
+                estimate.effective_bits,
+                match cost_model {
+                    CostModel::CoreSVP => "core-svp",
+                    CostModel::MATZOV => "matzov",
                 }
             );
         }

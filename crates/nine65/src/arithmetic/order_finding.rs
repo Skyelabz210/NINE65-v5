@@ -119,7 +119,11 @@ fn mod_pow(base: u64, exp: u64, n: u64) -> u64 {
 
 /// GCD using Euclidean algorithm
 pub fn gcd(a: u64, b: u64) -> u64 {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 // =============================================================================
@@ -159,8 +163,8 @@ impl KRecurrence {
             n,
             a_ref,
             t: 0,
-            v_t: 1,  // a^0 = 1
-            k_t: 0,  // ⌊1/N⌋ = 0
+            v_t: 1, // a^0 = 1
+            k_t: 0, // ⌊1/N⌋ = 0
         }
     }
 
@@ -168,11 +172,11 @@ impl KRecurrence {
     /// K(t+1) ≡ b·K(t) + ⌊v(t)·b/N⌋ (mod A)
     pub fn step(&mut self) {
         let product = self.v_t as u128 * self.base as u128;
-        let carry = (product / self.n as u128) as u64;  // ⌊v(t)·b/N⌋
+        let carry = (product / self.n as u128) as u64; // ⌊v(t)·b/N⌋
 
         // K(t+1) = (b·K(t) + carry) mod A
-        let new_k = ((self.base as u128 * self.k_t as u128 + carry as u128)
-                     % self.a_ref as u128) as u64;
+        let new_k =
+            ((self.base as u128 * self.k_t as u128 + carry as u128) % self.a_ref as u128) as u64;
 
         // v(t+1) = v(t)·b mod N
         let new_v = (product % self.n as u128) as u64;
@@ -263,12 +267,20 @@ fn find_coprime_reference(n: u64, min_bound: u64) -> u64 {
 
 /// Simple primality check (sufficient for finding reference moduli)
 fn is_probably_prime(n: u64) -> bool {
-    if n < 2 { return false; }
-    if n == 2 { return true; }
-    if n.is_multiple_of(2) { return false; }
+    if n < 2 {
+        return false;
+    }
+    if n == 2 {
+        return true;
+    }
+    if n.is_multiple_of(2) {
+        return false;
+    }
     let mut d = 3;
     while d * d <= n {
-        if n.is_multiple_of(d) { return false; }
+        if n.is_multiple_of(d) {
+            return false;
+        }
         d += 2;
     }
     true
@@ -283,7 +295,7 @@ fn isqrt(n: u64) -> u64 {
     let mut y = x.div_ceil(2);
     while y < x {
         x = y;
-        y = (x + n / x) / 2;  // Newton-Raphson: floor division is correct
+        y = (x + n / x) / 2; // Newton-Raphson: floor division is correct
     }
     x
 }
@@ -339,7 +351,7 @@ pub fn multiplicative_order(a: u64, n: u64) -> Option<u64> {
 }
 
 /// Detailed order finding with statistics
-#[allow(unused_assignments)]  // giant_steps_done initial value is always overwritten
+#[allow(unused_assignments)] // giant_steps_done initial value is always overwritten
 pub fn multiplicative_order_detailed(a: u64, n: u64) -> Option<OrderResult> {
     // Check coprimality
     if gcd(a, n) != 1 {
@@ -358,7 +370,7 @@ pub fn multiplicative_order_detailed(a: u64, n: u64) -> Option<OrderResult> {
 
     // Bound: B = N - 1 (no factoring needed!)
     let bound = n - 1;
-    let m = isqrt(bound) + 1;  // ⌈√B⌉
+    let m = isqrt(bound) + 1; // ⌈√B⌉
 
     // === BABY STEPS ===
     // Build hash table: γ = a^j mod N for j = 0..m-1
@@ -521,7 +533,10 @@ pub fn factor_semiprime(n: u64, max_attempts: usize) -> Option<(u64, u64)> {
     }
 
     // Try other small bases
-    for base in [3u64, 5, 7, 11, 13, 17, 19, 23, 29, 31].iter().take(max_attempts) {
+    for base in [3u64, 5, 7, 11, 13, 17, 19, 23, 29, 31]
+        .iter()
+        .take(max_attempts)
+    {
         if gcd(*base, n) != 1 {
             // Found a factor directly!
             let p = gcd(*base, n);
@@ -565,18 +580,24 @@ mod tests {
 
         // Test cases from the paper
         let test_cases = [
-            (2, 15, 4),      // 15 = 3 × 5
-            (3, 7, 6),       // 7 prime
-            (2, 7, 3),       // 7 prime
-            (2, 21, 6),      // 21 = 3 × 7
-            (2, 35, 12),     // 35 = 5 × 7
+            (2, 15, 4),  // 15 = 3 × 5
+            (3, 7, 6),   // 7 prime
+            (2, 7, 3),   // 7 prime
+            (2, 21, 6),  // 21 = 3 × 7
+            (2, 35, 12), // 35 = 5 × 7
         ];
 
         for (a, n, expected) in test_cases {
             let result = multiplicative_order_detailed(a, n).unwrap();
-            println!("ord_{}({}) = {} (baby={}, giant={}, minimized={})",
-                     n, a, result.order, result.baby_steps, result.giant_steps, result.minimized);
-            assert_eq!(result.order, expected, "ord_{}({}) should be {}", n, a, expected);
+            println!(
+                "ord_{}({}) = {} (baby={}, giant={}, minimized={})",
+                n, a, result.order, result.baby_steps, result.giant_steps, result.minimized
+            );
+            assert_eq!(
+                result.order, expected,
+                "ord_{}({}) should be {}",
+                n, a, expected
+            );
 
             // Verify: a^order ≡ 1 (mod n)
             assert_eq!(mod_pow(a, result.order, n), 1);
@@ -594,15 +615,18 @@ mod tests {
 
         // Semiprimes from the paper's empirical validation
         let semiprimes = [
-            (3233, 53, 61, 780),      // 53 × 61
-            (10403, 101, 103, 5100),  // 101 × 103
+            (3233, 53, 61, 780),     // 53 × 61
+            (10403, 101, 103, 5100), // 101 × 103
         ];
 
         for (n, p, q, expected_order) in semiprimes {
             let result = multiplicative_order_detailed(2, n).unwrap();
             println!("N = {} = {} × {}", n, p, q);
             println!("  ord_{}(2) = {}", n, result.order);
-            println!("  baby_steps = {}, giant_steps = {}", result.baby_steps, result.giant_steps);
+            println!(
+                "  baby_steps = {}, giant_steps = {}",
+                result.baby_steps, result.giant_steps
+            );
 
             assert_eq!(result.order, expected_order);
 
@@ -636,7 +660,12 @@ mod tests {
                     println!("{} = {} × {} ✓", n, found_p, found_q);
                     assert!(
                         (found_p == p && found_q == q) || (found_p == q && found_q == p),
-                        "Expected {} = {} × {}, got {} × {}", n, p, q, found_p, found_q
+                        "Expected {} = {} × {}, got {} × {}",
+                        n,
+                        p,
+                        q,
+                        found_p,
+                        found_q
                     );
                 }
                 None => {
@@ -653,7 +682,7 @@ mod tests {
         println!("\n=== Non-Circularity Verification ===\n");
 
         // The key test: find order WITHOUT knowing factors
-        let n = 10403u64;  // We "don't know" this is 101 × 103
+        let n = 10403u64; // We "don't know" this is 101 × 103
 
         println!("Finding ord_{}(2) without knowing factorization...", n);
 
@@ -680,9 +709,9 @@ mod tests {
 
         // Additional semiprimes from the paper
         let tests = [
-            (10807, 101, 107),    // 101 × 107
-            (17947, 131, 137),    // 131 × 137
-            (22499, 149, 151),    // 149 × 151
+            (10807, 101, 107), // 101 × 107
+            (17947, 131, 137), // 131 × 137
+            (22499, 149, 151), // 149 × 151
         ];
 
         for (n, p, q) in tests {
@@ -709,7 +738,7 @@ mod tests {
         println!("\n=== Prime Modulus Test ===\n");
 
         // For prime p, ord_p(a) | p-1
-        let p = 100003u64;  // Prime
+        let p = 100003u64; // Prime
         let order = multiplicative_order(2, p).unwrap();
 
         println!("p = {} (prime)", p);
@@ -730,9 +759,9 @@ mod tests {
         println!("K(t) tracks winding on covering space T² = (ℤ/Nℤ) × (ℤ/Aℤ)\n");
 
         let test_cases = [
-            (2u64, 15u64, 4u64),      // 15 = 3 × 5
-            (2, 3233, 780),           // 3233 = 53 × 61
-            (2, 10403, 5100),         // 10403 = 101 × 103
+            (2u64, 15u64, 4u64), // 15 = 3 × 5
+            (2, 3233, 780),      // 3233 = 53 × 61
+            (2, 10403, 5100),    // 10403 = 101 × 103
         ];
 
         for (base, n, expected_order) in test_cases {
@@ -757,8 +786,7 @@ mod tests {
                 while k.t < checkpoint {
                     k.step();
                 }
-                println!("  t={}: v(t)={}, K(t)={} mod {}",
-                         k.t, k.v_t, k.k_t, a_ref);
+                println!("  t={}: v(t)={}, K(t)={} mod {}", k.t, k.v_t, k.k_t, a_ref);
             }
 
             // At order: v(r) = 1

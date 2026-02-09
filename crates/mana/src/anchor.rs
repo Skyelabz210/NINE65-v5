@@ -97,12 +97,7 @@ impl KAnchor {
     }
 
     /// Exact division with verification
-    pub fn exact_divide_checked(
-        &self,
-        v_alpha: u128,
-        v_beta: u128,
-        divisor: u64,
-    ) -> Option<u128> {
+    pub fn exact_divide_checked(&self, v_alpha: u128, v_beta: u128, divisor: u64) -> Option<u128> {
         let k = self.extract_k(v_alpha, v_beta);
         let v_full = v_alpha + k * self.alpha_cap;
 
@@ -319,8 +314,7 @@ mod tests {
 
         for &coeff in &[0u64, 1, 100, 1000, 10000, 32768, 65536] {
             let scaled = anchor.scale_and_round(coeff, t, q);
-            let expected =
-                (((coeff as u128) * (t as u128) + (q as u128) / 2) / (q as u128)) as u64;
+            let expected = (((coeff as u128) * (t as u128) + (q as u128) / 2) / (q as u128)) as u64;
             assert_eq!(scaled, expected % q, "Scale failed for coeff={}", coeff);
         }
     }

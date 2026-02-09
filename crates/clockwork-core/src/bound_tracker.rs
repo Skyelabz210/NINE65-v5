@@ -84,7 +84,10 @@ impl Bound {
     /// # Panics
     /// Panics if `term_bounds` is empty.
     pub fn dot_product_bound(term_bounds: &[(u32, u32)]) -> Bound {
-        assert!(!term_bounds.is_empty(), "Dot product must have at least one term");
+        assert!(
+            !term_bounds.is_empty(),
+            "Dot product must have at least one term"
+        );
 
         let l = term_bounds.len() as u32;
         // ⌈log₂ L⌉ — integer computation
@@ -94,11 +97,7 @@ impl Bound {
             32 - (l - 1).leading_zeros()
         };
 
-        let max_product_bound = term_bounds
-            .iter()
-            .map(|(hw, hx)| hw + hx)
-            .max()
-            .unwrap();
+        let max_product_bound = term_bounds.iter().map(|(hw, hx)| hw + hx).max().unwrap();
 
         Bound {
             bits: log2_l + max_product_bound,

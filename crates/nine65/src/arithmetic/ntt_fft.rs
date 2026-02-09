@@ -22,7 +22,7 @@ use super::montgomery::MontgomeryContext;
 use super::persistent_montgomery::PersistentMontgomery;
 
 /// FFT-based NTT Engine - O(N log N) vs O(N²)
-/// 
+///
 /// Drop-in compatible with existing NTTEngine API
 #[derive(Clone)]
 pub struct NTTEngineFFT {
@@ -71,25 +71,28 @@ impl NTTEngineFFT {
     /// Create a new FFT-based NTT engine
     pub fn new(q: u64, n: usize) -> Self {
         assert!(n.is_power_of_two(), "N must be power of 2");
-        assert!((q - 1).is_multiple_of(2 * n as u64), "q-1 must be divisible by 2N");
-        
+        assert!(
+            (q - 1).is_multiple_of(2 * n as u64),
+            "q-1 must be divisible by 2N"
+        );
+
         let log_n = n.trailing_zeros() as usize;
         let mont = MontgomeryContext::new(q);
         let pm = PersistentMontgomery::new(q);
-        
+
         // Find primitive roots
         let psi = Self::find_primitive_root(q, 2 * n);
         let omega = mod_pow(psi, 2, q);
         let omega_inv = mod_inverse(omega, q);
         let psi_inv = mod_inverse(psi, q);
         let n_inv = mod_inverse(n as u64, q);
-        
+
         let n_inv_mont = mont.to_montgomery(n_inv);
-        
+
         // Precompute twiddle factors in Montgomery form
         let twiddles_fwd = Self::compute_twiddles(&mont, omega, n);
         let twiddles_inv = Self::compute_twiddles(&mont, omega_inv, n);
-        
+
         // Precompute ψ powers for twist/untwist
         let psi_powers_mont: Vec<u64> = (0..n)
             .map(|i| mont.to_montgomery(mod_pow(psi, i as u64, q)))
@@ -97,7 +100,7 @@ impl NTTEngineFFT {
         let psi_inv_powers_mont: Vec<u64> = (0..n)
             .map(|i| mont.to_montgomery(mod_pow(psi_inv, i as u64, q)))
             .collect();
-        
+
         Self {
             mont,
             pm,
@@ -111,7 +114,7 @@ impl NTTEngineFFT {
             twiddles_inv,
             psi_powers_mont,
             psi_inv_powers_mont,
-            
+
             // API compatibility (standard form)
             psi_inv,
             omega_inv,
@@ -122,22 +125,22 @@ impl NTTEngineFFT {
             omega_inv_powers: (0..n).map(|i| mod_pow(omega_inv, i as u64, q)).collect(),
         }
     }
-    
+
     /// Compute twiddle factors in bit-reversed order (Montgomery form)
     fn compute_twiddles(mont: &MontgomeryContext, omega: u64, n: usize) -> Vec<u64> {
         let q = mont.q;
         let mut twiddles = vec![0u64; n];
-        
+
         // Compute powers of omega
         let mut power = 1u64;
         for i in 0..n {
             twiddles[i] = mont.to_montgomery(power);
             power = ((power as u128 * omega as u128) % q as u128) as u64;
         }
-        
+
         twiddles
     }
-    
+
     /// Find primitive n-th root of unity
     fn find_primitive_root(q: u64, order: usize) -> u64 {
         let exp = (q - 1) / (order as u64);
@@ -150,13 +153,13 @@ impl NTTEngineFFT {
         }
         panic!("No primitive root found for q={}, order={}", q, order);
     }
-    
+
     /// Bit-reversal permutation index
     #[inline]
     fn bit_reverse(x: usize, bits: usize) -> usize {
         x.reverse_bits() >> (usize::BITS as usize - bits)
     }
-    
+
     /// In-place bit-reversal permutation
     fn bit_reverse_permute(&self, a: &mut [u64]) {
         for i in 0..self.n {
@@ -166,182 +169,189 @@ impl NTTEngineFFT {
             }
         }
     }
-    
+
     /// Forward NTT using Cooley-Tukey butterfly (in-place, Montgomery form)
-    /// 
+    ///
     /// Complexity: O(N log N) vs O(N²) for DFT
     pub fn ntt_inplace(&self, a: &mut [u64]) {
         debug_assert_eq!(a.len(), self.n);
-        
+
         // Bit-reverse permutation
         self.bit_reverse_permute(a);
-        
+
         // Cooley-Tukey butterfly stages
         let mut m = 1;
-        
+
         while m < self.n {
             let half_m = m;
             m *= 2;
-            
+
             // Twiddle factor step for this stage
             let t_step = self.n / m;
-            
+
             for k in (0..self.n).step_by(m) {
                 let mut t_idx = 0;
-                
+
                 for j in 0..half_m {
                     let u_idx = k + j;
                     let v_idx = k + j + half_m;
-                    
+
                     let u = a[u_idx];
                     // Multiply by twiddle in Montgomery form (PERSISTENT!)
                     let t = self.mont.montgomery_mul(self.twiddles_fwd[t_idx], a[v_idx]);
-                    
+
                     // Butterfly
                     a[u_idx] = self.mont_add(u, t);
                     a[v_idx] = self.mont_sub(u, t);
-                    
+
                     t_idx += t_step;
                 }
             }
-            
         }
     }
-    
+
     /// Inverse NTT using Cooley-Tukey butterfly (in-place, Montgomery form)
     pub fn intt_inplace(&self, a: &mut [u64]) {
         debug_assert_eq!(a.len(), self.n);
-        
+
         // Bit-reverse permutation
         self.bit_reverse_permute(a);
-        
+
         // Inverse Cooley-Tukey butterfly
         let mut m = 1;
-        
+
         while m < self.n {
             let half_m = m;
             m *= 2;
             let t_step = self.n / m;
-            
+
             for k in (0..self.n).step_by(m) {
                 let mut t_idx = 0;
-                
+
                 for j in 0..half_m {
                     let u_idx = k + j;
                     let v_idx = k + j + half_m;
-                    
+
                     let u = a[u_idx];
                     let t = self.mont.montgomery_mul(self.twiddles_inv[t_idx], a[v_idx]);
-                    
+
                     a[u_idx] = self.mont_add(u, t);
                     a[v_idx] = self.mont_sub(u, t);
-                    
+
                     t_idx += t_step;
                 }
             }
         }
-        
+
         // Multiply by N⁻¹
         for x in a.iter_mut() {
             *x = self.mont.montgomery_mul(*x, self.n_inv_mont);
         }
     }
-    
+
     /// Montgomery addition (stays in Montgomery form)
     #[inline]
     fn mont_add(&self, a: u64, b: u64) -> u64 {
         let sum = a + b;
-        if sum >= self.q { sum - self.q } else { sum }
+        if sum >= self.q {
+            sum - self.q
+        } else {
+            sum
+        }
     }
-    
+
     /// Montgomery subtraction (stays in Montgomery form)
     #[inline]
     fn mont_sub(&self, a: u64, b: u64) -> u64 {
-        if a >= b { a - b } else { self.q - b + a }
+        if a >= b {
+            a - b
+        } else {
+            self.q - b + a
+        }
     }
-    
+
     /// Forward NTT (allocating version for API compatibility)
     pub fn ntt(&self, a: &[u64]) -> Vec<u64> {
         let mut result = a.to_vec();
-        
+
         // Convert to Montgomery form
         for x in result.iter_mut() {
             *x = self.mont.to_montgomery(*x);
         }
-        
+
         self.ntt_inplace(&mut result);
-        
+
         // Convert back from Montgomery form
         for x in result.iter_mut() {
             *x = self.mont.from_montgomery(*x);
         }
-        
+
         result
     }
-    
+
     /// Inverse NTT (allocating version for API compatibility)
     pub fn intt(&self, a: &[u64]) -> Vec<u64> {
         let mut result = a.to_vec();
-        
+
         // Convert to Montgomery form
         for x in result.iter_mut() {
             *x = self.mont.to_montgomery(*x);
         }
-        
+
         self.intt_inplace(&mut result);
-        
+
         // Convert back from Montgomery form
         for x in result.iter_mut() {
             *x = self.mont.from_montgomery(*x);
         }
-        
+
         result
     }
-    
+
     /// Negacyclic polynomial multiplication using FFT NTT
-    /// 
+    ///
     /// Computes a * b mod (X^N + 1, q)
-    /// 
+    ///
     /// This is the HOT PATH - optimized for speed
     pub fn multiply(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
         debug_assert_eq!(a.len(), self.n);
         debug_assert_eq!(b.len(), self.n);
-        
+
         let mut a_work = Vec::with_capacity(self.n);
         let mut b_work = Vec::with_capacity(self.n);
-        
+
         // Step 1: Apply ψ-twist AND convert to Montgomery (fused)
         for i in 0..self.n {
-            let a_twisted = self.mont.montgomery_mul(
-                self.mont.to_montgomery(a[i]),
-                self.psi_powers_mont[i]
-            );
-            let b_twisted = self.mont.montgomery_mul(
-                self.mont.to_montgomery(b[i]),
-                self.psi_powers_mont[i]
-            );
+            let a_twisted = self
+                .mont
+                .montgomery_mul(self.mont.to_montgomery(a[i]), self.psi_powers_mont[i]);
+            let b_twisted = self
+                .mont
+                .montgomery_mul(self.mont.to_montgomery(b[i]), self.psi_powers_mont[i]);
             a_work.push(a_twisted);
             b_work.push(b_twisted);
         }
-        
+
         // Step 2: Forward NTT (in-place, stays in Montgomery)
         self.ntt_inplace(&mut a_work);
         self.ntt_inplace(&mut b_work);
-        
+
         // Step 3: Point-wise multiplication (Montgomery form)
         for i in 0..self.n {
             a_work[i] = self.mont.montgomery_mul(a_work[i], b_work[i]);
         }
-        
+
         // Step 4: Inverse NTT (in-place)
         self.intt_inplace(&mut a_work);
-        
+
         // Step 5: Remove ψ-twist AND convert from Montgomery (fused)
         for i in 0..self.n {
-            let untwisted = self.mont.montgomery_mul(a_work[i], self.psi_inv_powers_mont[i]);
+            let untwisted = self
+                .mont
+                .montgomery_mul(a_work[i], self.psi_inv_powers_mont[i]);
             a_work[i] = self.mont.from_montgomery(untwisted);
         }
-        
+
         a_work
     }
 
@@ -361,75 +371,94 @@ impl NTTEngineFFT {
     pub fn multiply_persistent(&self, a_mont: &[u64], b_mont: &[u64]) -> Vec<u64> {
         debug_assert_eq!(a_mont.len(), self.n);
         debug_assert_eq!(b_mont.len(), self.n);
-        
-        let mut a_work: Vec<u64> = a_mont.iter().enumerate()
+
+        let mut a_work: Vec<u64> = a_mont
+            .iter()
+            .enumerate()
             .map(|(i, &x)| self.mont.montgomery_mul(x, self.psi_powers_mont[i]))
             .collect();
-        
-        let mut b_work: Vec<u64> = b_mont.iter().enumerate()
+
+        let mut b_work: Vec<u64> = b_mont
+            .iter()
+            .enumerate()
             .map(|(i, &x)| self.mont.montgomery_mul(x, self.psi_powers_mont[i]))
             .collect();
-        
+
         self.ntt_inplace(&mut a_work);
         self.ntt_inplace(&mut b_work);
-        
+
         for i in 0..self.n {
             a_work[i] = self.mont.montgomery_mul(a_work[i], b_work[i]);
         }
-        
+
         self.intt_inplace(&mut a_work);
-        
+
         // Untwist but STAY in Montgomery form
         for i in 0..self.n {
-            a_work[i] = self.mont.montgomery_mul(a_work[i], self.psi_inv_powers_mont[i]);
+            a_work[i] = self
+                .mont
+                .montgomery_mul(a_work[i], self.psi_inv_powers_mont[i]);
         }
-        
+
         a_work
     }
-    
+
     // ========================================================================
     // API COMPATIBILITY with existing NTTEngine
     // ========================================================================
-    
+
     /// Add two polynomials coefficient-wise
     pub fn add(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
         debug_assert_eq!(a.len(), self.n);
         debug_assert_eq!(b.len(), self.n);
-        
-        a.iter().zip(b.iter())
+
+        a.iter()
+            .zip(b.iter())
             .map(|(&ai, &bi)| {
                 let sum = ai + bi;
-                if sum >= self.q { sum - self.q } else { sum }
+                if sum >= self.q {
+                    sum - self.q
+                } else {
+                    sum
+                }
             })
             .collect()
     }
-    
+
     /// Subtract two polynomials coefficient-wise
     pub fn sub(&self, a: &[u64], b: &[u64]) -> Vec<u64> {
         debug_assert_eq!(a.len(), self.n);
         debug_assert_eq!(b.len(), self.n);
-        
-        a.iter().zip(b.iter())
-            .map(|(&ai, &bi)| {
-                if ai >= bi { ai - bi } else { self.q - bi + ai }
-            })
+
+        a.iter()
+            .zip(b.iter())
+            .map(
+                |(&ai, &bi)| {
+                    if ai >= bi {
+                        ai - bi
+                    } else {
+                        self.q - bi + ai
+                    }
+                },
+            )
             .collect()
     }
-    
+
     /// Negate polynomial
     pub fn neg(&self, a: &[u64]) -> Vec<u64> {
         a.iter()
             .map(|&ai| if ai == 0 { 0 } else { self.q - ai })
             .collect()
     }
-    
+
     /// Scalar multiply
     pub fn scalar_mul(&self, a: &[u64], scalar: u64) -> Vec<u64> {
         let scalar_mont = self.mont.to_montgomery(scalar);
         a.iter()
             .map(|&ai| {
                 let ai_mont = self.mont.to_montgomery(ai);
-                self.mont.from_montgomery(self.mont.montgomery_mul(ai_mont, scalar_mont))
+                self.mont
+                    .from_montgomery(self.mont.montgomery_mul(ai_mont, scalar_mont))
             })
             .collect()
     }
@@ -441,7 +470,9 @@ impl NTTEngineFFT {
 
 /// Modular exponentiation
 fn mod_pow(base: u64, exp: u64, modulus: u64) -> u64 {
-    if modulus == 1 { return 0; }
+    if modulus == 1 {
+        return 0;
+    }
     let mut result = 1u64;
     let mut base = base % modulus;
     let mut exp = exp;
@@ -464,7 +495,9 @@ fn mod_inverse(a: u64, m: u64) -> u64 {
         mn = (mn.1, mn.0 - q * mn.1);
         xy = (xy.1, xy.0 - q * xy.1);
     }
-    while xy.0 < 0 { xy.0 += m as i128; }
+    while xy.0 < 0 {
+        xy.0 += m as i128;
+    }
     (xy.0 % m as i128) as u64
 }
 
@@ -475,56 +508,56 @@ fn mod_inverse(a: u64, m: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     const TEST_PRIME: u64 = 998244353;
-    
+
     #[test]
     fn test_ntt_intt_roundtrip() {
         let engine = NTTEngineFFT::new(TEST_PRIME, 8);
         let original: Vec<u64> = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        
+
         let ntt_result = engine.ntt(&original);
         let recovered = engine.intt(&ntt_result);
-        
+
         assert_eq!(recovered, original, "NTT/INTT roundtrip failed");
     }
-    
+
     #[test]
     fn test_multiply_small() {
         let engine = NTTEngineFFT::new(TEST_PRIME, 8);
-        
+
         let a = vec![1, 2, 3, 0, 0, 0, 0, 0];
         let b = vec![4, 5, 0, 0, 0, 0, 0, 0];
-        
+
         let result = engine.multiply(&a, &b);
-        
+
         // (1 + 2x + 3x²) * (4 + 5x) = 4 + 13x + 22x² + 15x³
         assert_eq!(result, vec![4, 13, 22, 15, 0, 0, 0, 0]);
     }
-    
+
     #[test]
     fn test_negacyclic() {
         let engine = NTTEngineFFT::new(TEST_PRIME, 4);
-        
+
         // x³ * x = x⁴ = -1 in X⁴ + 1
-        let a = vec![0, 0, 0, 1];  // x³
-        let b = vec![0, 1, 0, 0];  // x
-        
+        let a = vec![0, 0, 0, 1]; // x³
+        let b = vec![0, 1, 0, 0]; // x
+
         let result = engine.multiply(&a, &b);
-        
+
         // Result should be -1 = q-1
         assert_eq!(result, vec![TEST_PRIME - 1, 0, 0, 0]);
     }
-    
+
     #[test]
     fn test_vs_schoolbook() {
         let engine = NTTEngineFFT::new(TEST_PRIME, 8);
-        
+
         let a: Vec<u64> = (0..8).map(|i| (i * 12345) % TEST_PRIME).collect();
         let b: Vec<u64> = (0..8).map(|i| (i * 67890) % TEST_PRIME).collect();
-        
+
         let result = engine.multiply(&a, &b);
-        
+
         // Verify using schoolbook with negacyclic reduction
         let mut expected = vec![0i128; 8];
         for i in 0..8 {
@@ -534,18 +567,21 @@ mod tests {
                 if idx < 8 {
                     expected[idx] += prod;
                 } else {
-                    expected[idx - 8] -= prod;  // Negacyclic wraparound
+                    expected[idx - 8] -= prod; // Negacyclic wraparound
                 }
             }
         }
-        
-        let expected: Vec<u64> = expected.iter().map(|&x| {
-            let q = TEST_PRIME as i128;
-            (((x % q) + q) % q) as u64
-        }).collect();
-        
+
+        let expected: Vec<u64> = expected
+            .iter()
+            .map(|&x| {
+                let q = TEST_PRIME as i128;
+                (((x % q) + q) % q) as u64
+            })
+            .collect();
+
         assert_eq!(result, expected, "FFT multiply doesn't match schoolbook");
     }
-    
+
     // Timing benchmarks moved to criterion benches (benches/timing.rs)
 }

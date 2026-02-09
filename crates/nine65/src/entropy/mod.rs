@@ -45,40 +45,34 @@
 //! let ct = encryptor.encrypt_with_rng(42, &mut rng);
 //! ```
 
-pub mod shadow;
-pub mod secure;
 pub mod rng_trait;
+pub mod secure;
+pub mod shadow;
 
 #[cfg(any(test, feature = "deterministic_rng"))]
 pub mod deterministic;
 
 #[cfg(feature = "shadow-entropy")]
-pub mod wassan_noise;
-#[cfg(feature = "shadow-entropy")]
 pub mod crt_shadow;
+#[cfg(feature = "shadow-entropy")]
+pub mod wassan_noise;
 
+pub use rng_trait::{require_secure_rng, FheRng};
 pub use shadow::ShadowHarvester;
-pub use rng_trait::{FheRng, require_secure_rng};
 
 #[cfg(any(test, feature = "deterministic_rng"))]
 pub use deterministic::DeterministicRng;
 
 #[cfg(feature = "shadow-entropy")]
-pub use wassan_noise::WassanNoiseField;
+pub use crt_shadow::{
+    CRTShadowContext, IntegratedShadowRNS, QuotientSignature, ShadowAccumulator, ShadowStats,
+};
 #[cfg(feature = "shadow-entropy")]
-pub use crt_shadow::{CRTShadowContext, ShadowAccumulator, IntegratedShadowRNS, ShadowStats, QuotientSignature};
+pub use wassan_noise::WassanNoiseField;
 
 pub use secure::{
-    SecureRng,
-    secure_bytes,
-    secure_u64,
-    secure_u128,
-    secure_u64_bounded,
-    secure_ternary,
-    secure_cbd,
-    secure_cbd_vector,
-    secure_uniform_vector,
-    secure_ternary_vector,
+    secure_bytes, secure_cbd, secure_cbd_vector, secure_ternary, secure_ternary_vector,
+    secure_u128, secure_u64, secure_u64_bounded, secure_uniform_vector, SecureRng,
 };
 
 /// Generate a cryptographically secure seed from OS CSPRNG.

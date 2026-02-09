@@ -182,7 +182,7 @@ mod tests {
             RnsBasis::new(vec![7, 11, 13, 17, 19]).unwrap(),
             RnsBasis::new(vec![251, 509]).unwrap(),
             RnsBasis::new(vec![1021, 1031, 1033]).unwrap(),
-            RnsBasis::new(vec![65521, 65519]).unwrap(),  // near 2^16
+            RnsBasis::new(vec![65521, 65519]).unwrap(), // near 2^16
             RnsBasis::new(vec![251, 509, 521, 1021]).unwrap(),
         ];
 

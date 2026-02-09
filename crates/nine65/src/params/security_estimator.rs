@@ -90,8 +90,8 @@ impl LatticeSecurityEstimator {
         // Ternary secret penalty (vs Gaussian)
         // 850/1000 = 0.85 for ternary, 800/1000 = 0.80 for binary
         let ternary_penalty_per_mille: u32 = match secret_distribution {
-            SecretDistribution::Ternary => 850,  // ~15% reduction due to MITM
-            SecretDistribution::Binary => 800,   // ~20% reduction
+            SecretDistribution::Ternary => 850, // ~15% reduction due to MITM
+            SecretDistribution::Binary => 800,  // ~20% reduction
             SecretDistribution::Gaussian(_) => 1000,
         };
 
@@ -120,7 +120,7 @@ impl LatticeSecurityEstimator {
         // Apply cost model adjustment (1000 = 1.0, 900 = 0.9)
         let model_factor_per_mille: u32 = match self.cost_model {
             CostModel::CoreSVP => 1000,
-            CostModel::MATZOV => 900,  // MATZOV is ~10% more aggressive
+            CostModel::MATZOV => 900, // MATZOV is ~10% more aggressive
         };
 
         // Classical bits = base_security * model_factor / 1000 / 1000 (convert mb to bits)
@@ -129,8 +129,9 @@ impl LatticeSecurityEstimator {
         let classical_bits = (classical_bits_mb / 1000) as u32;
 
         // Hybrid bits = base_security * ternary_penalty * model_factor
-        let hybrid_bits_mb = (base_security_mb * ternary_penalty_per_mille as u64 * model_factor_per_mille as u64)
-            / 1_000_000;
+        let hybrid_bits_mb =
+            (base_security_mb * ternary_penalty_per_mille as u64 * model_factor_per_mille as u64)
+                / 1_000_000;
         let hybrid_bits = (hybrid_bits_mb / 1000) as u32;
 
         // Quantum bits ≈ hybrid * 0.67 (Grover speedup)
@@ -161,11 +162,20 @@ impl LatticeSecurityEstimator {
              Hybrid (ternary): {} bits\n\
              Quantum: {} bits\n\
              Effective: {} bits ({})",
-            n, log_q, secret_distribution,
-            ratio_int, ratio_frac,
-            classical_bits, hybrid_bits, quantum_bits,
+            n,
+            log_q,
+            secret_distribution,
+            ratio_int,
+            ratio_frac,
+            classical_bits,
+            hybrid_bits,
+            quantum_bits,
             effective_bits,
-            if meets_claim { "MEETS CLAIM" } else { "FAILS CLAIM" }
+            if meets_claim {
+                "MEETS CLAIM"
+            } else {
+                "FAILS CLAIM"
+            }
         );
 
         SecurityEstimate {
@@ -193,7 +203,7 @@ impl LatticeSecurityEstimator {
         // Use lookup table for common ranges
         // delta_millionths: 1_000_000 = 1.0, 1_005_000 = 1.005, etc.
         if delta_millionths >= 1_010_000 {
-            return 50;  // Very insecure
+            return 50; // Very insecure
         }
         if delta_millionths >= 1_007_000 {
             return 100;
@@ -400,21 +410,30 @@ mod tests {
         // With log(q)=30, we exceed the boundary → lower security
         let est = estimator.estimate(1024, 30, SecretDistribution::Ternary, 80);
         println!("light: {}", est.analysis);
-        assert!(est.effective_bits < 128, "light should have <128 bit security");
+        assert!(
+            est.effective_bits < 128,
+            "light should have <128 bit security"
+        );
 
         // Test N=4096, log(q)=90
         // HE Standard: N=4096 with log(q)≤109 gives 128-bit
         // With log(q)=90, should be comfortably within bounds
         let est = estimator.estimate(4096, 90, SecretDistribution::Ternary, 128);
         println!("standard: {}", est.analysis);
-        assert!(est.effective_bits >= 100, "N=4096 with log(q)=90 should have >=100 bit security");
+        assert!(
+            est.effective_bits >= 100,
+            "N=4096 with log(q)=90 should have >=100 bit security"
+        );
 
         // Test N=8192, log(q)=90
         // HE Standard: N=8192 with log(q)≤218 gives 128-bit
         // With only log(q)=90, should have excellent security
         let est = estimator.estimate(8192, 90, SecretDistribution::Ternary, 128);
         println!("high: {}", est.analysis);
-        assert!(est.effective_bits >= 200, "N=8192 with log(q)=90 should have >=200 bit security");
+        assert!(
+            est.effective_bits >= 200,
+            "N=8192 with log(q)=90 should have >=200 bit security"
+        );
     }
 
     #[test]
@@ -426,8 +445,8 @@ mod tests {
 
         // Check compliance
         assert!(!HEStandardBounds::is_compliant(1024, 30, 128)); // Exceeds
-        assert!(HEStandardBounds::is_compliant(2048, 30, 128));  // OK
-        assert!(HEStandardBounds::is_compliant(4096, 90, 128));  // OK
+        assert!(HEStandardBounds::is_compliant(2048, 30, 128)); // OK
+        assert!(HEStandardBounds::is_compliant(4096, 90, 128)); // OK
     }
 
     #[test]

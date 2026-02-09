@@ -19,16 +19,16 @@
 //! ```
 
 #[cfg(feature = "accelerated")]
-use mana::stream::ManaStream;
-#[cfg(feature = "accelerated")]
 use mana::anchor::AnchorContext;
+#[cfg(feature = "accelerated")]
+use mana::stream::ManaStream;
 #[cfg(feature = "accelerated")]
 use unhal::accelerator::{Accelerator, AcceleratorConfig};
 
 use crate::arithmetic::rns::{RNSContext, RNSPolynomial};
+use crate::ops::Ciphertext;
 use crate::params::FHEConfig;
 use crate::ring::RingPolynomial;
-use crate::ops::Ciphertext;
 
 /// Accelerated FHE context using MANA/UNHAL
 #[cfg(feature = "accelerated")]
@@ -93,10 +93,7 @@ impl AcceleratedFHE {
             .map(|lane| lane.coeffs.clone())
             .collect();
 
-        RNSPolynomial {
-            limbs,
-            n: stream.n,
-        }
+        RNSPolynomial { limbs, n: stream.n }
     }
 
     /// Accelerated ciphertext addition
@@ -234,11 +231,7 @@ impl AcceleratedRNS {
             let result = self.accel.add_streams(&stream_a, &stream_b);
 
             // Extract first coefficient from each lane
-            result
-                .lanes
-                .iter()
-                .map(|lane| lane.coeffs[0])
-                .collect()
+            result.lanes.iter().map(|lane| lane.coeffs[0]).collect()
         }
     }
 
@@ -251,11 +244,7 @@ impl AcceleratedRNS {
             let stream_b = ManaStream::from_ints(b, &self.base.primes);
             let result = self.accel.mul_streams(&stream_a, &stream_b);
 
-            result
-                .lanes
-                .iter()
-                .map(|lane| lane.coeffs[0])
-                .collect()
+            result.lanes.iter().map(|lane| lane.coeffs[0]).collect()
         }
     }
 }

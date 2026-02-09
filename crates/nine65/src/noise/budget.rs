@@ -30,7 +30,7 @@
 use crate::params::FHEConfig;
 
 /// Noise budget in millibits (1000 millibits = 1 bit)
-/// 
+///
 /// Tracks remaining noise budget through FHE operations.
 /// When budget reaches 0, decryption will fail.
 #[derive(Clone, Debug)]
@@ -88,8 +88,11 @@ pub struct NoiseExhausted {
 
 impl std::fmt::Display for NoiseExhausted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Noise budget exhausted: needed {} millibits, had {} (after {} ops)",
-               self.required_mb, self.available_mb, self.operation_count)
+        write!(
+            f,
+            "Noise budget exhausted: needed {} millibits, had {} (after {} ops)",
+            self.required_mb, self.available_mb, self.operation_count
+        )
     }
 }
 
@@ -102,26 +105,34 @@ impl NoiseBudget {
     /// where Δ = q/t is the scaling factor and initial_noise depends on η
     pub fn from_config(config: &FHEConfig) -> Self {
         let delta = config.delta();
-        
+
         // log2(Δ) in millibits
-        let delta_bits = if delta > 0 { 64 - delta.leading_zeros() } else { 0 };
+        let delta_bits = if delta > 0 {
+            64 - delta.leading_zeros()
+        } else {
+            0
+        };
         let delta_mb = (delta_bits as i64) * 1000;
-        
+
         // Initial noise estimate: η × √N × constant
         // In millibits: approximately (log2(η) + log2(N)/2 + 3) × 1000
-        let eta_bits = if config.eta > 0 { 64 - (config.eta as u64).leading_zeros() } else { 1 };
-        let n_bits = config.n.trailing_zeros();  // log2(N) since N is power of 2
+        let eta_bits = if config.eta > 0 {
+            64 - (config.eta as u64).leading_zeros()
+        } else {
+            1
+        };
+        let n_bits = config.n.trailing_zeros(); // log2(N) since N is power of 2
         let initial_noise_mb = ((eta_bits as i64) + (n_bits as i64 / 2) + 3) * 1000;
-        
+
         let budget_mb = delta_mb.saturating_sub(initial_noise_mb);
-        
+
         Self {
             remaining_mb: budget_mb,
             initial_mb: budget_mb,
             operations: Vec::new(),
         }
     }
-    
+
     /// Create with specific initial budget (for testing)
     pub fn with_budget_bits(bits: i64) -> Self {
         let mb = bits * 1000;
@@ -131,7 +142,7 @@ impl NoiseBudget {
             operations: Vec::new(),
         }
     }
-    
+
     /// Consume noise budget for an operation
     ///
     /// Returns `Ok(remaining)` if budget sufficient, `Err(NoiseExhausted)` otherwise.
@@ -144,18 +155,18 @@ impl NoiseBudget {
                 last_op: op_type,
             });
         }
-        
+
         self.remaining_mb -= cost_mb;
-        
+
         self.operations.push(NoiseOperation {
             op_type,
             cost_mb,
             remaining_mb: self.remaining_mb,
         });
-        
+
         Ok(self.remaining_mb)
     }
-    
+
     /// Estimate cost of encryption
     pub fn encrypt_cost(config: &FHEConfig) -> i64 {
         // Encryption adds error e with distribution CBD(η)
@@ -164,19 +175,19 @@ impl NoiseBudget {
         let n_bits = config.n.trailing_zeros();
         ((eta_bits as i64) + (n_bits as i64 / 2)) * 1000
     }
-    
+
     /// Estimate cost of homomorphic addition
     pub fn add_cost() -> i64 {
         // Addition roughly doubles noise, cost ≈ 1 bit = 1000 millibits
         1000
     }
-    
+
     /// Estimate cost of plaintext addition
     pub fn add_plain_cost() -> i64 {
         // Minimal noise increase
         100
     }
-    
+
     /// Estimate cost of plaintext multiplication
     pub fn mul_plain_cost(config: &FHEConfig) -> i64 {
         // Noise multiplied by plaintext coefficient bound
@@ -184,7 +195,7 @@ impl NoiseBudget {
         let t_bits = 64 - config.t.leading_zeros();
         (t_bits as i64) * 1000
     }
-    
+
     /// Estimate cost of ciphertext multiplication
     pub fn mul_ct_cost(config: &FHEConfig) -> i64 {
         // Most expensive operation
@@ -194,7 +205,7 @@ impl NoiseBudget {
         let eta_bits = 64 - (config.eta as u64).leading_zeros();
         ((t_bits as i64) + (n_bits as i64) + (eta_bits as i64)) * 1000
     }
-    
+
     /// Estimate cost of relinearization
     pub fn relin_cost(config: &FHEConfig) -> i64 {
         // Depends on decomposition base
@@ -211,7 +222,7 @@ impl NoiseBudget {
         // Rescaling divides by t, reducing noise by log2(t) bits
         // This is a GAIN (negative cost)
         let t_bits = 64 - config.t.leading_zeros();
-        -((t_bits as i64) * 1000)  // Negative = gives back budget
+        -((t_bits as i64) * 1000) // Negative = gives back budget
     }
 
     /// Estimate net cost of one multiplication cycle (mul + relin + rescale)
@@ -220,7 +231,7 @@ impl NoiseBudget {
     pub fn multiplication_cycle_cost(config: &FHEConfig) -> i64 {
         let mul_cost = Self::mul_ct_cost(config);
         let relin_cost = Self::relin_cost(config);
-        let rescale_gain = Self::rescale_cost(config);  // Negative
+        let rescale_gain = Self::rescale_cost(config); // Negative
         mul_cost + relin_cost + rescale_gain
     }
 
@@ -228,34 +239,40 @@ impl NoiseBudget {
     pub fn remaining_millibits(&self) -> i64 {
         self.remaining_mb
     }
-    
+
     /// Get initial budget in millibits
     pub fn initial_millibits(&self) -> i64 {
         self.initial_mb
     }
-    
+
     /// Check if operation can be performed
     pub fn can_perform(&self, cost_mb: i64) -> bool {
         self.remaining_mb >= cost_mb
     }
-    
+
     /// Estimate how many more multiplications can be performed
     pub fn remaining_multiplications(&self, config: &FHEConfig) -> usize {
         let mul_cost = Self::mul_ct_cost(config) + Self::relin_cost(config);
-        if mul_cost <= 0 { return usize::MAX; }
+        if mul_cost <= 0 {
+            return usize::MAX;
+        }
         (self.remaining_mb / mul_cost) as usize
     }
-    
+
     /// Get operation history
     pub fn operations(&self) -> &[NoiseOperation] {
         &self.operations
     }
-    
+
     /// Get summary statistics
     pub fn summary(&self) -> String {
         use crate::arithmetic::integer_math::format_millibits;
         let used = self.initial_mb - self.remaining_mb;
-        let used_percent = if self.initial_mb > 0 { (used * 100) / self.initial_mb } else { 100 };
+        let used_percent = if self.initial_mb > 0 {
+            (used * 100) / self.initial_mb
+        } else {
+            100
+        };
         format!(
             "Noise Budget: {}/{} bits remaining ({}% used, {} ops)",
             format_millibits(self.remaining_mb.max(0) as u64),
@@ -281,9 +298,12 @@ mod tests {
     fn test_noise_budget_creation() {
         let config = SecureConfig::secure_128().into_config();
         let budget = NoiseBudget::from_config(&config);
-        
+
         println!("Light config budget: {}", budget);
-        assert!(budget.remaining_millibits() > 0, "Should have positive budget");
+        assert!(
+            budget.remaining_millibits() > 0,
+            "Should have positive budget"
+        );
     }
 
     #[test]
@@ -294,80 +314,94 @@ mod tests {
         let initial = budget.remaining_millibits();
 
         // Perform addition
-        budget.consume(NoiseOpType::Add, NoiseBudget::add_cost()).unwrap();
+        budget
+            .consume(NoiseOpType::Add, NoiseBudget::add_cost())
+            .unwrap();
 
-        assert!(budget.remaining_millibits() < initial, "Budget should decrease");
+        assert!(
+            budget.remaining_millibits() < initial,
+            "Budget should decrease"
+        );
         assert_eq!(budget.operations().len(), 1);
     }
-    
+
     #[test]
     fn test_noise_budget_exhaustion() {
-        let mut budget = NoiseBudget::with_budget_bits(5);  // Only 5 bits
-        
+        let mut budget = NoiseBudget::with_budget_bits(5); // Only 5 bits
+
         // Try expensive operation
-        let result = budget.consume(NoiseOpType::MulCt, 10000);  // 10 bits needed
-        
+        let result = budget.consume(NoiseOpType::MulCt, 10000); // 10 bits needed
+
         assert!(result.is_err(), "Should fail when budget exhausted");
         if let Err(e) = result {
             assert_eq!(e.last_op, NoiseOpType::MulCt);
         }
     }
-    
+
     #[test]
     fn test_noise_budget_tracking() {
         // Use explicit budget for predictable test behavior
-        let mut budget = NoiseBudget::with_budget_bits(50);  // 50 bits = plenty of room
-        
+        let mut budget = NoiseBudget::with_budget_bits(50); // 50 bits = plenty of room
+
         println!("Initial: {}", budget);
-        
+
         // Simulate operations with fixed costs
-        let r1 = budget.consume(NoiseOpType::Encrypt, 5000);  // 5 bits
+        let r1 = budget.consume(NoiseOpType::Encrypt, 5000); // 5 bits
         println!("After encrypt: {} (result: {:?})", budget, r1.is_ok());
         assert!(r1.is_ok(), "Encrypt should succeed");
-        
-        let r2 = budget.consume(NoiseOpType::Add, 1000);  // 1 bit
+
+        let r2 = budget.consume(NoiseOpType::Add, 1000); // 1 bit
         println!("After add: {} (result: {:?})", budget, r2.is_ok());
         assert!(r2.is_ok(), "Add should succeed");
-        
-        let r3 = budget.consume(NoiseOpType::MulPlain, 10000);  // 10 bits
+
+        let r3 = budget.consume(NoiseOpType::MulPlain, 10000); // 10 bits
         println!("After mul_plain: {} (result: {:?})", budget, r3.is_ok());
         assert!(r3.is_ok(), "MulPlain should succeed");
-        
+
         // Check all operations were recorded
         assert_eq!(budget.operations().len(), 3);
-        
+
         // Verify budget decreased correctly
         assert_eq!(budget.remaining_millibits(), 50000 - 5000 - 1000 - 10000);
     }
-    
+
     #[test]
     fn test_remaining_multiplications() {
         let config = SecureConfig::secure_128().into_config();
         let budget = NoiseBudget::from_config(&config);
-        
+
         let remaining_muls = budget.remaining_multiplications(&config);
-        println!("Remaining multiplications for light_mul: {}", remaining_muls);
+        println!(
+            "Remaining multiplications for light_mul: {}",
+            remaining_muls
+        );
     }
-    
+
     #[test]
     fn test_he_standard_budget() {
         let config = SecureConfig::secure_128().into_config();
         let budget = NoiseBudget::from_config(&config);
 
         println!("HE Standard 128 budget: {}", budget);
-        println!("Remaining multiplications: {}", budget.remaining_multiplications(&config));
+        println!(
+            "Remaining multiplications: {}",
+            budget.remaining_multiplications(&config)
+        );
 
-        assert!(budget.remaining_millibits() > 0, "HE Standard should have positive budget");
+        assert!(
+            budget.remaining_millibits() > 0,
+            "HE Standard should have positive budget"
+        );
     }
 
     #[test]
     fn test_deep_circuit_precision() {
         // Verify millibits precision is sufficient for depth-100 circuits
-        let mut budget = NoiseBudget::with_budget_bits(50);  // 50,000 millibits
+        let mut budget = NoiseBudget::with_budget_bits(50); // 50,000 millibits
 
         // Simulate 100 operations with varying costs
         for i in 0..100 {
-            let cost = 100 + (i % 10) * 10;  // 100-190 millibits per op
+            let cost = 100 + (i % 10) * 10; // 100-190 millibits per op
             let _ = budget.consume(NoiseOpType::Add, cost);
         }
 
@@ -383,8 +417,12 @@ mod tests {
         // Verify operation count
         assert_eq!(budget.operations().len(), 100);
 
-        println!("Depth-100 precision test: {} millibits remaining ({}.{:03} bits)",
-                 remaining, remaining / 1000, remaining % 1000);
+        println!(
+            "Depth-100 precision test: {} millibits remaining ({}.{:03} bits)",
+            remaining,
+            remaining / 1000,
+            remaining % 1000
+        );
         println!("Max cumulative rounding error: 50 millibits (0.05 bits)");
     }
 }

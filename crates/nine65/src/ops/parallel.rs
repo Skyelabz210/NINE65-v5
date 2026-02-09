@@ -47,7 +47,7 @@ use crate::arithmetic::NTTEngine;
 use crate::entropy::ShadowHarvester;
 use crate::errors::Nine65Result;
 use crate::keys::{PublicKey, SecretKey};
-use crate::ops::encrypt::{BFVEncoder, BFVEncryptor, BFVDecryptor, Ciphertext};
+use crate::ops::encrypt::{BFVDecryptor, BFVEncoder, BFVEncryptor, Ciphertext};
 
 /// Parallel encryptor for high-throughput encryption
 ///
@@ -64,7 +64,12 @@ pub struct ParallelEncryptor<'a> {
 impl<'a> ParallelEncryptor<'a> {
     /// Create a new parallel encryptor
     pub fn new(pk: &'a PublicKey, encoder: &'a BFVEncoder, ntt: &'a NTTEngine, eta: usize) -> Self {
-        Self { pk, encoder, ntt, eta }
+        Self {
+            pk,
+            encoder,
+            ntt,
+            eta,
+        }
     }
 
     /// Encrypt multiple messages in parallel (deterministic, for testing)
@@ -127,7 +132,10 @@ impl<'a> ParallelEncryptor<'a> {
     ///
     /// For advanced use cases where pre-encoded plaintexts need encryption.
     #[cfg(feature = "parallel")]
-    pub fn encrypt_polys_par_secure(&self, plaintexts: &[crate::ring::RingPolynomial]) -> Vec<Ciphertext> {
+    pub fn encrypt_polys_par_secure(
+        &self,
+        plaintexts: &[crate::ring::RingPolynomial],
+    ) -> Vec<Ciphertext> {
         plaintexts
             .par_iter()
             .map(|pt| {
@@ -177,7 +185,10 @@ impl<'a> ParallelEncryptor<'a> {
 
     /// Sequential fallback for polynomial encryption
     #[cfg(not(feature = "parallel"))]
-    pub fn encrypt_polys_par_secure(&self, plaintexts: &[crate::ring::RingPolynomial]) -> Vec<Ciphertext> {
+    pub fn encrypt_polys_par_secure(
+        &self,
+        plaintexts: &[crate::ring::RingPolynomial],
+    ) -> Vec<Ciphertext> {
         let encryptor = BFVEncryptor::new(self.pk, self.encoder, self.ntt, self.eta);
         plaintexts
             .iter()
@@ -220,7 +231,11 @@ impl<'a> ParallelDecryptor<'a> {
     ///
     /// For batch-encoded ciphertexts where each contains multiple values.
     #[cfg(feature = "parallel")]
-    pub fn decrypt_vectors_par(&self, ciphertexts: &[Ciphertext], values_per_ct: usize) -> Vec<Vec<u64>> {
+    pub fn decrypt_vectors_par(
+        &self,
+        ciphertexts: &[Ciphertext],
+        values_per_ct: usize,
+    ) -> Vec<Vec<u64>> {
         ciphertexts
             .par_iter()
             .map(|ct| {
@@ -238,15 +253,16 @@ impl<'a> ParallelDecryptor<'a> {
     #[cfg(not(feature = "parallel"))]
     pub fn decrypt_batch_par(&self, ciphertexts: &[Ciphertext]) -> Vec<u64> {
         let decryptor = BFVDecryptor::new(self.sk, self.encoder, self.ntt);
-        ciphertexts
-            .iter()
-            .map(|ct| decryptor.decrypt(ct))
-            .collect()
+        ciphertexts.iter().map(|ct| decryptor.decrypt(ct)).collect()
     }
 
     /// Sequential fallback for vector decryption
     #[cfg(not(feature = "parallel"))]
-    pub fn decrypt_vectors_par(&self, ciphertexts: &[Ciphertext], values_per_ct: usize) -> Vec<Vec<u64>> {
+    pub fn decrypt_vectors_par(
+        &self,
+        ciphertexts: &[Ciphertext],
+        values_per_ct: usize,
+    ) -> Vec<Vec<u64>> {
         let decryptor = BFVDecryptor::new(self.sk, self.encoder, self.ntt);
         ciphertexts
             .iter()
@@ -267,8 +283,8 @@ impl<'a> ParallelDecryptor<'a> {
 mod tests {
     use super::*;
     use crate::keys::KeySet;
-    use crate::params::FHEConfig;
     use crate::params::secure_configs::SecureConfig;
+    use crate::params::FHEConfig;
 
     fn setup() -> (FHEConfig, NTTEngine, KeySet, BFVEncoder) {
         let config = SecureConfig::test_fast().into_config();
@@ -371,13 +387,21 @@ mod tests {
         let decrypt_time = start.elapsed();
 
         let enc_ns_per_msg = encrypt_time.as_nanos() / count as u128;
-        println!("Parallel encrypt {} messages: {:?} ({}.{:03} us/msg)",
-                 count, encrypt_time,
-                 enc_ns_per_msg / 1000, enc_ns_per_msg % 1000);
+        println!(
+            "Parallel encrypt {} messages: {:?} ({}.{:03} us/msg)",
+            count,
+            encrypt_time,
+            enc_ns_per_msg / 1000,
+            enc_ns_per_msg % 1000
+        );
         let dec_ns_per_msg = decrypt_time.as_nanos() / count as u128;
-        println!("Parallel decrypt {} messages: {:?} ({}.{:03} us/msg)",
-                 count, decrypt_time,
-                 dec_ns_per_msg / 1000, dec_ns_per_msg % 1000);
+        println!(
+            "Parallel decrypt {} messages: {:?} ({}.{:03} us/msg)",
+            count,
+            decrypt_time,
+            dec_ns_per_msg / 1000,
+            dec_ns_per_msg % 1000
+        );
 
         // Verify correctness
         assert_eq!(decrypted, messages);

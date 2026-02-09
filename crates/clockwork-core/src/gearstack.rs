@@ -284,7 +284,11 @@ impl GearStack {
     pub fn verify_bound(&self) -> Result<(), GearError> {
         let centered = self.decode_centered();
         let abs_val = centered.unsigned_abs();
-        let actual_bits = if abs_val == 0 { 0 } else { 128 - abs_val.leading_zeros() };
+        let actual_bits = if abs_val == 0 {
+            0
+        } else {
+            128 - abs_val.leading_zeros()
+        };
 
         if actual_bits > self.bound.bits() {
             return Err(GearError::BoundViolation {
@@ -461,6 +465,9 @@ mod tests {
         // Tiny basis that can't hold large values
         let tiny = RnsBasis::new(vec![7, 11]).unwrap(); // M = 77, ~6.3 bits
         let result = GearStack::from_value(50, 10, tiny);
-        assert!(result.is_err(), "Should reject: 10 + 8 guard > 6 bit capacity");
+        assert!(
+            result.is_err(),
+            "Should reject: 10 + 8 guard > 6 bit capacity"
+        );
     }
 }

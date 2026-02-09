@@ -4,10 +4,10 @@
 //! NINE65's modular residue types for exact parameter computation.
 
 use nexgen_rational::exact_coeff::ExactCoeff as NGExactCoeff;
-use nexgen_rational::rat_ng::types::{NexGenRat, DivOut};
 use nexgen_rational::rat_ng::error::ArithmeticError as NGError;
 use nexgen_rational::rat_ng::ops;
 use nexgen_rational::rat_ng::policy;
+use nexgen_rational::rat_ng::types::{DivOut, NexGenRat};
 
 /// Bridge between exact rationals and RNS residue representation.
 ///
@@ -79,8 +79,7 @@ impl RationalBridge {
     pub fn to_residue(&self, p: u64) -> u64 {
         let num = self.inner.numerator().0.rem_euclid(p as i128) as u64;
         let den = self.inner.denominator().0.rem_euclid(p as i128) as u64;
-        let den_inv = mod_inverse_u64(den, p)
-            .expect("denominator must be invertible mod p");
+        let den_inv = mod_inverse_u64(den, p).expect("denominator must be invertible mod p");
         ((num as u128 * den_inv as u128) % p as u128) as u64
     }
 
@@ -193,7 +192,7 @@ mod tests {
     fn bridge_arithmetic_ops() {
         let a = RationalBridge::new(1, 3).unwrap(); // 1/3
         let b = RationalBridge::new(1, 7).unwrap(); // 1/7
-        let sum = a.add(&b).unwrap();               // 10/21
+        let sum = a.add(&b).unwrap(); // 10/21
         assert_eq!(sum.to_residue(17), {
             // 10/21 mod 17 = 10 * 21^(-1) mod 17 = 10 * 13 mod 17
             // (since 21 = 4 mod 17, 4^-1 = 13) = 130 mod 17 = 11

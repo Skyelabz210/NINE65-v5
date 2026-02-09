@@ -29,19 +29,27 @@ use nine65::arithmetic::NTTEngine;
 #[test]
 fn test_secure_128_is_production_safe() {
     let config = SecureConfig::secure_128();
-    assert!(config.is_production_safe(),
-            "secure_128 should be production safe");
-    assert!(config.hybrid_security >= 100,
-            "secure_128 should have >= 100 bits hybrid security");
+    assert!(
+        config.is_production_safe(),
+        "secure_128 should be production safe"
+    );
+    assert!(
+        config.hybrid_security >= 100,
+        "secure_128 should have >= 100 bits hybrid security"
+    );
 }
 
 #[test]
 fn test_secure_192_meets_security_claims() {
     let config = SecureConfig::secure_192();
-    assert!(config.is_production_safe(),
-            "secure_192 should be production safe");
-    assert!(config.hybrid_security >= 150,
-            "secure_192 should have >= 150 bits hybrid security");
+    assert!(
+        config.is_production_safe(),
+        "secure_192 should be production safe"
+    );
+    assert!(
+        config.hybrid_security >= 150,
+        "secure_192 should have >= 150 bits hybrid security"
+    );
 }
 
 // Note: test_fast() is only available in unit tests (lib) due to cfg attributes.
@@ -52,13 +60,20 @@ fn test_secure_config_security_levels() {
     let secure_192 = SecureConfig::secure_192();
 
     // Verify security levels increase appropriately
-    assert!(secure_192.hybrid_security > secure_128.hybrid_security,
-            "secure_192 should have higher security than secure_128");
+    assert!(
+        secure_192.hybrid_security > secure_128.hybrid_security,
+        "secure_192 should have higher security than secure_128"
+    );
 
     // Verify quantum security is also estimated
-    assert!(secure_128.quantum_security > 0, "Should have quantum security estimate");
-    assert!(secure_192.quantum_security > secure_128.quantum_security,
-            "secure_192 should have higher quantum security");
+    assert!(
+        secure_128.quantum_security > 0,
+        "Should have quantum security estimate"
+    );
+    assert!(
+        secure_192.quantum_security > secure_128.quantum_security,
+        "secure_192 should have higher quantum security"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -99,8 +114,10 @@ fn test_secure_encryption_produces_different_ciphertexts() {
     let ct1 = encryptor.encrypt_secure(42);
     let ct2 = encryptor.encrypt_secure(42);
 
-    assert_ne!(ct1.c0.coeffs, ct2.c0.coeffs,
-               "Secure encryption should produce different ciphertexts");
+    assert_ne!(
+        ct1.c0.coeffs, ct2.c0.coeffs,
+        "Secure encryption should produce different ciphertexts"
+    );
 }
 
 #[test]
@@ -118,7 +135,10 @@ fn test_rng_trait_secure_vs_deterministic() {
 
     // Test with ShadowHarvester (testing)
     let mut shadow_rng = ShadowHarvester::with_seed(123);
-    assert!(!shadow_rng.is_secure(), "ShadowHarvester should NOT be secure");
+    assert!(
+        !shadow_rng.is_secure(),
+        "ShadowHarvester should NOT be secure"
+    );
     let ct_shadow = encryptor.encrypt_with_rng(42, &mut shadow_rng);
     assert_eq!(decryptor.decrypt(&ct_shadow), 42);
 }
@@ -175,7 +195,10 @@ fn test_fallible_encryption_out_of_bounds() {
     let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
 
     let result = encryptor.try_encrypt_secure(config.t);
-    assert!(result.is_err(), "Encryption of out-of-bounds message should fail");
+    assert!(
+        result.is_err(),
+        "Encryption of out-of-bounds message should fail"
+    );
 
     match result.unwrap_err() {
         Nine65Error::MessageOutOfBounds { .. } => {}
@@ -185,10 +208,17 @@ fn test_fallible_encryption_out_of_bounds() {
 
 #[test]
 fn test_error_categories() {
-    let encoding_err = Nine65Error::MessageOutOfBounds { message: 100, modulus: 50 };
+    let encoding_err = Nine65Error::MessageOutOfBounds {
+        message: 100,
+        modulus: 50,
+    };
     assert_eq!(encoding_err.category(), "Encoding");
 
-    let kelim_err = Nine65Error::NotCoprime { m: 10, a: 15, gcd: 5 };
+    let kelim_err = Nine65Error::NotCoprime {
+        m: 10,
+        a: 15,
+        gcd: 5,
+    };
     assert_eq!(kelim_err.category(), "K-Elimination");
 
     let crypto_err = Nine65Error::DecryptionFailed;
@@ -214,13 +244,21 @@ fn test_montgomery_operations_consistent() {
         let result_mont = ctx.montgomery_mul(a_mont, b_mont);
         let result = ctx.from_montgomery(result_mont);
         let expected = ((a as u128 * b as u128) % 998244353) as u64;
-        assert_eq!(result, expected, "Montgomery mul failed for a={}, b={}", a, b);
+        assert_eq!(
+            result, expected,
+            "Montgomery mul failed for a={}, b={}",
+            a, b
+        );
 
         // Add
         let sum_mont = ctx.montgomery_add(a_mont, b_mont);
         let sum = ctx.from_montgomery(sum_mont);
         let expected_sum = (a + b) % 998244353;
-        assert_eq!(sum, expected_sum, "Montgomery add failed for a={}, b={}", a, b);
+        assert_eq!(
+            sum, expected_sum,
+            "Montgomery add failed for a={}, b={}",
+            a, b
+        );
     }
 }
 
@@ -240,7 +278,11 @@ fn test_k_elimination_ct_matches_vartime() {
         #[allow(deprecated)]
         let k_vartime = ke.extract_k_vartime(v_alpha, v_beta);
 
-        assert_eq!(k_ct, k_vartime, "CT and vartime extract_k differ for v={}", v);
+        assert_eq!(
+            k_ct, k_vartime,
+            "CT and vartime extract_k differ for v={}",
+            v
+        );
     }
 }
 
@@ -285,8 +327,14 @@ fn test_full_secure_pipeline() {
         c0: ct1.c0.add(&ct2.c0, &ntt),
         c1: ct1.c1.add(&ct2.c1, &ntt),
     };
-    assert_eq!(decryptor.decrypt(&ct_sum), m1 + m2,
-               "Homomorphic addition failed: {} + {} != {}", m1, m2, m1 + m2);
+    assert_eq!(
+        decryptor.decrypt(&ct_sum),
+        m1 + m2,
+        "Homomorphic addition failed: {} + {} != {}",
+        m1,
+        m2,
+        m1 + m2
+    );
 }
 
 #[test]
@@ -317,15 +365,16 @@ fn test_ciphertext_randomness() {
     let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
 
     // Encrypt same message multiple times
-    let ciphertexts: Vec<Ciphertext> = (0..10)
-        .map(|_| encryptor.encrypt_secure(42))
-        .collect();
+    let ciphertexts: Vec<Ciphertext> = (0..10).map(|_| encryptor.encrypt_secure(42)).collect();
 
     // All ciphertexts should be different (IND-CPA property)
     for i in 0..ciphertexts.len() {
         for j in (i + 1)..ciphertexts.len() {
-            assert_ne!(ciphertexts[i].c0.coeffs, ciphertexts[j].c0.coeffs,
-                       "Ciphertexts {} and {} should be different", i, j);
+            assert_ne!(
+                ciphertexts[i].c0.coeffs, ciphertexts[j].c0.coeffs,
+                "Ciphertexts {} and {} should be different",
+                i, j
+            );
         }
     }
 }
@@ -340,8 +389,10 @@ fn test_deterministic_encryption_is_reproducible() {
     let ct1 = encryptor.encrypt_seeded(42, 12345);
     let ct2 = encryptor.encrypt_seeded(42, 12345);
 
-    assert_eq!(ct1.c0.coeffs, ct2.c0.coeffs,
-               "Seeded encryption should be reproducible");
+    assert_eq!(
+        ct1.c0.coeffs, ct2.c0.coeffs,
+        "Seeded encryption should be reproducible"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -357,18 +408,17 @@ mod adversarial_tests {
         let config = FHEConfig::light_rns();
 
         // Create a ciphertext with wrong polynomial degree
-        let wrong_n = config.n / 2;  // Half the expected size
+        let wrong_n = config.n / 2; // Half the expected size
         let ct = Ciphertext {
-            c0: nine65::ring::RingPolynomial::from_coeffs(
-                vec![1u64; wrong_n], config.q
-            ),
-            c1: nine65::ring::RingPolynomial::from_coeffs(
-                vec![2u64; wrong_n], config.q
-            ),
+            c0: nine65::ring::RingPolynomial::from_coeffs(vec![1u64; wrong_n], config.q),
+            c1: nine65::ring::RingPolynomial::from_coeffs(vec![2u64; wrong_n], config.q),
         };
 
         let result = ct.validate(config.n, config.q);
-        assert!(result.is_err(), "Should reject ciphertext with wrong degree");
+        assert!(
+            result.is_err(),
+            "Should reject ciphertext with wrong degree"
+        );
     }
 
     #[test]
@@ -389,7 +439,8 @@ mod adversarial_tests {
                 .collect::<Vec<_>>()
                 .join(","),
             config.q,
-            std::iter::repeat(1).take(config.n)
+            std::iter::repeat(1)
+                .take(config.n)
                 .map(|x| x.to_string())
                 .collect::<Vec<_>>()
                 .join(","),
@@ -397,7 +448,10 @@ mod adversarial_tests {
         );
 
         let result = Ciphertext::from_json_validated(&malformed_json, config.n, config.q);
-        assert!(result.is_err(), "Should reject ciphertext with overflow coefficient via JSON");
+        assert!(
+            result.is_err(),
+            "Should reject ciphertext with overflow coefficient via JSON"
+        );
     }
 
     #[test]
@@ -406,16 +460,15 @@ mod adversarial_tests {
         let wrong_q = config.q - 1;
 
         let ct = Ciphertext {
-            c0: nine65::ring::RingPolynomial::from_coeffs(
-                vec![1u64; config.n], wrong_q
-            ),
-            c1: nine65::ring::RingPolynomial::from_coeffs(
-                vec![2u64; config.n], config.q
-            ),
+            c0: nine65::ring::RingPolynomial::from_coeffs(vec![1u64; config.n], wrong_q),
+            c1: nine65::ring::RingPolynomial::from_coeffs(vec![2u64; config.n], config.q),
         };
 
         let result = ct.validate(config.n, config.q);
-        assert!(result.is_err(), "Should reject ciphertext with modulus mismatch");
+        assert!(
+            result.is_err(),
+            "Should reject ciphertext with modulus mismatch"
+        );
     }
 
     #[test]
@@ -445,11 +498,8 @@ mod adversarial_tests {
         assert!(result.is_err(), "Should reject malformed JSON");
 
         // Partially valid JSON but wrong structure
-        let result2 = Ciphertext::from_json_validated(
-            r#"{"c0": [], "c1": []}"#,
-            config.n,
-            config.q
-        );
+        let result2 =
+            Ciphertext::from_json_validated(r#"{"c0": [], "c1": []}"#, config.n, config.q);
         assert!(result2.is_err(), "Should reject JSON with missing fields");
     }
 }

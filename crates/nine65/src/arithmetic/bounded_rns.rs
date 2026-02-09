@@ -186,14 +186,14 @@ mod tests {
         let mut ct = BoundedValue::new(30);
         let other = BoundedValue::new(30);
 
-        ct.on_add(&other);     // 31 bits
+        ct.on_add(&other); // 31 bits
         assert_eq!(ct.bit_width(), 31);
 
         let mul_rhs = BoundedValue::new(30);
-        ct.on_mul(&mul_rhs);   // 61 bits
+        ct.on_mul(&mul_rhs); // 61 bits
         assert_eq!(ct.bit_width(), 61);
 
-        ct.on_rescale(30);     // 31 bits
+        ct.on_rescale(30); // 31 bits
         assert_eq!(ct.bit_width(), 31);
 
         assert!(!ct.would_overflow(64));

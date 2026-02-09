@@ -222,19 +222,25 @@ impl<'a> PoolGuard<'a> {
     /// Take ownership of the polynomial (prevents auto-release)
     pub fn take(mut self) -> PooledPolynomial {
         // SAFETY: PoolGuard always contains Some until Drop takes it
-        self.poly.take().expect("PoolGuard invariant: poly is always Some until drop")
+        self.poly
+            .take()
+            .expect("PoolGuard invariant: poly is always Some until drop")
     }
 }
 
 impl<'a> AsRef<PooledPolynomial> for PoolGuard<'a> {
     fn as_ref(&self) -> &PooledPolynomial {
-        self.poly.as_ref().expect("PoolGuard invariant: poly is always Some until drop")
+        self.poly
+            .as_ref()
+            .expect("PoolGuard invariant: poly is always Some until drop")
     }
 }
 
 impl<'a> AsMut<PooledPolynomial> for PoolGuard<'a> {
     fn as_mut(&mut self) -> &mut PooledPolynomial {
-        self.poly.as_mut().expect("PoolGuard invariant: poly is always Some until drop")
+        self.poly
+            .as_mut()
+            .expect("PoolGuard invariant: poly is always Some until drop")
     }
 }
 
@@ -294,14 +300,20 @@ mod tests {
 
         // Create polynomial with data
         let mut poly = pool.acquire(8, 100);
-        poly.coeffs.iter_mut().enumerate().for_each(|(i, c)| *c = i as u64 + 1);
+        poly.coeffs
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, c)| *c = i as u64 + 1);
 
         // Release should zero
         pool.release(poly);
 
         // Acquire again - should be zeroed
         let poly2 = pool.acquire(8, 100);
-        assert!(poly2.coeffs.iter().all(|&c| c == 0), "Buffer should be zeroed");
+        assert!(
+            poly2.coeffs.iter().all(|&c| c == 0),
+            "Buffer should be zeroed"
+        );
     }
 
     #[test]

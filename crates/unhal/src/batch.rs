@@ -3,8 +3,8 @@
 //! Process multiple streams in parallel for maximum throughput.
 //! Optimal for FHE operations on vectors of ciphertexts.
 
-use mana::stream::ManaStream;
 use crate::accelerator::Accelerator;
+use mana::stream::ManaStream;
 
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
@@ -79,7 +79,11 @@ impl BatchProcessor {
 
     /// Element-wise add a single stream to all in a batch
     #[cfg(feature = "parallel")]
-    pub fn broadcast_add_par(&self, streams: &[ManaStream], addend: &ManaStream) -> Vec<ManaStream> {
+    pub fn broadcast_add_par(
+        &self,
+        streams: &[ManaStream],
+        addend: &ManaStream,
+    ) -> Vec<ManaStream> {
         streams
             .par_iter()
             .map(|s| self.accelerator.add_streams(s, addend))
@@ -148,11 +152,7 @@ impl BatchProcessor {
     /// vector: Single ManaStream
     /// Returns: Vec of dot products (as ManaStreams)
     #[cfg(feature = "parallel")]
-    pub fn matvec_par(
-        &self,
-        matrix: &[ManaStream],
-        vector: &ManaStream,
-    ) -> Vec<ManaStream> {
+    pub fn matvec_par(&self, matrix: &[ManaStream], vector: &ManaStream) -> Vec<ManaStream> {
         matrix
             .par_iter()
             .map(|row| self.accelerator.mul_streams(row, vector))
@@ -189,7 +189,7 @@ mod tests {
         let results = processor.add_batch(&pairs);
 
         assert_eq!(results.len(), 4);
-        assert_eq!(results[0].reconstruct_at(0), 0);  // 0 + 0
+        assert_eq!(results[0].reconstruct_at(0), 0); // 0 + 0
         assert_eq!(results[1].reconstruct_at(0), 11); // 10 + 1
         assert_eq!(results[2].reconstruct_at(0), 22); // 20 + 2
         assert_eq!(results[3].reconstruct_at(0), 33); // 30 + 3
@@ -236,7 +236,7 @@ mod tests {
 
         let results = processor.broadcast_add(&streams, &addend);
 
-        assert_eq!(results[0].reconstruct_at(0), 5);  // 0 + 5
+        assert_eq!(results[0].reconstruct_at(0), 5); // 0 + 5
         assert_eq!(results[1].reconstruct_at(0), 15); // 10 + 5
         assert_eq!(results[2].reconstruct_at(0), 25); // 20 + 5
     }

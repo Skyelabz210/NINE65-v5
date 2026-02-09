@@ -31,11 +31,11 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 use crate::arithmetic::NTTEngine;
 
 use crate::arithmetic::{DualRNSContext, RNSContext};
-use crate::ring::RingPolynomial;
-use crate::ops::Ciphertext;
-use crate::params::FHEConfig;
 use crate::entropy::ShadowHarvester;
 use crate::keys::SecretKey;
+use crate::ops::Ciphertext;
+use crate::params::FHEConfig;
+use crate::ring::RingPolynomial;
 
 /// DualRNS polynomial representation
 /// Stores coefficients in both main (computation) and anchor (K-Elimination) RNS bases
@@ -103,7 +103,10 @@ pub struct RNSEvaluator {
 impl RNSEvaluator {
     /// Create RNS evaluator with K-Elimination support
     pub fn new(config: &FHEConfig) -> Self {
-        assert!(config.primes.len() >= 2, "RNS multiplication requires at least 2 main primes");
+        assert!(
+            config.primes.len() >= 2,
+            "RNS multiplication requires at least 2 main primes"
+        );
 
         let rns = RNSContext::new(config.primes.clone(), config.n);
 
@@ -111,12 +114,17 @@ impl RNSEvaluator {
         let dual_rns = DualRNSContext::for_fhe_coeff_domain(&config.primes, config.n);
 
         // NTT engines for main primes
-        let main_ntt: Vec<NTTEngine> = config.primes.iter()
+        let main_ntt: Vec<NTTEngine> = config
+            .primes
+            .iter()
             .map(|&p| NTTEngine::new(p, config.n))
             .collect();
 
         // NTT engines for anchor primes
-        let anchor_ntt: Vec<NTTEngine> = dual_rns.anchor.primes.iter()
+        let anchor_ntt: Vec<NTTEngine> = dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| NTTEngine::new(p, config.n))
             .collect();
 
@@ -144,7 +152,11 @@ impl RNSEvaluator {
     ///
     /// Also returns a single-modulus SecretKey for standard decryption paths.
     pub fn generate_keys_dual(&self, rng: &mut ShadowHarvester) -> DualRNSKeySet {
-        let min_all_primes = self.dual_rns.main.primes.iter()
+        let min_all_primes = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .chain(self.dual_rns.anchor.primes.iter())
             .min()
             .copied()
@@ -156,7 +168,11 @@ impl RNSEvaluator {
     ///
     /// This is useful for tests to keep coefficients small and avoid
     /// excessive k magnitudes in K-Elimination.
-    pub fn generate_keys_dual_with_max_a(&self, rng: &mut ShadowHarvester, max_a: u64) -> DualRNSKeySet {
+    pub fn generate_keys_dual_with_max_a(
+        &self,
+        rng: &mut ShadowHarvester,
+        max_a: u64,
+    ) -> DualRNSKeySet {
         // Secret key s with coefficients in {-1, 0, 1}
         let s_choices: Vec<i8> = (0..self.n)
             .map(|_| match rng.next_u64() % 3 {
@@ -166,49 +182,92 @@ impl RNSEvaluator {
             })
             .collect();
 
-        let s_main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
+        let s_main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .map(|&p| {
-                s_choices.iter().map(|&c| if c < 0 { p - 1 } else { c as u64 }).collect()
+                s_choices
+                    .iter()
+                    .map(|&c| if c < 0 { p - 1 } else { c as u64 })
+                    .collect()
             })
             .collect();
-        let s_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+        let s_anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| {
-                s_choices.iter().map(|&c| if c < 0 { p - 1 } else { c as u64 }).collect()
+                s_choices
+                    .iter()
+                    .map(|&c| if c < 0 { p - 1 } else { c as u64 })
+                    .collect()
             })
             .collect();
-        let s_dual = DualRNSPoly { main: s_main, anchor: s_anchor, n: self.n };
+        let s_dual = DualRNSPoly {
+            main: s_main,
+            anchor: s_anchor,
+            n: self.n,
+        };
         let secret_key = DualRNSSecretKey { s: s_dual };
 
         // Single-modulus secret key (for decryption / eval key generation)
-        let s_single_coeffs: Vec<u64> = s_choices.iter()
+        let s_single_coeffs: Vec<u64> = s_choices
+            .iter()
             .map(|&c| if c < 0 { self.q - 1 } else { c as u64 })
             .collect();
-        let secret_key_single = SecretKey { s: RingPolynomial::from_coeffs(s_single_coeffs, self.q) };
+        let secret_key_single = SecretKey {
+            s: RingPolynomial::from_coeffs(s_single_coeffs, self.q),
+        };
 
         // Sample a uniformly in a shared range to keep consistency across primes
         let max_a = max_a.max(2);
-        let a_coeffs: Vec<u64> = (0..self.n)
-            .map(|_| rng.next_u64() % max_a)
-            .collect();
-        let a_main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
+        let a_coeffs: Vec<u64> = (0..self.n).map(|_| rng.next_u64() % max_a).collect();
+        let a_main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .map(|&p| a_coeffs.iter().map(|&c| c % p).collect())
             .collect();
-        let a_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+        let a_anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| a_coeffs.iter().map(|&c| c % p).collect())
             .collect();
-        let a_dual = DualRNSPoly { main: a_main, anchor: a_anchor, n: self.n };
+        let a_dual = DualRNSPoly {
+            main: a_main,
+            anchor: a_anchor,
+            n: self.n,
+        };
 
         // Error term e (signed CBD)
         let e_signed: Vec<i64> = (0..self.n)
             .map(|_| sample_cbd_signed(rng, self.eta))
             .collect();
-        let e_main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
+        let e_main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .map(|&p| e_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
             .collect();
-        let e_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+        let e_anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| e_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
             .collect();
-        let e_dual = DualRNSPoly { main: e_main, anchor: e_anchor, n: self.n };
+        let e_dual = DualRNSPoly {
+            main: e_main,
+            anchor: e_anchor,
+            n: self.n,
+        };
 
         // pk0 = -(a*s + e), pk1 = a
         let as_dual = self.dual_poly_mul(&a_dual, &secret_key.s);
@@ -216,7 +275,11 @@ impl RNSEvaluator {
         let pk0 = self.dual_poly_neg(&as_plus_e);
         let public_key = DualRNSPublicKey { pk0, pk1: a_dual };
 
-        DualRNSKeySet { secret_key, public_key, secret_key_single }
+        DualRNSKeySet {
+            secret_key,
+            public_key,
+            secret_key_single,
+        }
     }
 
     /// Encrypt a message using native DualRNS keys (consistent across primes)
@@ -232,14 +295,19 @@ impl RNSEvaluator {
 
         // Message polynomial (constant term only)
         let mut m_main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.main.primes.len()];
-        let mut m_anchor: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
+        let mut m_anchor: Vec<Vec<u64>> =
+            vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
         for (j, &p) in self.dual_rns.main.primes.iter().enumerate() {
             m_main[j][0] = (encoded % p as u128) as u64;
         }
         for (j, &p) in self.dual_rns.anchor.primes.iter().enumerate() {
             m_anchor[j][0] = (encoded % p as u128) as u64;
         }
-        let m_dual = DualRNSPoly { main: m_main, anchor: m_anchor, n: self.n };
+        let m_dual = DualRNSPoly {
+            main: m_main,
+            anchor: m_anchor,
+            n: self.n,
+        };
 
         // u <- ternary
         let u_choices: Vec<i8> = (0..self.n)
@@ -249,36 +317,82 @@ impl RNSEvaluator {
                 _ => -1i8,
             })
             .collect();
-        let u_main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
-            .map(|&p| u_choices.iter().map(|&c| if c < 0 { p - 1 } else { c as u64 }).collect())
+        let u_main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
+            .map(|&p| {
+                u_choices
+                    .iter()
+                    .map(|&c| if c < 0 { p - 1 } else { c as u64 })
+                    .collect()
+            })
             .collect();
-        let u_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
-            .map(|&p| u_choices.iter().map(|&c| if c < 0 { p - 1 } else { c as u64 }).collect())
+        let u_anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
+            .map(|&p| {
+                u_choices
+                    .iter()
+                    .map(|&c| if c < 0 { p - 1 } else { c as u64 })
+                    .collect()
+            })
             .collect();
-        let u_dual = DualRNSPoly { main: u_main, anchor: u_anchor, n: self.n };
+        let u_dual = DualRNSPoly {
+            main: u_main,
+            anchor: u_anchor,
+            n: self.n,
+        };
 
         // Error terms
         let e1_signed: Vec<i64> = (0..self.n)
             .map(|_| sample_cbd_signed(rng, self.eta))
             .collect();
-        let e1_main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
+        let e1_main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .map(|&p| e1_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
             .collect();
-        let e1_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+        let e1_anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| e1_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
             .collect();
-        let e1_dual = DualRNSPoly { main: e1_main, anchor: e1_anchor, n: self.n };
+        let e1_dual = DualRNSPoly {
+            main: e1_main,
+            anchor: e1_anchor,
+            n: self.n,
+        };
 
         let e2_signed: Vec<i64> = (0..self.n)
             .map(|_| sample_cbd_signed(rng, self.eta))
             .collect();
-        let e2_main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
+        let e2_main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .map(|&p| e2_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
             .collect();
-        let e2_anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+        let e2_anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| e2_signed.iter().map(|&e| signed_to_mod(e, p)).collect())
             .collect();
-        let e2_dual = DualRNSPoly { main: e2_main, anchor: e2_anchor, n: self.n };
+        let e2_dual = DualRNSPoly {
+            main: e2_main,
+            anchor: e2_anchor,
+            n: self.n,
+        };
 
         let pk0_u = self.dual_poly_mul(&pk.pk0, &u_dual);
         let c0 = self.dual_poly_add(&self.dual_poly_add(&pk0_u, &e1_dual), &m_dual);
@@ -297,7 +411,8 @@ impl RNSEvaluator {
         let encoded = (m as u128) * (self.delta as u128);
 
         let mut c0_main: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.main.primes.len()];
-        let mut c0_anchor: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
+        let mut c0_anchor: Vec<Vec<u64>> =
+            vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
         for (j, &p) in self.dual_rns.main.primes.iter().enumerate() {
             c0_main[j][0] = (encoded % p as u128) as u64;
         }
@@ -309,8 +424,16 @@ impl RNSEvaluator {
         let c1_anchor: Vec<Vec<u64>> = vec![vec![0u64; self.n]; self.dual_rns.anchor.primes.len()];
 
         DualRNSCiphertext {
-            c0: DualRNSPoly { main: c0_main, anchor: c0_anchor, n: self.n },
-            c1: DualRNSPoly { main: c1_main, anchor: c1_anchor, n: self.n },
+            c0: DualRNSPoly {
+                main: c0_main,
+                anchor: c0_anchor,
+                n: self.n,
+            },
+            c1: DualRNSPoly {
+                main: c1_main,
+                anchor: c1_anchor,
+                n: self.n,
+            },
         }
     }
 
@@ -335,76 +458,124 @@ impl RNSEvaluator {
     /// - Or ensure polynomials are created in DualRNS form from the start
     pub fn lift_to_dual_rns(&self, poly: &RingPolynomial) -> DualRNSPoly {
         // Main limbs: coefficients mod each main prime
-        let main: Vec<Vec<u64>> = self.dual_rns.main.primes.iter()
+        let main: Vec<Vec<u64>> = self
+            .dual_rns
+            .main
+            .primes
+            .iter()
             .map(|&p| poly.coeffs.iter().map(|&c| c % p).collect())
             .collect();
 
         // Anchor limbs: coefficients mod each anchor prime
-        let anchor: Vec<Vec<u64>> = self.dual_rns.anchor.primes.iter()
+        let anchor: Vec<Vec<u64>> = self
+            .dual_rns
+            .anchor
+            .primes
+            .iter()
             .map(|&p| poly.coeffs.iter().map(|&c| c % p).collect())
             .collect();
 
-        DualRNSPoly { main, anchor, n: self.n }
+        DualRNSPoly {
+            main,
+            anchor,
+            n: self.n,
+        }
     }
 
     /// Multiply two DualRNS polynomials (NTT multiply in each limb)
     fn dual_poly_mul(&self, a: &DualRNSPoly, b: &DualRNSPoly) -> DualRNSPoly {
         // Multiply in main RNS
-        let main: Vec<Vec<u64>> = a.main.iter()
+        let main: Vec<Vec<u64>> = a
+            .main
+            .iter()
             .zip(b.main.iter())
             .zip(self.main_ntt.iter())
             .map(|((a_limb, b_limb), ntt)| ntt.multiply(a_limb, b_limb))
             .collect();
 
         // Multiply in anchor RNS
-        let anchor: Vec<Vec<u64>> = a.anchor.iter()
+        let anchor: Vec<Vec<u64>> = a
+            .anchor
+            .iter()
             .zip(b.anchor.iter())
             .zip(self.anchor_ntt.iter())
             .map(|((a_limb, b_limb), ntt)| ntt.multiply(a_limb, b_limb))
             .collect();
 
-        DualRNSPoly { main, anchor, n: self.n }
+        DualRNSPoly {
+            main,
+            anchor,
+            n: self.n,
+        }
     }
 
     /// Add two DualRNS polynomials
     fn dual_poly_add(&self, a: &DualRNSPoly, b: &DualRNSPoly) -> DualRNSPoly {
         // Add in main RNS
-        let main: Vec<Vec<u64>> = a.main.iter()
+        let main: Vec<Vec<u64>> = a
+            .main
+            .iter()
             .zip(b.main.iter())
             .zip(self.dual_rns.main.primes.iter())
             .map(|((a_limb, b_limb), &p)| {
-                a_limb.iter().zip(b_limb.iter())
+                a_limb
+                    .iter()
+                    .zip(b_limb.iter())
                     .map(|(&ai, &bi)| ((ai as u128 + bi as u128) % p as u128) as u64)
                     .collect()
             })
             .collect();
 
         // Add in anchor RNS
-        let anchor: Vec<Vec<u64>> = a.anchor.iter()
+        let anchor: Vec<Vec<u64>> = a
+            .anchor
+            .iter()
             .zip(b.anchor.iter())
             .zip(self.dual_rns.anchor.primes.iter())
             .map(|((a_limb, b_limb), &p)| {
-                a_limb.iter().zip(b_limb.iter())
+                a_limb
+                    .iter()
+                    .zip(b_limb.iter())
                     .map(|(&ai, &bi)| ((ai as u128 + bi as u128) % p as u128) as u64)
                     .collect()
             })
             .collect();
 
-        DualRNSPoly { main, anchor, n: self.n }
+        DualRNSPoly {
+            main,
+            anchor,
+            n: self.n,
+        }
     }
 
     /// Negate DualRNS polynomial
     fn dual_poly_neg(&self, a: &DualRNSPoly) -> DualRNSPoly {
-        let main: Vec<Vec<u64>> = a.main.iter()
+        let main: Vec<Vec<u64>> = a
+            .main
+            .iter()
             .zip(self.dual_rns.main.primes.iter())
-            .map(|(limb, &p)| limb.iter().map(|&c| if c == 0 { 0 } else { p - c }).collect())
+            .map(|(limb, &p)| {
+                limb.iter()
+                    .map(|&c| if c == 0 { 0 } else { p - c })
+                    .collect()
+            })
             .collect();
-        let anchor: Vec<Vec<u64>> = a.anchor.iter()
+        let anchor: Vec<Vec<u64>> = a
+            .anchor
+            .iter()
             .zip(self.dual_rns.anchor.primes.iter())
-            .map(|(limb, &p)| limb.iter().map(|&c| if c == 0 { 0 } else { p - c }).collect())
+            .map(|(limb, &p)| {
+                limb.iter()
+                    .map(|&c| if c == 0 { 0 } else { p - c })
+                    .collect()
+            })
             .collect();
 
-        DualRNSPoly { main, anchor, n: self.n }
+        DualRNSPoly {
+            main,
+            anchor,
+            n: self.n,
+        }
     }
 
     /// K-Elimination rescale: convert DualRNS poly to single-modulus with proper scaling
@@ -422,12 +593,14 @@ impl RNSEvaluator {
         let r = m_product - delta * t_u128;
 
         // Signed-k interpretation threshold
-        let num_primes_for_sign = if self.dual_rns.main.primes.len() >= 4 && self.dual_rns.anchor.primes.len() >= 4 {
-            4
-        } else {
-            self.dual_rns.anchor.primes.len().min(3)
-        };
-        let a_n_product: u128 = self.dual_rns.anchor.primes[0..num_primes_for_sign].iter()
+        let num_primes_for_sign =
+            if self.dual_rns.main.primes.len() >= 4 && self.dual_rns.anchor.primes.len() >= 4 {
+                4
+            } else {
+                self.dual_rns.anchor.primes.len().min(3)
+            };
+        let a_n_product: u128 = self.dual_rns.anchor.primes[0..num_primes_for_sign]
+            .iter()
             .fold(1u128, |acc, &p| acc * p as u128);
 
         let mut result = vec![0u64; self.n];
@@ -442,12 +615,21 @@ impl RNSEvaluator {
 
             #[cfg(test)]
             if i == 0 {
-                eprintln!("  [K-Elim coeff 0] v_m={} ({} bits), k={} ({} bits), delta={}",
-                    v_m, 128u32.saturating_sub(v_m.leading_zeros()),
-                    k, 128u32.saturating_sub(k.leading_zeros()), delta);
-                eprintln!("    A_n={} bits, k > A_n/2 = {}, k_signed = {}{}",
-                    128u32.saturating_sub(a_n_product.leading_zeros()), k > a_n_product / 2,
-                    if k_signed.is_neg { "-" } else { "+" }, k_signed.magnitude);
+                eprintln!(
+                    "  [K-Elim coeff 0] v_m={} ({} bits), k={} ({} bits), delta={}",
+                    v_m,
+                    128u32.saturating_sub(v_m.leading_zeros()),
+                    k,
+                    128u32.saturating_sub(k.leading_zeros()),
+                    delta
+                );
+                eprintln!(
+                    "    A_n={} bits, k > A_n/2 = {}, k_signed = {}{}",
+                    128u32.saturating_sub(a_n_product.leading_zeros()),
+                    k > a_n_product / 2,
+                    if k_signed.is_neg { "-" } else { "+" },
+                    k_signed.magnitude
+                );
             }
 
             let v_m_centered: i128 = if v_m > q_half {
@@ -460,7 +642,8 @@ impl RNSEvaluator {
             let k_base = k_mod_delta * t_u128;
             let k_rem = k_mod_delta * r;
 
-            let rem_term_mod = round_div_signed_mod(v_m_centered, k_rem, !k_signed.is_neg, delta, m_product);
+            let rem_term_mod =
+                round_div_signed_mod(v_m_centered, k_rem, !k_signed.is_neg, delta, m_product);
             let base_mod = k_base % m_product;
 
             let scaled_mod_m = if !k_signed.is_neg {
@@ -471,8 +654,10 @@ impl RNSEvaluator {
 
             #[cfg(test)]
             if i == 0 {
-                eprintln!("    v_m_centered={}, k_mod_delta={}, scaled_mod_m={}",
-                    v_m_centered, k_mod_delta, scaled_mod_m);
+                eprintln!(
+                    "    v_m_centered={}, k_mod_delta={}, scaled_mod_m={}",
+                    v_m_centered, k_mod_delta, scaled_mod_m
+                );
             }
 
             result[i] = (scaled_mod_m % self.q as u128) as u64;
@@ -485,9 +670,11 @@ impl RNSEvaluator {
     ///
     /// Returns degree-2 ciphertext (e0, e1, e2) where:
     /// - Decrypt: m = decode(e0 + e1×s + e2×s²)
-    pub fn mul_rns_dual(&self, ct1: &DualRNSCiphertext, ct2: &DualRNSCiphertext)
-        -> (RingPolynomial, RingPolynomial, RingPolynomial)
-    {
+    pub fn mul_rns_dual(
+        &self,
+        ct1: &DualRNSCiphertext,
+        ct2: &DualRNSCiphertext,
+    ) -> (RingPolynomial, RingPolynomial, RingPolynomial) {
         let c0_1 = &ct1.c0;
         let c1_1 = &ct1.c1;
         let c0_2 = &ct2.c0;
@@ -503,8 +690,16 @@ impl RNSEvaluator {
 
             let c0_1_val = self.rns.to_int(&c0_1_main);
             let c0_2_val = self.rns.to_int(&c0_2_main);
-            eprintln!("[Before mul] c0_1[0] = {} ({} bits)", c0_1_val, 128u32.saturating_sub(c0_1_val.leading_zeros()));
-            eprintln!("[Before mul] c0_2[0] = {} ({} bits)", c0_2_val, 128u32.saturating_sub(c0_2_val.leading_zeros()));
+            eprintln!(
+                "[Before mul] c0_1[0] = {} ({} bits)",
+                c0_1_val,
+                128u32.saturating_sub(c0_1_val.leading_zeros())
+            );
+            eprintln!(
+                "[Before mul] c0_2[0] = {} ({} bits)",
+                c0_2_val,
+                128u32.saturating_sub(c0_2_val.leading_zeros())
+            );
         }
 
         let d0 = self.dual_poly_mul(c0_1, c0_2);
@@ -517,35 +712,53 @@ impl RNSEvaluator {
             eprintln!("[After mul] d0 anchor residues [0]: {:?}", d0_anchor);
 
             let d0_val = self.rns.to_int(&d0_main);
-            eprintln!("[After mul] d0[0] from main CRT = {} ({} bits)", d0_val, 128u32.saturating_sub(d0_val.leading_zeros()));
+            eprintln!(
+                "[After mul] d0[0] from main CRT = {} ({} bits)",
+                d0_val,
+                128u32.saturating_sub(d0_val.leading_zeros())
+            );
 
             for (i, &ap) in self.dual_rns.anchor.primes.iter().enumerate() {
                 let expected_anchor = (d0_val % ap as u128) as u64;
                 let actual_anchor = d0_anchor[i];
                 if expected_anchor != actual_anchor {
-                    eprintln!("  *** INCONSISTENCY at anchor[{}]: expected {} got {} (prime {})",
-                        i, expected_anchor, actual_anchor, ap);
+                    eprintln!(
+                        "  *** INCONSISTENCY at anchor[{}]: expected {} got {} (prime {})",
+                        i, expected_anchor, actual_anchor, ap
+                    );
                 }
             }
 
             let k = self.dual_rns.extract_k_rns(d0_val, &d0_anchor);
             let num_primes_for_sign = self.dual_rns.anchor.primes.len().min(3);
-            let a_n_product: u128 = self.dual_rns.anchor.primes[0..num_primes_for_sign].iter()
+            let a_n_product: u128 = self.dual_rns.anchor.primes[0..num_primes_for_sign]
+                .iter()
                 .fold(1u128, |acc, &p| acc * p as u128);
             let k_is_neg = k > a_n_product / 2;
             let k_mag = if k_is_neg { a_n_product - k } else { k };
 
-            eprintln!("[Verification] k={} ({} bits), |k|={}, negative={}",
-                k, 128u32.saturating_sub(k.leading_zeros()), k_mag, k_is_neg);
+            eprintln!(
+                "[Verification] k={} ({} bits), |k|={}, negative={}",
+                k,
+                128u32.saturating_sub(k.leading_zeros()),
+                k_mag,
+                k_is_neg
+            );
 
             let delta_sq = (self.delta as u128) * (self.delta as u128);
             let expected_tensor = delta_sq * 35;
-            eprintln!("[Verification] Expected Δ²×35 = {} ({} bits)", expected_tensor, 128u32.saturating_sub(expected_tensor.leading_zeros()));
+            eprintln!(
+                "[Verification] Expected Δ²×35 = {} ({} bits)",
+                expected_tensor,
+                128u32.saturating_sub(expected_tensor.leading_zeros())
+            );
 
             for (i, &ap) in self.dual_rns.anchor.primes.iter().enumerate() {
                 let expected_from_delta_sq = (expected_tensor % ap as u128) as u64;
-                eprintln!("  anchor[{}] actual={}, expected_if_Δ²×35={}",
-                    i, d0_anchor[i], expected_from_delta_sq);
+                eprintln!(
+                    "  anchor[{}] actual={}, expected_if_Δ²×35={}",
+                    i, d0_anchor[i], expected_from_delta_sq
+                );
             }
         }
 
@@ -566,9 +779,11 @@ impl RNSEvaluator {
     ///
     /// Returns degree-2 ciphertext (e0, e1, e2) where:
     /// - Decrypt: m = decode(e0 + e1×s + e2×s²)
-    pub fn mul_rns(&self, ct1: &Ciphertext, ct2: &Ciphertext)
-        -> (RingPolynomial, RingPolynomial, RingPolynomial)
-    {
+    pub fn mul_rns(
+        &self,
+        ct1: &Ciphertext,
+        ct2: &Ciphertext,
+    ) -> (RingPolynomial, RingPolynomial, RingPolynomial) {
         let c0_1 = self.lift_to_dual_rns(&ct1.c0);
         let c1_1 = self.lift_to_dual_rns(&ct1.c1);
         let c0_2 = self.lift_to_dual_rns(&ct2.c0);
@@ -581,27 +796,38 @@ impl RNSEvaluator {
     }
 
     /// Full multiplication with relinearization
-    pub fn mul(&self, ct1: &Ciphertext, ct2: &Ciphertext,
-               relin_key: &crate::keys::EvaluationKey,
-               ntt: &NTTEngine) -> Ciphertext
-    {
+    pub fn mul(
+        &self,
+        ct1: &Ciphertext,
+        ct2: &Ciphertext,
+        relin_key: &crate::keys::EvaluationKey,
+        ntt: &NTTEngine,
+    ) -> Ciphertext {
         let (c0, c1, c2) = self.mul_rns(ct1, ct2);
         self.relinearize(&c0, &c1, &c2, relin_key, ntt)
     }
 
     /// Full multiplication with relinearization (DualRNS ciphertexts)
-    pub fn mul_dual(&self, ct1: &DualRNSCiphertext, ct2: &DualRNSCiphertext,
-                    relin_key: &crate::keys::EvaluationKey,
-                    ntt: &NTTEngine) -> Ciphertext
-    {
+    pub fn mul_dual(
+        &self,
+        ct1: &DualRNSCiphertext,
+        ct2: &DualRNSCiphertext,
+        relin_key: &crate::keys::EvaluationKey,
+        ntt: &NTTEngine,
+    ) -> Ciphertext {
         let (c0, c1, c2) = self.mul_rns_dual(ct1, ct2);
         self.relinearize(&c0, &c1, &c2, relin_key, ntt)
     }
 
     /// Relinearize degree-2 ciphertext to degree-1
-    fn relinearize(&self, c0: &RingPolynomial, c1: &RingPolynomial, c2: &RingPolynomial,
-                   relin_key: &crate::keys::EvaluationKey, ntt: &NTTEngine) -> Ciphertext
-    {
+    fn relinearize(
+        &self,
+        c0: &RingPolynomial,
+        c1: &RingPolynomial,
+        c2: &RingPolynomial,
+        relin_key: &crate::keys::EvaluationKey,
+        ntt: &NTTEngine,
+    ) -> Ciphertext {
         let decomp = self.decompose_polynomial(c2, relin_key.decomp_base);
 
         let mut c0_new = c0.clone();
@@ -614,7 +840,10 @@ impl RNSEvaluator {
             c1_new = c1_new.add(&term1, ntt);
         }
 
-        Ciphertext { c0: c0_new, c1: c1_new }
+        Ciphertext {
+            c0: c0_new,
+            c1: c1_new,
+        }
     }
 
     /// Decompose polynomial into base-T digits
@@ -676,9 +905,15 @@ struct SignedK {
 impl SignedK {
     fn from_unsigned(k: u128, a_n_product: u128) -> Self {
         if k > a_n_product / 2 {
-            SignedK { magnitude: a_n_product - k, is_neg: true }
+            SignedK {
+                magnitude: a_n_product - k,
+                is_neg: true,
+            }
         } else {
-            SignedK { magnitude: k, is_neg: false }
+            SignedK {
+                magnitude: k,
+                is_neg: false,
+            }
         }
     }
 }
@@ -688,7 +923,11 @@ fn round_div_u128(value: u128, delta: u128) -> u128 {
     let q = value / delta;
     let r = value % delta;
     let threshold = delta - delta / 2;
-    if r >= threshold { q + 1 } else { q }
+    if r >= threshold {
+        q + 1
+    } else {
+        q
+    }
 }
 
 /// Round (a + b) / delta to nearest integer (ties up), avoiding overflow.
@@ -705,13 +944,21 @@ fn round_div_u128_sum(a: u128, b: u128, delta: u128) -> u128 {
     }
 
     let threshold = delta - delta / 2;
-    if r >= threshold { q + 1 } else { q }
+    if r >= threshold {
+        q + 1
+    } else {
+        q
+    }
 }
 
 /// Compute (-q) mod m with q in u128.
 fn neg_mod_u128(q: u128, m: u128) -> u128 {
     let q_mod = q % m;
-    if q_mod == 0 { 0 } else { m - q_mod }
+    if q_mod == 0 {
+        0
+    } else {
+        m - q_mod
+    }
 }
 
 /// Round (v_centered ± rem) / delta to nearest integer and map into [0, m).
@@ -744,23 +991,38 @@ fn round_div_signed_mod(v_centered: i128, rem: u128, add_rem: bool, delta: u128,
 
 /// Modular add without overflow: (a + b) mod m, with a,b < m.
 fn add_mod_u128(a: u128, b: u128, m: u128) -> u128 {
-    if a >= m - b { a + b - m } else { a + b }
+    if a >= m - b {
+        a + b - m
+    } else {
+        a + b
+    }
 }
 
 /// Modular subtract without overflow: (a - b) mod m, with a,b < m.
 fn sub_mod_u128(a: u128, b: u128, m: u128) -> u128 {
-    if a >= b { a - b } else { m - (b - a) }
+    if a >= b {
+        a - b
+    } else {
+        m - (b - a)
+    }
 }
 
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
     use super::*;
-    use crate::keys::EvaluationKey;
-    use crate::ops::{BFVEncoder, BFVDecryptor};
     use crate::entropy::ShadowHarvester;
+    use crate::keys::EvaluationKey;
+    use crate::ops::{BFVDecryptor, BFVEncoder};
 
-    fn setup_rns() -> (FHEConfig, NTTEngine, DualRNSKeySet, ShadowHarvester, BFVEncoder, RNSEvaluator) {
+    fn setup_rns() -> (
+        FHEConfig,
+        NTTEngine,
+        DualRNSKeySet,
+        ShadowHarvester,
+        BFVEncoder,
+        RNSEvaluator,
+    ) {
         // Use light_rns_exact for smaller polynomial degree and better noise control
         // n=1024 gives more headroom than n=4096 for the same modulus size
         let config = FHEConfig::light_rns_exact();
@@ -855,8 +1117,10 @@ mod tests {
         println!("  Decoded: {} (expected {})", result, expected);
 
         // This should now pass with K-Elimination!
-        assert_eq!(result, expected,
-            "K-Elimination RNS multiplication should give correct result");
+        assert_eq!(
+            result, expected,
+            "K-Elimination RNS multiplication should give correct result"
+        );
 
         println!("\n✓ K-Elimination RNS multiplication PASSED!");
     }
@@ -869,9 +1133,7 @@ mod tests {
         let s = &keys.secret_key_single.s;
         let s2 = s.mul(s, &ntt);
 
-        let test_cases = vec![
-            (1, 1), (2, 3), (5, 7), (10, 10), (12, 15), (7, 11),
-        ];
+        let test_cases = vec![(1, 1), (2, 3), (5, 7), (10, 10), (12, 15), (7, 11)];
 
         println!("Testing multiple ct×ct cases with K-Elimination:");
         for (a, b) in test_cases {
@@ -900,7 +1162,8 @@ mod tests {
         let (config, ntt, keys, mut harvester, encoder, rns_eval) = setup_rns();
 
         let decryptor = BFVDecryptor::new(&keys.secret_key_single, &encoder, &ntt);
-        let eval_key = EvaluationKey::generate(&keys.secret_key_single, &config, &ntt, &mut harvester);
+        let eval_key =
+            EvaluationKey::generate(&keys.secret_key_single, &config, &ntt, &mut harvester);
 
         let a = 5u64;
         let b = 7u64;
@@ -913,7 +1176,10 @@ mod tests {
         let ct_prod = rns_eval.mul_dual(&ct_a, &ct_b, &eval_key, &ntt);
 
         let result = decryptor.decrypt(&ct_prod);
-        println!("RNS mul with relin: {} × {} = {} (got {})", a, b, expected, result);
+        println!(
+            "RNS mul with relin: {} × {} = {} (got {})",
+            a, b, expected, result
+        );
 
         assert_eq!(result, expected);
         println!("✓ RNS multiplication with relinearization PASSED!");
@@ -929,7 +1195,11 @@ mod tests {
         let delta = rns_eval.delta as u128;
 
         println!("=== Trivial Ciphertext K-Elimination Test ===");
-        println!("M product: {} ({} bits)", rns_eval.m_product, 128u32.saturating_sub(rns_eval.m_product.leading_zeros()));
+        println!(
+            "M product: {} ({} bits)",
+            rns_eval.m_product,
+            128u32.saturating_sub(rns_eval.m_product.leading_zeros())
+        );
         println!("delta = {}", delta);
 
         // Test: 5 × 7 = 35
@@ -945,8 +1215,10 @@ mod tests {
         println!("encoded_b = Δ×{} = {}", b, encoded_b);
 
         // Build trivial c0_a (just the encoded value in constant term)
-        let mut c0_a_main: Vec<Vec<u64>> = vec![vec![0; rns_eval.n]; rns_eval.dual_rns.main.primes.len()];
-        let mut c0_a_anchor: Vec<Vec<u64>> = vec![vec![0; rns_eval.n]; rns_eval.dual_rns.anchor.primes.len()];
+        let mut c0_a_main: Vec<Vec<u64>> =
+            vec![vec![0; rns_eval.n]; rns_eval.dual_rns.main.primes.len()];
+        let mut c0_a_anchor: Vec<Vec<u64>> =
+            vec![vec![0; rns_eval.n]; rns_eval.dual_rns.anchor.primes.len()];
 
         for (i, &p) in rns_eval.dual_rns.main.primes.iter().enumerate() {
             c0_a_main[i][0] = (encoded_a % p as u128) as u64;
@@ -955,8 +1227,10 @@ mod tests {
             c0_a_anchor[i][0] = (encoded_a % p as u128) as u64;
         }
 
-        let mut c0_b_main: Vec<Vec<u64>> = vec![vec![0; rns_eval.n]; rns_eval.dual_rns.main.primes.len()];
-        let mut c0_b_anchor: Vec<Vec<u64>> = vec![vec![0; rns_eval.n]; rns_eval.dual_rns.anchor.primes.len()];
+        let mut c0_b_main: Vec<Vec<u64>> =
+            vec![vec![0; rns_eval.n]; rns_eval.dual_rns.main.primes.len()];
+        let mut c0_b_anchor: Vec<Vec<u64>> =
+            vec![vec![0; rns_eval.n]; rns_eval.dual_rns.anchor.primes.len()];
 
         for (i, &p) in rns_eval.dual_rns.main.primes.iter().enumerate() {
             c0_b_main[i][0] = (encoded_b % p as u128) as u64;
@@ -965,8 +1239,16 @@ mod tests {
             c0_b_anchor[i][0] = (encoded_b % p as u128) as u64;
         }
 
-        let c0_a = DualRNSPoly { main: c0_a_main, anchor: c0_a_anchor, n: rns_eval.n };
-        let c0_b = DualRNSPoly { main: c0_b_main, anchor: c0_b_anchor, n: rns_eval.n };
+        let c0_a = DualRNSPoly {
+            main: c0_a_main,
+            anchor: c0_a_anchor,
+            n: rns_eval.n,
+        };
+        let c0_b = DualRNSPoly {
+            main: c0_b_main,
+            anchor: c0_b_anchor,
+            n: rns_eval.n,
+        };
 
         // Polynomial multiply (trivial: just constant × constant = constant²)
         let d0 = rns_eval.dual_poly_mul(&c0_a, &c0_b);
@@ -974,15 +1256,28 @@ mod tests {
         // Check tensor product value
         let d0_main: Vec<u64> = d0.main.iter().map(|l| l[0]).collect();
         let d0_val = rns_eval.rns.to_int(&d0_main);
-        let expected_tensor = encoded_a * encoded_b;  // Δ² × 35
+        let expected_tensor = encoded_a * encoded_b; // Δ² × 35
 
         println!("\nTensor product:");
-        println!("  d0[0] (CRT) = {} ({} bits)", d0_val, 128u32.saturating_sub(d0_val.leading_zeros()));
-        println!("  Expected Δ²×{} = {} ({} bits)", expected, expected_tensor, 128u32.saturating_sub(expected_tensor.leading_zeros()));
+        println!(
+            "  d0[0] (CRT) = {} ({} bits)",
+            d0_val,
+            128u32.saturating_sub(d0_val.leading_zeros())
+        );
+        println!(
+            "  Expected Δ²×{} = {} ({} bits)",
+            expected,
+            expected_tensor,
+            128u32.saturating_sub(expected_tensor.leading_zeros())
+        );
 
         // For trivial case, tensor should equal expected_tensor directly (no wrap)
-        assert!(d0_val == expected_tensor || d0_val == expected_tensor % rns_eval.m_product,
-            "Tensor product mismatch: got {} expected {}", d0_val, expected_tensor);
+        assert!(
+            d0_val == expected_tensor || d0_val == expected_tensor % rns_eval.m_product,
+            "Tensor product mismatch: got {} expected {}",
+            d0_val,
+            expected_tensor
+        );
 
         // K-Elimination rescale
         let e0 = rns_eval.k_elim_rescale(&d0);
@@ -997,9 +1292,11 @@ mod tests {
         let result = ((e0.coeffs[0] as u128 + delta / 2) / delta) as u64 % config.t;
         println!("  Decoded: {} (expected {})", result, expected);
 
-        assert_eq!(result, expected,
+        assert_eq!(
+            result, expected,
             "Trivial K-Elim failed: {} × {} decoded to {} (expected {})",
-            a, b, result, expected);
+            a, b, result, expected
+        );
 
         println!("\n✓ Trivial ciphertext K-Elimination PASSED!");
     }

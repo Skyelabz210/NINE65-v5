@@ -36,7 +36,11 @@ impl fmt::Display for ArithmeticError {
             ArithmeticError::DivideByZero => {
                 write!(f, "Division by zero")
             }
-            ArithmeticError::Overflow { operation, left, right } => {
+            ArithmeticError::Overflow {
+                operation,
+                left,
+                right,
+            } => {
                 write!(
                     f,
                     "Integer overflow in {}: operands ({}, {})",

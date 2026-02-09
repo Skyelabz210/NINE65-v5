@@ -64,12 +64,12 @@ impl MQReLU {
             threshold: modulus / 2,
         }
     }
-    
+
     /// Create with custom threshold
     pub fn with_threshold(modulus: u64, threshold: u64) -> Self {
         Self { modulus, threshold }
     }
-    
+
     /// Detect sign of a modular value
     #[inline]
     pub fn detect_sign(&self, value: u64) -> Sign {
@@ -81,7 +81,7 @@ impl MQReLU {
             Sign::Negative
         }
     }
-    
+
     /// Apply ReLU to single coefficient: max(0, x)
     #[inline]
     pub fn apply_scalar(&self, value: u64) -> u64 {
@@ -90,12 +90,12 @@ impl MQReLU {
             Sign::Zero | Sign::Negative => 0,
         }
     }
-    
+
     /// Apply ReLU to polynomial (all coefficients)
     pub fn apply_polynomial(&self, coeffs: &[u64]) -> Vec<u64> {
         coeffs.iter().map(|&c| self.apply_scalar(c)).collect()
     }
-    
+
     /// Leaky ReLU: leak * x for negative, x for positive
     pub fn leaky_relu_scalar(&self, value: u64, leak_num: u64, leak_den: u64) -> u64 {
         match self.detect_sign(value) {
@@ -107,14 +107,15 @@ impl MQReLU {
             }
         }
     }
-    
+
     /// Apply Leaky ReLU to polynomial
     pub fn leaky_relu_polynomial(&self, coeffs: &[u64], leak_num: u64, leak_den: u64) -> Vec<u64> {
-        coeffs.iter()
+        coeffs
+            .iter()
             .map(|&c| self.leaky_relu_scalar(c, leak_num, leak_den))
             .collect()
     }
-    
+
     /// Convert signed interpretation to unsigned modular
     pub fn from_signed(&self, value: i64) -> u64 {
         if value >= 0 {
@@ -123,7 +124,7 @@ impl MQReLU {
             (self.modulus as i64 + value) as u64 % self.modulus
         }
     }
-    
+
     /// Convert unsigned modular to signed interpretation
     pub fn to_signed(&self, value: u64) -> i64 {
         if value < self.threshold {
@@ -132,12 +133,12 @@ impl MQReLU {
             -((self.modulus - value) as i64)
         }
     }
-    
+
     /// Batch convert signed values
     pub fn batch_from_signed(&self, values: &[i64]) -> Vec<u64> {
         values.iter().map(|&v| self.from_signed(v)).collect()
     }
-    
+
     /// Batch convert to signed
     pub fn batch_to_signed(&self, values: &[u64]) -> Vec<i64> {
         values.iter().map(|&v| self.to_signed(v)).collect()
@@ -153,33 +154,44 @@ pub struct MQReLUPolynomial {
 
 impl MQReLUPolynomial {
     pub fn new(coeffs: Vec<u64>, modulus: u64) -> Self {
-        Self { coeffs, relu: MQReLU::new(modulus) }
+        Self {
+            coeffs,
+            relu: MQReLU::new(modulus),
+        }
     }
-    
+
     /// Create from signed coefficients
     pub fn from_signed(values: &[i64], modulus: u64) -> Self {
         let relu = MQReLU::new(modulus);
         let coeffs = relu.batch_from_signed(values);
         Self { coeffs, relu }
     }
-    
+
     /// Apply ReLU activation
     pub fn apply_relu(&self) -> MQReLUPolynomial {
         let new_coeffs = self.relu.apply_polynomial(&self.coeffs);
-        MQReLUPolynomial { coeffs: new_coeffs, relu: self.relu.clone() }
+        MQReLUPolynomial {
+            coeffs: new_coeffs,
+            relu: self.relu.clone(),
+        }
     }
-    
+
     /// Apply Leaky ReLU
     pub fn apply_leaky_relu(&self, leak_num: u64, leak_den: u64) -> MQReLUPolynomial {
-        let new_coeffs = self.relu.leaky_relu_polynomial(&self.coeffs, leak_num, leak_den);
-        MQReLUPolynomial { coeffs: new_coeffs, relu: self.relu.clone() }
+        let new_coeffs = self
+            .relu
+            .leaky_relu_polynomial(&self.coeffs, leak_num, leak_den);
+        MQReLUPolynomial {
+            coeffs: new_coeffs,
+            relu: self.relu.clone(),
+        }
     }
-    
+
     /// Get signed interpretation
     pub fn to_signed(&self) -> Vec<i64> {
         self.relu.batch_to_signed(&self.coeffs)
     }
-    
+
     /// Count positive/negative/zero coefficients
     pub fn sign_counts(&self) -> (usize, usize, usize) {
         let (mut pos, mut neg, mut zero) = (0, 0, 0);
@@ -197,7 +209,7 @@ impl MQReLUPolynomial {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_sign_detection() {
         let relu = MQReLU::new(97);
@@ -205,7 +217,7 @@ mod tests {
         assert_eq!(relu.detect_sign(50), Sign::Negative);
         assert_eq!(relu.detect_sign(0), Sign::Zero);
     }
-    
+
     #[test]
     fn test_relu_application() {
         let relu = MQReLU::new(97);
@@ -213,7 +225,7 @@ mod tests {
         assert_eq!(relu.apply_scalar(90), 0);
         assert_eq!(relu.apply_scalar(0), 0);
     }
-    
+
     #[test]
     fn test_polynomial_relu() {
         let relu = MQReLU::new(97);
@@ -221,7 +233,7 @@ mod tests {
         let result = relu.apply_polynomial(&coeffs);
         assert_eq!(result, vec![10, 0, 0, 30, 0]);
     }
-    
+
     #[test]
     fn test_signed_conversion() {
         let relu = MQReLU::new(97);

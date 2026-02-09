@@ -16,7 +16,6 @@
 //! let result = accel.add_streams(&a, &b);
 //! ```
 
-
 use mana::stream::{ManaStream, StreamOps};
 
 #[cfg(feature = "parallel")]
@@ -330,10 +329,7 @@ impl Accelerator {
 impl Accelerator {
     /// Add multiple stream pairs in batch
     pub fn add_batch(&self, pairs: &[(ManaStream, ManaStream)]) -> Vec<ManaStream> {
-        pairs
-            .iter()
-            .map(|(a, b)| self.add_streams(a, b))
-            .collect()
+        pairs.iter().map(|(a, b)| self.add_streams(a, b)).collect()
     }
 
     /// Chain of additions: sum of all streams

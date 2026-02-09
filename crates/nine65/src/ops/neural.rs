@@ -19,11 +19,7 @@
 //! - `MobiusInt.v` (signed arithmetic transform)
 
 use crate::arithmetic::{
-    PadeEngine, PADE_SCALE,
-    MQReLU, Sign,
-    IntegerSoftmax,
-    MobiusInt, Polarity,
-    modular_distance,
+    modular_distance, IntegerSoftmax, MQReLU, MobiusInt, PadeEngine, Polarity, Sign, PADE_SCALE,
 };
 
 /// Activation function types
@@ -187,10 +183,10 @@ impl FHENeuralEvaluator {
         activation: ActivationType,
     ) -> Vec<MobiusInt> {
         let output_dim = weights.len();
-        
+
         // Matrix multiply with MobiusInt
         let mut pre_activation: Vec<MobiusInt> = Vec::with_capacity(output_dim);
-        
+
         for i in 0..output_dim {
             let mut sum = bias[i];
             for (j, w) in weights[i].iter().enumerate() {
@@ -208,15 +204,21 @@ impl FHENeuralEvaluator {
     fn apply_activation(&self, values: &[MobiusInt], activation: ActivationType) -> Vec<MobiusInt> {
         match activation {
             ActivationType::None => values.to_vec(),
-            
-            ActivationType::ReLU => {
-                values.iter()
-                    .map(|m| if m.is_negative() { MobiusInt::zero() } else { *m })
-                    .collect()
-            }
-            
+
+            ActivationType::ReLU => values
+                .iter()
+                .map(|m| {
+                    if m.is_negative() {
+                        MobiusInt::zero()
+                    } else {
+                        *m
+                    }
+                })
+                .collect(),
+
             ActivationType::LeakyReLU => {
-                values.iter()
+                values
+                    .iter()
                     .map(|m| {
                         if m.is_negative() {
                             // 0.01 * x = x / 100
@@ -227,29 +229,27 @@ impl FHENeuralEvaluator {
                     })
                     .collect()
             }
-            
-            ActivationType::Sigmoid | ActivationType::Tanh | ActivationType::GELU => {
-                values.iter()
-                    .map(|m| {
-                        let x = m.spinor_value() as i128;
-                        let result = match activation {
-                            ActivationType::Sigmoid => self.sigmoid(x),
-                            ActivationType::Tanh => self.tanh(x),
-                            ActivationType::GELU => self.gelu(x),
-                            _ => unreachable!(),
-                        };
-                        MobiusInt::from_i64(result as i64)
-                    })
-                    .collect()
-            }
-            
+
+            ActivationType::Sigmoid | ActivationType::Tanh | ActivationType::GELU => values
+                .iter()
+                .map(|m| {
+                    let x = m.spinor_value() as i128;
+                    let result = match activation {
+                        ActivationType::Sigmoid => self.sigmoid(x),
+                        ActivationType::Tanh => self.tanh(x),
+                        ActivationType::GELU => self.gelu(x),
+                        _ => unreachable!(),
+                    };
+                    MobiusInt::from_i64(result as i64)
+                })
+                .collect(),
+
             ActivationType::Softmax => {
                 // Convert to logits, compute softmax, convert back
-                let logits: Vec<i128> = values.iter()
-                    .map(|m| m.spinor_value() as i128)
-                    .collect();
+                let logits: Vec<i128> = values.iter().map(|m| m.spinor_value() as i128).collect();
                 let probs = self.softmax(&logits);
-                probs.iter()
+                probs
+                    .iter()
                     .map(|&p| MobiusInt::from_unsigned(p as u64, Polarity::Plus))
                     .collect()
             }
@@ -268,19 +268,19 @@ impl FHENeuralEvaluator {
         d_k_sqrt_scale: i128, // sqrt(d_k) * PADE_SCALE
     ) -> Vec<u128> {
         let mut logits: Vec<i128> = Vec::with_capacity(keys.len());
-        
+
         for key in keys {
             // Dot product Q · K
             let mut dot = MobiusInt::zero();
             for (q, k) in query.iter().zip(key.iter()) {
                 dot = dot.add(&q.mul(k));
             }
-            
+
             // Scale by 1/sqrt(d_k)
             let scaled = (dot.spinor_value() as i128 * PADE_SCALE) / d_k_sqrt_scale;
             logits.push(scaled);
         }
-        
+
         self.softmax(&logits)
     }
 
@@ -342,7 +342,11 @@ impl DenseLayer {
         biases: Vec<MobiusInt>,
         activation: ActivationType,
     ) -> Self {
-        Self { weights, biases, activation }
+        Self {
+            weights,
+            biases,
+            activation,
+        }
     }
 
     /// Forward pass through layer
@@ -357,7 +361,11 @@ impl DenseLayer {
 
     /// Get input dimension
     pub fn input_dim(&self) -> usize {
-        if self.weights.is_empty() { 0 } else { self.weights[0].len() }
+        if self.weights.is_empty() {
+            0
+        } else {
+            self.weights[0].len()
+        }
     }
 }
 
@@ -386,20 +394,18 @@ impl NeuralNetwork {
     /// Forward pass through entire network
     pub fn forward(&self, input: &[MobiusInt]) -> Vec<MobiusInt> {
         let mut current = input.to_vec();
-        
+
         for layer in &self.layers {
             current = layer.forward(&current, &self.eval);
         }
-        
+
         current
     }
 
     /// Get final probabilities (assumes last layer is softmax)
     pub fn predict_probs(&self, input: &[MobiusInt]) -> Vec<u128> {
         let output = self.forward(input);
-        let logits: Vec<i128> = output.iter()
-            .map(|m| m.spinor_value() as i128)
-            .collect();
+        let logits: Vec<i128> = output.iter().map(|m| m.spinor_value() as i128).collect();
         self.eval.softmax(&logits)
     }
 }
@@ -438,19 +444,22 @@ mod tests {
         let logits = vec![1_000_000_000i128, 2_000_000_000, 500_000_000];
         let probs = eval.softmax(&logits);
         let sum: u128 = probs.iter().sum();
-        assert_eq!(sum, SOFTMAX_SCALE, "Softmax sum must be exactly SOFTMAX_SCALE");
+        assert_eq!(
+            sum, SOFTMAX_SCALE,
+            "Softmax sum must be exactly SOFTMAX_SCALE"
+        );
     }
 
     #[test]
     fn test_signed_conversion_roundtrip() {
         let eval = FHENeuralEvaluator::default();
-        
+
         // Positive
         let pos = 12345u64;
         let signed = eval.to_signed(pos);
         let back = eval.from_signed(&signed);
         assert_eq!(back, pos);
-        
+
         // Negative (near modulus)
         let neg_repr = 998244353 - 12345;
         let signed = eval.to_signed(neg_repr);
@@ -462,21 +471,27 @@ mod tests {
     #[test]
     fn test_dense_layer_identity() {
         let eval = FHENeuralEvaluator::default();
-        
+
         // 2x2 identity weights
         let weights = vec![
-            vec![MobiusInt::from_unsigned(1, Polarity::Plus), MobiusInt::zero()],
-            vec![MobiusInt::zero(), MobiusInt::from_unsigned(1, Polarity::Plus)],
+            vec![
+                MobiusInt::from_unsigned(1, Polarity::Plus),
+                MobiusInt::zero(),
+            ],
+            vec![
+                MobiusInt::zero(),
+                MobiusInt::from_unsigned(1, Polarity::Plus),
+            ],
         ];
         let biases = vec![MobiusInt::zero(), MobiusInt::zero()];
-        
+
         let input = vec![
             MobiusInt::from_unsigned(42, Polarity::Plus),
             MobiusInt::from_unsigned(17, Polarity::Plus),
         ];
-        
+
         let output = eval.dense_forward(&input, &weights, &biases, ActivationType::None);
-        
+
         assert_eq!(output[0].residue, 42);
         assert_eq!(output[1].residue, 17);
     }

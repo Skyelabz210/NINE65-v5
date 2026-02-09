@@ -202,8 +202,12 @@ mod tests {
         // t=65537, N=1024, 2N=2048
         // 65536 = 32 * 2048, so 65537 ≡ 1 (mod 2048) ✓
         println!("SIMD slot support: {}", supports_simd);
-        assert!(supports_simd, "Config should support SIMD slots: t={}, 2N={}",
-                config.t, 2 * config.n);
+        assert!(
+            supports_simd,
+            "Config should support SIMD slots: t={}, 2N={}",
+            config.t,
+            2 * config.n
+        );
     }
 
     #[test]
@@ -217,7 +221,11 @@ mod tests {
 
         // Decode should recover the value
         let decoded = encoder.decode(&poly, 1);
-        assert_eq!(decoded[0], 42, "First value should be 42, got {}", decoded[0]);
+        assert_eq!(
+            decoded[0], 42,
+            "First value should be 42, got {}",
+            decoded[0]
+        );
     }
 
     #[test]
@@ -231,7 +239,10 @@ mod tests {
 
         // Decode and verify
         let decoded = encoder.decode(&poly, values.len());
-        assert_eq!(decoded, values, "Decoded values should match encoded values");
+        assert_eq!(
+            decoded, values,
+            "Decoded values should match encoded values"
+        );
     }
 
     #[test]
@@ -259,13 +270,23 @@ mod tests {
             let diff = (expected as i64 - got as i64).abs();
             max_error = max_error.max(diff);
             if diff > tolerance {
-                eprintln!("Error at index {}: expected {}, got {} (diff={})", i, expected, got, diff);
+                eprintln!(
+                    "Error at index {}: expected {}, got {} (diff={})",
+                    i, expected, got, diff
+                );
                 errors += 1;
             }
         }
 
-        println!("Full capacity encode/decode: max_error={}, tolerance={}", max_error, tolerance);
-        assert_eq!(errors, 0, "Values should roundtrip within tolerance={}", tolerance);
+        println!(
+            "Full capacity encode/decode: max_error={}, tolerance={}",
+            max_error, tolerance
+        );
+        assert_eq!(
+            errors, 0,
+            "Values should roundtrip within tolerance={}",
+            tolerance
+        );
     }
 
     #[test]

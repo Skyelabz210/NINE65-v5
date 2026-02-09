@@ -25,15 +25,31 @@ fn main() {
 
     // Test 4: Verify max_mod_switch_depth API
     println!("\n--- Test 4: max_mod_switch_depth API ---");
-    println!("  standard_128: max depth = {}", FHEConfig::standard_128().max_mod_switch_depth());
-    println!("  depth2_128: max depth = {}", FHEConfig::depth2_128().max_mod_switch_depth());
-    println!("  depth3_128: max depth = {}", FHEConfig::depth3_128().max_mod_switch_depth());
-    println!("  deep_circuit: max depth = {}", FHEConfig::deep_circuit().max_mod_switch_depth());
+    println!(
+        "  standard_128: max depth = {}",
+        FHEConfig::standard_128().max_mod_switch_depth()
+    );
+    println!(
+        "  depth2_128: max depth = {}",
+        FHEConfig::depth2_128().max_mod_switch_depth()
+    );
+    println!(
+        "  depth3_128: max depth = {}",
+        FHEConfig::depth3_128().max_mod_switch_depth()
+    );
+    println!(
+        "  deep_circuit: max depth = {}",
+        FHEConfig::deep_circuit().max_mod_switch_depth()
+    );
 }
 
 fn test_depth(config: &FHEConfig, target_depth: usize) {
-    println!("Config: {} ({} primes, max_depth={})",
-             config.name, config.primes.len(), config.max_mod_switch_depth());
+    println!(
+        "Config: {} ({} primes, max_depth={})",
+        config.name,
+        config.primes.len(),
+        config.max_mod_switch_depth()
+    );
 
     let ctx = RNSFHEContext::new_coeff_domain(config);
     let mut rng = ShadowHarvester::with_seed(42);
@@ -45,8 +61,12 @@ fn test_depth(config: &FHEConfig, target_depth: usize) {
     let ct6 = ctx.mul_dual_public_deep(&ct2, &ct3, &keys.eval_key);
     let dec6 = ctx.decrypt_dual(&ct6, &keys.secret_key);
     let d1_ok = dec6 == 6;
-    println!("  Depth-1: 2*3 = {} (expected 6) {} [level: {} primes]",
-             dec6, if d1_ok { "OK" } else { "FAIL" }, ct6.c0.main.len());
+    println!(
+        "  Depth-1: 2*3 = {} (expected 6) {} [level: {} primes]",
+        dec6,
+        if d1_ok { "OK" } else { "FAIL" },
+        ct6.c0.main.len()
+    );
 
     if target_depth >= 2 {
         // Depth-2: 6 * 20 = 120
@@ -57,12 +77,15 @@ fn test_depth(config: &FHEConfig, target_depth: usize) {
         let ct120 = ctx.mul_dual_public_deep(&ct6, &ct20, &keys.eval_key);
         let dec120 = ctx.decrypt_dual(&ct120, &keys.secret_key);
         let d2_ok = dec120 == 120;
-        println!("  Depth-2: 6*20 = {} (expected 120) {} [level: {} primes]",
-                 dec120, if d2_ok { "OK" } else { "FAIL" }, ct120.c0.main.len());
+        println!(
+            "  Depth-2: 6*20 = {} (expected 120) {} [level: {} primes]",
+            dec120,
+            if d2_ok { "OK" } else { "FAIL" },
+            ct120.c0.main.len()
+        );
 
         if d2_ok {
             println!("  SUCCESS: Depth-2 with mod-switch WORKS!");
         }
     }
-
 }

@@ -2,12 +2,12 @@
 //!
 //! Integer-only exact rational arithmetic with adaptive normalization.
 
-pub mod types;
 pub mod error;
 pub mod normalize;
-pub mod policy;
 pub mod ops;
+pub mod policy;
+pub mod types;
 
-pub use types::{NexGenRat, DenState, DivOut};
-pub use error::ArithmeticError;
 pub use crate::exact_coeff::ExactCoeff;
+pub use error::ArithmeticError;
+pub use types::{DenState, DivOut, NexGenRat};

@@ -12,20 +12,24 @@
 
 pub mod batch;
 pub mod encrypt;
-pub mod homomorphic;
-pub mod parallel;
-pub mod rns_mul;
-pub mod rns_fhe;
-pub mod neural;
 pub mod galois;
 pub mod gso_fhe;
+pub mod homomorphic;
+pub mod neural;
+pub mod parallel;
+pub mod rns_fhe;
+pub mod rns_mul;
 
 pub use batch::BatchEncoder;
-pub use encrypt::{BFVEncoder, BFVEncryptor, BFVDecryptor, Ciphertext};
+pub use encrypt::{BFVDecryptor, BFVEncoder, BFVEncryptor, Ciphertext};
+pub use galois::{GaloisEngine, GaloisEvaluator, GaloisKey, GaloisKeySet};
+pub use gso_fhe::{
+    AttractorBasin, GSOCiphertext, GSOFHEContext, GSOSwarm, NoiseEstimate, NoiseStats,
+};
 pub use homomorphic::{BFVEvaluator, TrackedEvaluator};
-pub use parallel::{ParallelEncryptor, ParallelDecryptor};
+pub use neural::{ActivationType, DenseLayer, FHENeuralEvaluator, NeuralNetwork};
+pub use parallel::{ParallelDecryptor, ParallelEncryptor};
+pub use rns_fhe::{
+    RNSCiphertext, RNSEvalKey, RNSFHEContext, RNSKeySet, RNSPublicKey, RNSSecretKey,
+};
 pub use rns_mul::RNSEvaluator;
-pub use rns_fhe::{RNSFHEContext, RNSCiphertext, RNSKeySet, RNSSecretKey, RNSPublicKey, RNSEvalKey};
-pub use neural::{FHENeuralEvaluator, ActivationType, DenseLayer, NeuralNetwork};
-pub use galois::{GaloisEngine, GaloisKey, GaloisKeySet, GaloisEvaluator};
-pub use gso_fhe::{GSOFHEContext, GSOCiphertext, NoiseEstimate, NoiseStats, AttractorBasin, GSOSwarm};

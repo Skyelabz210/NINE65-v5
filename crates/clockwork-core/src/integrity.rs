@@ -266,7 +266,10 @@ mod tests {
         let mut tr = TripleRedundant::new(original);
         tr.corrupt_a(corrupted);
         match tr.read() {
-            VoteResult::Recovered { value, corrupted_copy } => {
+            VoteResult::Recovered {
+                value,
+                corrupted_copy,
+            } => {
                 assert_eq!(value, original, "Should recover original value");
                 assert_eq!(corrupted_copy, CorruptedCopy::A);
             }
@@ -277,7 +280,10 @@ mod tests {
         let mut tr = TripleRedundant::new(original);
         tr.corrupt_b(corrupted);
         match tr.read() {
-            VoteResult::Recovered { value, corrupted_copy } => {
+            VoteResult::Recovered {
+                value,
+                corrupted_copy,
+            } => {
                 assert_eq!(value, original);
                 assert_eq!(corrupted_copy, CorruptedCopy::B);
             }
@@ -288,7 +294,10 @@ mod tests {
         let mut tr = TripleRedundant::new(original);
         tr.corrupt_c(corrupted);
         match tr.read() {
-            VoteResult::Recovered { value, corrupted_copy } => {
+            VoteResult::Recovered {
+                value,
+                corrupted_copy,
+            } => {
                 assert_eq!(value, original);
                 assert_eq!(corrupted_copy, CorruptedCopy::C);
             }

@@ -23,9 +23,9 @@
 //! - Remainder has same sign as dividend
 //! - Always: a = (a/b)*b + (a%b)
 
-use crate::exact_coeff::ExactCoeff;
-use super::types::DivOut;
 use super::error::ArithmeticError;
+use super::types::DivOut;
+use crate::exact_coeff::ExactCoeff;
 
 /// Divide two ExactCoeff values using the division trichotomy.
 ///
@@ -336,8 +336,19 @@ mod tests {
     fn division_algorithm_holds_exhaustive() {
         // For a range of inputs, verify: a = b*q + r
         let test_values: Vec<i128> = vec![
-            0, 1, -1, 2, -2, 7, -7, 13, -13, 100, -100,
-            i128::MAX / 2, i128::MIN / 2,
+            0,
+            1,
+            -1,
+            2,
+            -2,
+            7,
+            -7,
+            13,
+            -13,
+            100,
+            -100,
+            i128::MAX / 2,
+            i128::MIN / 2,
         ];
 
         for &a_val in &test_values {

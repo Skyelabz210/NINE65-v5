@@ -21,10 +21,14 @@
 //! 3. **Collapse**: When noise exceeds basin radius, swarm reconverges
 //! 4. **Shadow Entropy**: Byproduct of swarm dynamics for auxiliary randomness
 
-use super::rns_fhe::{RNSFHEContext, DualRNSCiphertext, DualRNSSecretKey,
-                     DualRNSPublicKey, DualRNSEvalKey, DualRNSKeySet, DualRNSFullKeySet};
+use super::rns_fhe::{
+    DualRNSCiphertext, DualRNSEvalKey, DualRNSFullKeySet, DualRNSKeySet, DualRNSPublicKey,
+    DualRNSSecretKey, RNSFHEContext,
+};
+use crate::arithmetic::integer_math::{
+    fixed_cos_sin, format_as_bits, integer_log2, integer_sqrt, GOLDEN_ANGLE_Q30,
+};
 use crate::arithmetic::U256;
-use crate::arithmetic::integer_math::{integer_log2, integer_sqrt, fixed_cos_sin, format_as_bits, GOLDEN_ANGLE_Q30};
 use crate::entropy::ShadowHarvester;
 
 fn u256_to_u64_saturating(value: U256) -> u64 {
@@ -80,7 +84,8 @@ impl NoiseEstimate {
     pub fn mul_noise(&mut self, other: &NoiseEstimate, coefficient_bound: u64) {
         // After tensor product, noise grows as: N_out = N1*B + N2*B + N1*N2
         // where B is the coefficient bound
-        let cross_term = (self.distance as u128 * other.distance as u128) / coefficient_bound as u128;
+        let cross_term =
+            (self.distance as u128 * other.distance as u128) / coefficient_bound as u128;
         let linear_terms = self.distance.saturating_add(other.distance);
         self.distance = linear_terms.saturating_add(cross_term as u64);
         self.mul_depth += 1;
@@ -227,7 +232,10 @@ impl GSOSwarm {
         for i in 0..iterations {
             self.shadow ^= (target.center_x as u64).rotate_left(i * 7);
             self.shadow ^= (target.center_y as u64).rotate_left(i * 11);
-            self.shadow = self.shadow.wrapping_mul(6364136223846793005).wrapping_add(1);
+            self.shadow = self
+                .shadow
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1);
         }
 
         self.step += iterations as u64;
@@ -340,7 +348,12 @@ impl GSOFHEContext {
     // ========================================================================
 
     /// Encrypt with GSO noise tracking
-    pub fn encrypt(&self, m: u64, pk: &DualRNSPublicKey, rng: &mut ShadowHarvester) -> GSOCiphertext {
+    pub fn encrypt(
+        &self,
+        m: u64,
+        pk: &DualRNSPublicKey,
+        rng: &mut ShadowHarvester,
+    ) -> GSOCiphertext {
         let ct = self.inner.encrypt_dual(m, pk, rng);
         let basin_id = (m as u32) % self.basins.len() as u32;
         GSOCiphertext::wrap(ct, basin_id)
@@ -369,8 +382,12 @@ impl GSOFHEContext {
     }
 
     /// Homomorphic multiplication (symmetric mode) with noise tracking and collapse
-    pub fn mul_symmetric(&mut self, ct1: &GSOCiphertext, ct2: &GSOCiphertext,
-                         sk: &DualRNSSecretKey) -> GSOCiphertext {
+    pub fn mul_symmetric(
+        &mut self,
+        ct1: &GSOCiphertext,
+        ct2: &GSOCiphertext,
+        sk: &DualRNSSecretKey,
+    ) -> GSOCiphertext {
         let result = self.inner.mul_dual_symmetric(&ct1.inner, &ct2.inner, sk);
 
         let mut noise = ct1.noise.clone();
@@ -384,8 +401,10 @@ impl GSOFHEContext {
             noise.collapse();
 
             #[cfg(debug_assertions)]
-            eprintln!("[GSO] Basin collapse after mul (depth {}): {} iterations",
-                      noise.mul_depth, _iterations);
+            eprintln!(
+                "[GSO] Basin collapse after mul (depth {}): {} iterations",
+                noise.mul_depth, _iterations
+            );
         }
 
         GSOCiphertext {
@@ -395,8 +414,12 @@ impl GSOFHEContext {
     }
 
     /// Homomorphic multiplication (public mode) with noise tracking and collapse
-    pub fn mul_public(&mut self, ct1: &GSOCiphertext, ct2: &GSOCiphertext,
-                      evk: &DualRNSEvalKey) -> GSOCiphertext {
+    pub fn mul_public(
+        &mut self,
+        ct1: &GSOCiphertext,
+        ct2: &GSOCiphertext,
+        evk: &DualRNSEvalKey,
+    ) -> GSOCiphertext {
         let result = self.inner.mul_dual_public(&ct1.inner, &ct2.inner, evk);
 
         let mut noise = ct1.noise.clone();
@@ -414,8 +437,10 @@ impl GSOFHEContext {
             noise.collapse();
 
             #[cfg(debug_assertions)]
-            eprintln!("[GSO] Basin collapse after public mul (depth {}): {} iterations",
-                      noise.mul_depth, _iterations);
+            eprintln!(
+                "[GSO] Basin collapse after public mul (depth {}): {} iterations",
+                noise.mul_depth, _iterations
+            );
         }
 
         GSOCiphertext {
@@ -484,12 +509,21 @@ pub struct NoiseStats {
 
 impl std::fmt::Display for NoiseStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "noise={}/{} ({}.{}%), depth={}, collapses={}{}",
-               format_as_bits(self.distance as u128),
-               format_as_bits(self.basin_radius as u128),
-               self.ratio_permille / 10, self.ratio_permille % 10,
-               self.depth, self.collapses,
-               if self.needs_collapse { " [COLLAPSE NEEDED]" } else { "" })
+        write!(
+            f,
+            "noise={}/{} ({}.{}%), depth={}, collapses={}{}",
+            format_as_bits(self.distance as u128),
+            format_as_bits(self.basin_radius as u128),
+            self.ratio_permille / 10,
+            self.ratio_permille % 10,
+            self.depth,
+            self.collapses,
+            if self.needs_collapse {
+                " [COLLAPSE NEEDED]"
+            } else {
+                ""
+            }
+        )
     }
 }
 
@@ -588,7 +622,10 @@ mod tests {
         let result = ctx.decrypt(&ct_prod, &keys.secret_key);
         let expected = 12u64;
 
-        println!("Public mul depth-1: result={} (expected {})", result, expected);
+        println!(
+            "Public mul depth-1: result={} (expected {})",
+            result, expected
+        );
         println!("Noise stats: {}", ctx.noise_stats(&ct_prod));
 
         // NOTE: Public mode with current light_rns_exact parameters has marginal noise
@@ -598,7 +635,11 @@ mod tests {
         // For reliable public mode, use larger parameters (N=4096, more primes).
         // The GSO tracking helps identify when this happens.
         let error = (result as i64 - expected as i64).unsigned_abs();
-        assert!(error <= 2, "Public depth-1 error {} exceeds tolerance 2", error);
+        assert!(
+            error <= 2,
+            "Public depth-1 error {} exceeds tolerance 2",
+            error
+        );
     }
 
     #[test]
@@ -631,8 +672,14 @@ mod tests {
         // The GSO tracking helps us understand when collapse is needed
         if result != expected {
             println!("WARN: Depth-2 public mode still failing - noise exceeds threshold");
-            println!("       Basin radius: {}", format_as_bits(ctx.basin_radius as u128));
-            println!("       Noise distance: {}", format_as_bits(ct_30.noise.distance as u128));
+            println!(
+                "       Basin radius: {}",
+                format_as_bits(ctx.basin_radius as u128)
+            );
+            println!(
+                "       Noise distance: {}",
+                format_as_bits(ct_30.noise.distance as u128)
+            );
         }
     }
 
@@ -654,7 +701,12 @@ mod tests {
             ct = ctx.mul_symmetric(&ct, &ct_clone, &keys.secret_key);
 
             let current = ctx.decrypt(&ct, &keys.secret_key);
-            println!("  Depth {}: result={}, {}", i + 1, current, ctx.noise_stats(&ct));
+            println!(
+                "  Depth {}: result={}, {}",
+                i + 1,
+                current,
+                ctx.noise_stats(&ct)
+            );
         }
 
         assert!(ct.depth() >= 10, "Should complete 10 muls");
@@ -669,9 +721,13 @@ mod tests {
         println!("\nBasin placement (first 10):");
         for i in 0..10.min(ctx.basins.len()) {
             let basin = &ctx.basins[i];
-            println!("  Basin {}: center=({}, {}), radius={}",
-                     basin.id, basin.center_x, basin.center_y,
-                     format_as_bits(basin.radius as u128));
+            println!(
+                "  Basin {}: center=({}, {}), radius={}",
+                basin.id,
+                basin.center_x,
+                basin.center_y,
+                format_as_bits(basin.radius as u128)
+            );
         }
 
         // Basins should be well-distributed (golden angle property)
@@ -714,9 +770,9 @@ mod tests {
 #[allow(deprecated)]
 mod depth_benchmarks {
     use super::*;
-    use crate::params::FHEConfig;
-    use crate::params::secure_configs::SecureConfig;
     use crate::entropy::ShadowHarvester;
+    use crate::params::secure_configs::SecureConfig;
+    use crate::params::FHEConfig;
     use std::time::Instant;
 
     fn bench_ctx(config: FHEConfig) -> GSOFHEContext {
@@ -755,9 +811,14 @@ mod depth_benchmarks {
             collapses = stats.collapses;
 
             let op_ms = op_start.elapsed().as_millis();
-            println!("{:5} │ {:6}ms │ {:3}.{}% │ {:9} │ ✓",
-                     d, op_ms,
-                     stats.ratio_permille / 10, stats.ratio_permille % 10, collapses);
+            println!(
+                "{:5} │ {:6}ms │ {:3}.{}% │ {:9} │ ✓",
+                d,
+                op_ms,
+                stats.ratio_permille / 10,
+                stats.ratio_permille % 10,
+                collapses
+            );
 
             // Decrypt and verify every 10 depths
             if d % 10 == 0 {
@@ -775,7 +836,10 @@ mod depth_benchmarks {
         println!("Avg time/mul: {}.{}ms", avg_us / 1000, (avg_us % 1000) / 10);
         println!("═══════════════════════════════════════════════════════════════\n");
 
-        assert!(depth >= 10, "Should achieve at least depth 10 in symmetric mode");
+        assert!(
+            depth >= 10,
+            "Should achieve at least depth 10 in symmetric mode"
+        );
     }
 
     #[test]
@@ -838,7 +902,7 @@ mod depth_benchmarks {
     #[cfg(feature = "shadow-entropy")]
     #[test]
     fn benchmark_entropy_during_fhe() {
-        use crate::entropy::{CRTShadowContext, ShadowAccumulator, QuotientSignature};
+        use crate::entropy::{CRTShadowContext, QuotientSignature, ShadowAccumulator};
 
         println!("\n╔══════════════════════════════════════════════════════════════╗");
         println!("║           CRT SHADOW + QUOTIENT SIGNATURE BENCHMARK          ║");
@@ -917,9 +981,14 @@ mod depth_benchmarks {
             if i % 5 == 0 {
                 let stats = ctx.noise_stats(&ct);
                 let entropy = shadow_rns.extract_entropy();
-                println!("Depth {:2}: noise={}.{}%, collapses={}, entropy sample={:#x}",
-                         i, stats.ratio_permille / 10, stats.ratio_permille % 10,
-                         stats.collapses, entropy);
+                println!(
+                    "Depth {:2}: noise={}.{}%, collapses={}, entropy sample={:#x}",
+                    i,
+                    stats.ratio_permille / 10,
+                    stats.ratio_permille % 10,
+                    stats.collapses,
+                    entropy
+                );
             }
         }
 
@@ -931,9 +1000,16 @@ mod depth_benchmarks {
         println!("RESULTS:");
         println!("  FHE depth achieved:     {}", final_stats.depth);
         println!("  FHE collapses:          {}", final_stats.collapses);
-        println!("  FHE noise ratio:        {}.{}%", final_stats.ratio_permille / 10, final_stats.ratio_permille % 10);
+        println!(
+            "  FHE noise ratio:        {}.{}%",
+            final_stats.ratio_permille / 10,
+            final_stats.ratio_permille % 10
+        );
         println!("  Shadow ops:             {}", shadow_stats.operations);
-        println!("  Entropy harvested:      {} bits", shadow_stats.estimated_entropy);
+        println!(
+            "  Entropy harvested:      {} bits",
+            shadow_stats.estimated_entropy
+        );
         println!("  Total time:             {:?}", elapsed);
         println!("═══════════════════════════════════════════════════════════════\n");
     }
@@ -947,12 +1023,12 @@ mod depth_benchmarks {
 #[allow(deprecated)]
 mod arithmetic_benchmarks {
     use super::*;
-    use crate::params::FHEConfig;
-    use crate::params::secure_configs::SecureConfig;
-    use crate::entropy::ShadowHarvester;
-    use crate::arithmetic::exact_divider::ExactDivider;
     use crate::arithmetic::exact_coeff::ExactContext;
+    use crate::arithmetic::exact_divider::ExactDivider;
+    use crate::entropy::ShadowHarvester;
     use crate::entropy::{CRTShadowContext, QuotientSignature};
+    use crate::params::secure_configs::SecureConfig;
+    use crate::params::FHEConfig;
     use std::time::{Duration, Instant};
 
     /// Integer-only timing display helpers.
@@ -979,16 +1055,20 @@ mod arithmetic_benchmarks {
         let (ms_w, ms_f) = ms_parts(d);
         let o_s = ops_per_sec(d, ops);
         let ns = ns_per_op(d, ops);
-        println!("  {:<15}│ {:>6}.{:02}ms │ {:>11} │ {:>6}",
-                 name, ms_w, ms_f, o_s, ns);
+        println!(
+            "  {:<15}│ {:>6}.{:02}ms │ {:>11} │ {:>6}",
+            name, ms_w, ms_f, o_s, ns
+        );
     }
     /// Print a ms/op benchmark row (for heavier FHE operations)
     fn print_ms_row(name: &str, d: &Duration, ops: u64) {
         let (ms_w, ms_f) = ms_parts(d);
         let o_s = ops_per_sec(d, ops);
         let (mpo_w, mpo_f) = ms_per_op(d, ops);
-        println!("  {:<15}│ {:>6}.{:02}ms │ {:>11} │ {:>3}.{:02}",
-                 name, ms_w, ms_f, o_s, mpo_w, mpo_f);
+        println!(
+            "  {:<15}│ {:>6}.{:02}ms │ {:>11} │ {:>3}.{:02}",
+            name, ms_w, ms_f, o_s, mpo_w, mpo_f
+        );
     }
     /// M ops/sec as integer
     fn m_ops_per_sec(d: &Duration, ops: u64) -> u128 {
@@ -1079,7 +1159,7 @@ mod arithmetic_benchmarks {
         let recon_time = start.elapsed();
 
         // EXACT DIVIDE (by small divisor)
-        let divisible_val = 12345 * 5u128;  // divisible by 5
+        let divisible_val = 12345 * 5u128; // divisible by 5
         let (m_div, a_div) = divider.encode(divisible_val);
         let start = Instant::now();
         for _ in 0..div_ops {
@@ -1171,7 +1251,7 @@ mod arithmetic_benchmarks {
         let mut rng = ShadowHarvester::new();
         let keys = fhe_ctx.generate_keys(&mut rng);
 
-        let fhe_ops = 100u64;  // FHE ops are heavier
+        let fhe_ops = 100u64; // FHE ops are heavier
 
         // FHE ENCRYPT
         let start = Instant::now();
@@ -1218,26 +1298,50 @@ mod arithmetic_benchmarks {
         println!("║                      SUMMARY                                 ║");
         println!("╠══════════════════════════════════════════════════════════════╣");
         println!("║  RNS 4-lane:                                                 ║");
-        println!("║    ADD:        {:>8} ns   ({:>6}M ops/sec)               ║",
-                 ns_per_op(&add_time, ops), m_ops_per_sec(&add_time, ops));
-        println!("║    MUL:        {:>8} ns   ({:>6}M ops/sec)               ║",
-                 ns_per_op(&mul_time, ops), m_ops_per_sec(&mul_time, ops));
+        println!(
+            "║    ADD:        {:>8} ns   ({:>6}M ops/sec)               ║",
+            ns_per_op(&add_time, ops),
+            m_ops_per_sec(&add_time, ops)
+        );
+        println!(
+            "║    MUL:        {:>8} ns   ({:>6}M ops/sec)               ║",
+            ns_per_op(&mul_time, ops),
+            m_ops_per_sec(&mul_time, ops)
+        );
         println!("║                                                              ║");
         println!("║  K-Elimination Division:                                     ║");
-        println!("║    EXACT_DIV:  {:>8} ns   ({:>6}M ops/sec)               ║",
-                 ns_per_op(&exact_div_time, div_ops), m_ops_per_sec(&exact_div_time, div_ops));
-        println!("║    SCALE:      {:>8} ns   ({:>6}M ops/sec)               ║",
-                 ns_per_op(&scale_time, div_ops), m_ops_per_sec(&scale_time, div_ops));
+        println!(
+            "║    EXACT_DIV:  {:>8} ns   ({:>6}M ops/sec)               ║",
+            ns_per_op(&exact_div_time, div_ops),
+            m_ops_per_sec(&exact_div_time, div_ops)
+        );
+        println!(
+            "║    SCALE:      {:>8} ns   ({:>6}M ops/sec)               ║",
+            ns_per_op(&scale_time, div_ops),
+            m_ops_per_sec(&scale_time, div_ops)
+        );
         println!("║                                                              ║");
         println!("║  FHE Operations:                                             ║");
         let (enc_w, enc_f) = ms_per_op(&fhe_enc_time, fhe_ops);
         let (add_w, add_f) = ms_per_op(&fhe_add_time, fhe_ops);
         let (mul_w, mul_f) = ms_per_op(&fhe_mul_time, fhe_ops);
         let (dec_w, dec_f) = ms_per_op(&fhe_dec_time, fhe_ops);
-        println!("║    ENCRYPT:    {:>5}.{:02} ms                                    ║", enc_w, enc_f);
-        println!("║    ADD:        {:>5}.{:02} ms                                    ║", add_w, add_f);
-        println!("║    MUL:        {:>5}.{:02} ms                                    ║", mul_w, mul_f);
-        println!("║    DECRYPT:    {:>5}.{:02} ms                                    ║", dec_w, dec_f);
+        println!(
+            "║    ENCRYPT:    {:>5}.{:02} ms                                    ║",
+            enc_w, enc_f
+        );
+        println!(
+            "║    ADD:        {:>5}.{:02} ms                                    ║",
+            add_w, add_f
+        );
+        println!(
+            "║    MUL:        {:>5}.{:02} ms                                    ║",
+            mul_w, mul_f
+        );
+        println!(
+            "║    DECRYPT:    {:>5}.{:02} ms                                    ║",
+            dec_w, dec_f
+        );
         println!("╚══════════════════════════════════════════════════════════════╝\n");
     }
 

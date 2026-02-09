@@ -5,18 +5,21 @@
 //!
 //! All benchmarks use production-safe SecureConfig with proper security levels.
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use nine65::prelude::*;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use nine65::params::SecureConfig;
+use nine65::prelude::*;
 
 fn bench_homo_mul_scaling(c: &mut Criterion) {
     let mut group = c.benchmark_group("homo_mul_scaling");
-    group.sample_size(10);  // Fewer samples for large N
+    group.sample_size(10); // Fewer samples for large N
 
     // Test configurations at different N values - ALL use secure 128-bit+ configs
     let configs = [
         ("N=2048/128-bit", SecureConfig::secure_128().into_config()),
-        ("N=4096/128-bit-deep", SecureConfig::secure_128_deep().into_config()),
+        (
+            "N=4096/128-bit-deep",
+            SecureConfig::secure_128_deep().into_config(),
+        ),
         ("N=4096/192-bit", SecureConfig::secure_192().into_config()),
         ("N=8192/256-bit", SecureConfig::secure_256().into_config()),
     ];
@@ -34,9 +37,7 @@ fn bench_homo_mul_scaling(c: &mut Criterion) {
         let ct2 = encryptor.encrypt(17, &mut rng);
 
         group.bench_with_input(BenchmarkId::new("parallel", name), &name, |b, _| {
-            b.iter(|| {
-                black_box(evaluator.mul(&ct1, &ct2))
-            })
+            b.iter(|| black_box(evaluator.mul(&ct1, &ct2)))
         });
     }
 
@@ -48,7 +49,7 @@ fn bench_ntt_scaling(c: &mut Criterion) {
     group.sample_size(20);
 
     let sizes = [1024, 2048, 4096, 8192];
-    let q = 998244353u64;  // NTT-friendly prime
+    let q = 998244353u64; // NTT-friendly prime
 
     for &n in &sizes {
         let ntt = NTTEngine::new(q, n);
@@ -97,16 +98,12 @@ fn bench_encrypt_decrypt_scaling(c: &mut Criterion) {
         let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
 
         group.bench_with_input(BenchmarkId::new("encrypt", n), &n, |b, _| {
-            b.iter(|| {
-                black_box(encryptor.encrypt(42, &mut rng))
-            })
+            b.iter(|| black_box(encryptor.encrypt(42, &mut rng)))
         });
 
         let ct = encryptor.encrypt(42, &mut rng);
         group.bench_with_input(BenchmarkId::new("decrypt", n), &n, |b, _| {
-            b.iter(|| {
-                black_box(decryptor.decrypt(&ct))
-            })
+            b.iter(|| black_box(decryptor.decrypt(&ct)))
         });
     }
 

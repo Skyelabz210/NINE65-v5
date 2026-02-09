@@ -1,7 +1,7 @@
 //! Keys Module - BFV Key Generation
 //!
 //! Generates secret, public, and evaluation keys for BFV FHE.
-//! 
+//!
 //! # Security (December 2024 Cryptographic Audit)
 //!
 //! - **SecretKey** implements `Zeroize` and `ZeroizeOnDrop` for secure memory clearing
@@ -25,16 +25,16 @@ use crate::arithmetic::NTTEngineFFT as NTTEngine;
 #[cfg(not(feature = "ntt_fft"))]
 use crate::arithmetic::NTTEngine;
 use crate::entropy::ShadowHarvester;
-use crate::entropy::{secure_ternary_vector, secure_uniform_vector, secure_cbd_vector};
+use crate::entropy::{secure_cbd_vector, secure_ternary_vector, secure_uniform_vector};
 use crate::errors::{Nine65Error, Nine65Result};
 use crate::params::FHEConfig;
 use crate::ring::RingPolynomial;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Secret Key: ternary polynomial s ∈ R_q
-/// 
+///
 /// # Security
-/// 
+///
 /// Implements `ZeroizeOnDrop` to securely clear memory when dropped.
 /// The secret key coefficients are overwritten with zeros using volatile
 /// writes that cannot be optimized away by the compiler.
@@ -46,20 +46,20 @@ pub struct SecretKey {
 
 impl SecretKey {
     /// Generate a new secret key using Shadow Entropy (DETERMINISTIC)
-    /// 
+    ///
     /// # Warning
-    /// 
+    ///
     /// This produces deterministic keys based on the harvester seed.
     /// **Use only for testing and reproducible benchmarks.**
-    /// 
+    ///
     /// For production, use [`generate_secure()`](Self::generate_secure).
     pub fn generate(config: &FHEConfig, harvester: &mut ShadowHarvester) -> Self {
         let s = RingPolynomial::random_ternary(config.n, config.q, harvester);
         Self { s }
     }
-    
+
     /// Generate a new secret key using OS CSPRNG (PRODUCTION)
-    /// 
+    ///
     /// Uses the operating system's cryptographically secure random number
     /// generator via `getrandom`. This should be used for all production
     /// key generation.
@@ -69,18 +69,19 @@ impl SecretKey {
     /// Panics if the OS CSPRNG fails (should never happen on supported platforms).
     pub fn generate_secure(config: &FHEConfig) -> Self {
         let ternary = secure_ternary_vector(config.n);
-        
+
         // Convert ternary {-1, 0, 1} to ring elements mod q
-        let coeffs: Vec<u64> = ternary.iter()
+        let coeffs: Vec<u64> = ternary
+            .iter()
             .map(|&t| {
                 if t < 0 {
-                    config.q - 1  // -1 mod q
+                    config.q - 1 // -1 mod q
                 } else {
                     t as u64
                 }
             })
             .collect();
-        
+
         let s = RingPolynomial::from_coeffs(coeffs, config.q);
         Self { s }
     }
@@ -109,10 +110,10 @@ impl PublicKey {
     ) -> Self {
         // a ← uniform random
         let a = RingPolynomial::random_uniform(config.n, config.q, harvester);
-        
+
         // e ← error distribution (CBD)
         let e = RingPolynomial::random_cbd(config.n, config.q, config.eta, harvester);
-        
+
         // pk0 = -a*s + e = -(a*s) + e
         // Use constant-time multiplication to protect secret key
         let as_prod = a.mul_ct(&sk.s, ntt);
@@ -126,18 +127,15 @@ impl PublicKey {
     ///
     /// Uses cryptographically secure randomness for the 'a' polynomial
     /// and error term. Uses constant-time operations for secret key.
-    pub fn generate_secure(
-        sk: &SecretKey,
-        config: &FHEConfig,
-        ntt: &NTTEngine,
-    ) -> Self {
+    pub fn generate_secure(sk: &SecretKey, config: &FHEConfig, ntt: &NTTEngine) -> Self {
         // a ← uniform random (CSPRNG)
         let a_coeffs = secure_uniform_vector(config.n, config.q);
         let a = RingPolynomial::from_coeffs(a_coeffs, config.q);
 
         // e ← CBD error distribution (CSPRNG)
         let e_signed = secure_cbd_vector(config.n, config.eta);
-        let e_coeffs: Vec<u64> = e_signed.iter()
+        let e_coeffs: Vec<u64> = e_signed
+            .iter()
             .map(|&e| {
                 if e < 0 {
                     ((config.q as i64) + e) as u64
@@ -200,10 +198,10 @@ impl EvaluationKey {
         ntt: &NTTEngine,
         harvester: &mut ShadowHarvester,
     ) -> Self {
-        let decomp_base = 1u64 << 16;  // T = 2^16
+        let decomp_base = 1u64 << 16; // T = 2^16
         let q_bits = 64 - config.q.leading_zeros() as usize;
         let levels = q_bits.div_ceil(16);
-        
+
         // Use constant-time multiplication to protect secret key
         let s_squared = sk.s.mul_ct(&sk.s, ntt);
 
@@ -219,23 +217,23 @@ impl EvaluationKey {
             let as_prod = a_i.mul_ct(&sk.s, ntt);
             let neg_as = as_prod.neg(ntt);
             let b_i = neg_as.add(&e_i, ntt).add(&s2_ti, ntt);
-            
+
             rlk.push((b_i, a_i));
             power_of_t = ((power_of_t as u128 * decomp_base as u128) % config.q as u128) as u64;
         }
-        
-        Self { rlk, decomp_base, levels }
+
+        Self {
+            rlk,
+            decomp_base,
+            levels,
+        }
     }
-    
+
     /// Generate evaluation key using OS-seeded Shadow Entropy
     ///
     /// Eval keys are less sensitive than secret keys, so we use
     /// OS-seeded Shadow Entropy for speed while maintaining security.
-    pub fn generate_secure(
-        sk: &SecretKey,
-        config: &FHEConfig,
-        ntt: &NTTEngine,
-    ) -> Self {
+    pub fn generate_secure(sk: &SecretKey, config: &FHEConfig, ntt: &NTTEngine) -> Self {
         let mut harvester = ShadowHarvester::from_os_seed();
         Self::generate(sk, config, ntt, &mut harvester)
     }
@@ -278,12 +276,14 @@ impl EvaluationKey {
         }
 
         for (i, (b, a)) in self.rlk.iter().enumerate() {
-            b.validate(expected_n, expected_q).map_err(|e| Nine65Error::InvalidParameter {
-                message: format!("EvaluationKey: rlk[{}].b invalid: {}", i, e),
-            })?;
-            a.validate(expected_n, expected_q).map_err(|e| Nine65Error::InvalidParameter {
-                message: format!("EvaluationKey: rlk[{}].a invalid: {}", i, e),
-            })?;
+            b.validate(expected_n, expected_q)
+                .map_err(|e| Nine65Error::InvalidParameter {
+                    message: format!("EvaluationKey: rlk[{}].b invalid: {}", i, e),
+                })?;
+            a.validate(expected_n, expected_q)
+                .map_err(|e| Nine65Error::InvalidParameter {
+                    message: format!("EvaluationKey: rlk[{}].a invalid: {}", i, e),
+                })?;
         }
 
         Ok(())
@@ -321,18 +321,21 @@ impl PublicKey {
 
     /// Deserialize from JSON with validation
     pub fn from_json_validated(s: &str, expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
-        let pk: Self = serde_json::from_str(s)
-            .map_err(|e| Nine65Error::DeserializationError {
-                message: format!("JSON parse error: {}", e),
-            })?;
+        let pk: Self = serde_json::from_str(s).map_err(|e| Nine65Error::DeserializationError {
+            message: format!("JSON parse error: {}", e),
+        })?;
         pk.validate(expected_n, expected_q)?;
         Ok(pk)
     }
 
     /// Deserialize from bytes with validation
-    pub fn from_bytes_validated(bytes: &[u8], expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
-        let pk: Self = bincode::deserialize(bytes)
-            .map_err(|e| Nine65Error::DeserializationError {
+    pub fn from_bytes_validated(
+        bytes: &[u8],
+        expected_n: usize,
+        expected_q: u64,
+    ) -> Nine65Result<Self> {
+        let pk: Self =
+            bincode::deserialize(bytes).map_err(|e| Nine65Error::DeserializationError {
                 message: format!("Bincode parse error: {}", e),
             })?;
         pk.validate(expected_n, expected_q)?;
@@ -347,7 +350,10 @@ impl PublicKey {
     /// # Security Warning
     /// This method does NOT validate the deserialized key.
     /// Only use for trusted input. For untrusted input, use `from_json_validated()`.
-    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use from_json_validated() for untrusted input"
+    )]
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
     }
@@ -357,7 +363,10 @@ impl PublicKey {
     /// # Security Warning
     /// This method does NOT validate the deserialized key.
     /// Only use for trusted input. For untrusted input, use `from_bytes_validated()`.
-    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use from_bytes_validated() for untrusted input"
+    )]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
@@ -377,18 +386,21 @@ impl EvaluationKey {
 
     /// Deserialize from JSON with validation
     pub fn from_json_validated(s: &str, expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
-        let ek: Self = serde_json::from_str(s)
-            .map_err(|e| Nine65Error::DeserializationError {
-                message: format!("JSON parse error: {}", e),
-            })?;
+        let ek: Self = serde_json::from_str(s).map_err(|e| Nine65Error::DeserializationError {
+            message: format!("JSON parse error: {}", e),
+        })?;
         ek.validate(expected_n, expected_q)?;
         Ok(ek)
     }
 
     /// Deserialize from bytes with validation
-    pub fn from_bytes_validated(bytes: &[u8], expected_n: usize, expected_q: u64) -> Nine65Result<Self> {
-        let ek: Self = bincode::deserialize(bytes)
-            .map_err(|e| Nine65Error::DeserializationError {
+    pub fn from_bytes_validated(
+        bytes: &[u8],
+        expected_n: usize,
+        expected_q: u64,
+    ) -> Nine65Result<Self> {
+        let ek: Self =
+            bincode::deserialize(bytes).map_err(|e| Nine65Error::DeserializationError {
                 message: format!("Bincode parse error: {}", e),
             })?;
         ek.validate(expected_n, expected_q)?;
@@ -403,7 +415,10 @@ impl EvaluationKey {
     /// # Security Warning
     /// This method does NOT validate the deserialized key.
     /// Only use for trusted input. For untrusted input, use `from_json_validated()`.
-    #[deprecated(since = "0.1.0", note = "Use from_json_validated() for untrusted input")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use from_json_validated() for untrusted input"
+    )]
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(s)
     }
@@ -413,7 +428,10 @@ impl EvaluationKey {
     /// # Security Warning
     /// This method does NOT validate the deserialized key.
     /// Only use for trusted input. For untrusted input, use `from_bytes_validated()`.
-    #[deprecated(since = "0.1.0", note = "Use from_bytes_validated() for untrusted input")]
+    #[deprecated(
+        since = "0.1.0",
+        note = "Use from_bytes_validated() for untrusted input"
+    )]
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
         bincode::deserialize(bytes)
     }
@@ -435,10 +453,14 @@ impl KeySet {
         let secret_key = SecretKey::generate(config, harvester);
         let public_key = PublicKey::generate(&secret_key, config, ntt, harvester);
         let eval_key = EvaluationKey::generate(&secret_key, config, ntt, harvester);
-        
-        Self { secret_key, public_key, eval_key }
+
+        Self {
+            secret_key,
+            public_key,
+            eval_key,
+        }
     }
-    
+
     /// Generate complete key set using OS CSPRNG (PRODUCTION)
     ///
     /// Uses cryptographically secure randomness for all key generation.
@@ -455,8 +477,12 @@ impl KeySet {
         let secret_key = SecretKey::generate_secure(config);
         let public_key = PublicKey::generate_secure(&secret_key, config, ntt);
         let eval_key = EvaluationKey::generate_secure(&secret_key, config, ntt);
-        
-        Self { secret_key, public_key, eval_key }
+
+        Self {
+            secret_key,
+            public_key,
+            eval_key,
+        }
     }
 }
 
@@ -464,116 +490,129 @@ impl KeySet {
 mod tests {
     use super::*;
     use crate::params::secure_configs::SecureConfig;
-    
+
     #[test]
     fn test_keygen_basic() {
         let config = SecureConfig::test_fast().into_config();
         let mut harvester = ShadowHarvester::with_seed(42);
-        
+
         let sk = SecretKey::generate(&config, &mut harvester);
-        
+
         // Secret key should be ternary
         for i in 0..config.n {
             let coeff = sk.s.get_signed(i);
-            assert!((-1..=1).contains(&coeff), "Non-ternary coefficient: {}", coeff);
+            assert!(
+                (-1..=1).contains(&coeff),
+                "Non-ternary coefficient: {}",
+                coeff
+            );
         }
     }
-    
+
     #[test]
     fn test_keygen_deterministic() {
         let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
-        
+
         let mut h1 = ShadowHarvester::with_seed(12345);
         let mut h2 = ShadowHarvester::with_seed(12345);
-        
+
         let keys1 = KeySet::generate(&config, &ntt, &mut h1);
         let keys2 = KeySet::generate(&config, &ntt, &mut h2);
-        
+
         // Same seed should produce same keys
         assert_eq!(keys1.secret_key.s.coeffs, keys2.secret_key.s.coeffs);
         assert_eq!(keys1.public_key.pk0.coeffs, keys2.public_key.pk0.coeffs);
         assert_eq!(keys1.public_key.pk1.coeffs, keys2.public_key.pk1.coeffs);
     }
-    
+
     #[test]
     fn test_keygen_secure() {
         let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
-        
+
         let keys1 = KeySet::generate_secure(&config, &ntt);
         let keys2 = KeySet::generate_secure(&config, &ntt);
-        
+
         // Secure keygen should produce DIFFERENT keys each time
-        assert_ne!(keys1.secret_key.s.coeffs, keys2.secret_key.s.coeffs,
-                   "Secure keygen should be non-deterministic");
+        assert_ne!(
+            keys1.secret_key.s.coeffs, keys2.secret_key.s.coeffs,
+            "Secure keygen should be non-deterministic"
+        );
     }
-    
+
     #[test]
     fn test_secure_key_is_ternary() {
         let config = SecureConfig::test_fast().into_config();
-        
+
         let sk = SecretKey::generate_secure(&config);
-        
+
         // Secret key should still be ternary
         for i in 0..config.n {
             let coeff = sk.s.get_signed(i);
-            assert!((-1..=1).contains(&coeff), 
-                    "Secure key has non-ternary coefficient at {}: {}", i, coeff);
+            assert!(
+                (-1..=1).contains(&coeff),
+                "Secure key has non-ternary coefficient at {}: {}",
+                i,
+                coeff
+            );
         }
     }
-    
+
     #[test]
     fn test_keygen_benchmark() {
         let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let mut harvester = ShadowHarvester::with_seed(999);
-        
+
         let start = std::time::Instant::now();
         for _ in 0..100 {
             let _ = KeySet::generate(&config, &ntt, &mut harvester);
         }
         let elapsed = start.elapsed();
-        
+
         println!("KeyGen (deterministic) x100: {:?}", elapsed);
     }
-    
+
     #[test]
     fn test_keygen_secure_benchmark() {
         let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
-        
+
         let start = std::time::Instant::now();
         for _ in 0..100 {
             let _ = KeySet::generate_secure(&config, &ntt);
         }
         let elapsed = start.elapsed();
-        
+
         println!("KeyGen (secure) x100: {:?}", elapsed);
     }
-    
+
     #[test]
     fn test_encrypt_decrypt_with_secure_keys() {
         // Integration test: verify secure keys work with FHE operations
-        use crate::ops::encrypt::{BFVEncoder, BFVEncryptor, BFVDecryptor};
-        
+        use crate::ops::encrypt::{BFVDecryptor, BFVEncoder, BFVEncryptor};
+
         let config = SecureConfig::test_fast().into_config();
         let ntt = NTTEngine::new(config.q, config.n);
         let keys = KeySet::generate_secure(&config, &ntt);
-        
+
         // Create encoder/encryptor/decryptor
         let encoder = BFVEncoder::new(&config);
         let encryptor = BFVEncryptor::new(&keys.public_key, &encoder, &ntt, config.eta);
         let decryptor = BFVDecryptor::new(&keys.secret_key, &encoder, &ntt);
-        
+
         // Use Shadow for encrypt noise (acceptable per audit)
         let mut harvester = ShadowHarvester::from_os_seed();
-        
+
         let plaintext = 42u64;
         let ct = encryptor.encrypt(plaintext, &mut harvester);
         let decrypted = decryptor.decrypt(&ct);
-        
-        assert_eq!(decrypted, plaintext, "Encrypt/decrypt failed with secure keys");
+
+        assert_eq!(
+            decrypted, plaintext,
+            "Encrypt/decrypt failed with secure keys"
+        );
     }
 
     #[cfg(feature = "serde")]
@@ -591,7 +630,10 @@ mod tests {
         assert_eq!(pk.pk0.coeffs, keys.public_key.pk0.coeffs);
         assert_eq!(pk.pk1.coeffs, keys.public_key.pk1.coeffs);
 
-        let bytes = keys.public_key.to_bytes().expect("serialize public key bytes");
+        let bytes = keys
+            .public_key
+            .to_bytes()
+            .expect("serialize public key bytes");
         let pk_bytes = PublicKey::from_bytes_validated(&bytes, config.n, config.q)
             .expect("validated public key bytes");
         assert_eq!(pk_bytes.pk0.coeffs, keys.public_key.pk0.coeffs);

@@ -3,9 +3,9 @@
 //! DivOut enum correctness: T8 (division trichotomy) verified by κ Critic.
 //! Completeness: ExactInverse ∪ ExactAFC ∪ FPD = all (a,b) with b ≠ 0.
 
-use std::fmt;
-use crate::exact_coeff::ExactCoeff;
 use super::error::ArithmeticError;
+use crate::exact_coeff::ExactCoeff;
+use std::fmt;
 
 /// Denominator state tracking for optimization.
 ///
@@ -45,10 +45,7 @@ pub enum DivOut {
     ExactAFC(ExactCoeff),
 
     /// Floored Partial Division: a = b * quot + rem, 0 < |rem| < |b|.
-    FPD {
-        quot: ExactCoeff,
-        rem: ExactCoeff,
-    },
+    FPD { quot: ExactCoeff, rem: ExactCoeff },
 }
 
 impl DivOut {

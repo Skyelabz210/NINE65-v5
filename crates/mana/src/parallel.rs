@@ -25,7 +25,6 @@ use rayon::prelude::*;
 use crate::lane::{Lane, LaneOps};
 use crate::stream::ManaStream;
 
-
 /// Rayon-parallel stream operations
 #[cfg(feature = "parallel")]
 #[derive(Clone, Debug)]
@@ -117,10 +116,11 @@ impl ParallelStream {
 
                 // Process this lane's coefficients in parallel chunks
                 a_coeffs
-                    .par_chunks(1024)  // Cache-friendly chunk size
+                    .par_chunks(1024) // Cache-friendly chunk size
                     .zip(b_coeffs.par_chunks(1024))
                     .flat_map(|(a_chunk, b_chunk)| {
-                        a_chunk.iter()
+                        a_chunk
+                            .iter()
                             .zip(b_chunk.iter())
                             .map(|(&a, &b)| mod_add(a, b, q))
                             .collect::<Vec<_>>()

@@ -103,26 +103,30 @@ fn main() {
     let config = match config_name.as_str() {
         #[cfg(feature = "allow_insecure")]
         "light" => {
-            eprintln!("WARNING: 'light' config has only ~36-bit security - NOT for production use!");
+            eprintln!(
+                "WARNING: 'light' config has only ~36-bit security - NOT for production use!"
+            );
             #[allow(deprecated)]
             {
                 FHEConfig::light()
             }
-        },
+        }
         #[cfg(feature = "allow_insecure")]
         "he_standard_128" | "he-standard-128" => {
-            eprintln!("WARNING: 'he_standard_128' has only ~56-bit security - NOT for production use!");
+            eprintln!(
+                "WARNING: 'he_standard_128' has only ~56-bit security - NOT for production use!"
+            );
             #[allow(deprecated)]
             {
                 FHEConfig::he_standard_128()
             }
-        },
+        }
         #[cfg(not(feature = "allow_insecure"))]
         "light" | "he_standard_128" | "he-standard-128" => {
             eprintln!("ERROR: Insecure configs (light, he_standard_128) require --features allow_insecure");
             eprintln!("Build with: cargo build --release --features allow_insecure");
             std::process::exit(3);
-        },
+        }
         "standard_128" | "standard-128" => FHEConfig::standard_128(),
         "high_192" | "high-192" => FHEConfig::high_192(),
         other => {
@@ -174,7 +178,10 @@ fn main() {
     let mul_plain = decryptor.decrypt(&ct_mul_plain);
     expect_eq("mul_plain", mul_plain, (a * 3) % config.t);
 
-    println!("Parameters: n={}, q={}, t={}, eta={}", config.n, config.q, config.t, config.eta);
+    println!(
+        "Parameters: n={}, q={}, t={}, eta={}",
+        config.n, config.q, config.t, config.eta
+    );
     println!("Keygen: {} ms", keygen_ms);
     println!("Results:");
     println!("  {} + {} = {}", a, b, sum);

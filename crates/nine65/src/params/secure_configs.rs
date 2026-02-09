@@ -24,12 +24,12 @@
 //! assert!(config.is_production_safe());
 //! ```
 
-use super::FHEConfig;
 #[cfg(test)]
 use super::is_ntt_compatible;
 use super::security_estimator::{
-    LatticeSecurityEstimator, SecretDistribution, HEStandardBounds, CostModel
+    CostModel, HEStandardBounds, LatticeSecurityEstimator, SecretDistribution,
 };
+use super::FHEConfig;
 
 /// Secure FHE configuration with verified security properties
 #[derive(Clone, Debug)]
@@ -57,9 +57,7 @@ impl SecureConfig {
         name: &'static str,
     ) -> Self {
         let q = primes[0];
-        let log_q: u32 = primes.iter()
-            .map(|&p| 64 - p.leading_zeros())
-            .sum();
+        let log_q: u32 = primes.iter().map(|&p| 64 - p.leading_zeros()).sum();
 
         // Verify with security estimator
         let estimator = LatticeSecurityEstimator::new(CostModel::CoreSVP);
@@ -121,12 +119,12 @@ impl SecureConfig {
         Self::new_verified(
             4096,
             vec![
-                998244353,   // 30-bit NTT prime
-                985661441,   // 30-bit NTT prime
-                754974721,   // 30-bit NTT prime
+                998244353, // 30-bit NTT prime
+                985661441, // 30-bit NTT prime
+                754974721, // 30-bit NTT prime
             ],
-            65537,           // Standard plaintext modulus
-            3,               // CBD parameter
+            65537, // Standard plaintext modulus
+            3,     // CBD parameter
             128,
             "secure_128",
         )
@@ -140,10 +138,7 @@ impl SecureConfig {
         Self::new_verified(
             4096,
             vec![
-                998244353,
-                985661441,
-                754974721,
-                469762049,   // 4th 30-bit NTT prime
+                998244353, 985661441, 754974721, 469762049, // 4th 30-bit NTT prime
             ],
             65537,
             3,
@@ -164,14 +159,11 @@ impl SecureConfig {
         Self::new_verified(
             8192,
             vec![
-                998244353,
-                985661441,
-                754974721,
-                469762049,
-                167772161,   // 5th prime for larger Q
+                998244353, 985661441, 754974721, 469762049,
+                167772161, // 5th prime for larger Q
             ],
             65537,
-            4,               // Larger eta for more security
+            4, // Larger eta for more security
             192,
             "secure_192",
         )
@@ -185,13 +177,7 @@ impl SecureConfig {
         Self::new_verified(
             16384,
             vec![
-                998244353,
-                985661441,
-                754974721,
-                469762049,
-                167772161,
-                595591169,
-                645922817,
+                998244353, 985661441, 754974721, 469762049, 167772161, 595591169, 645922817,
             ],
             65537,
             5,
@@ -219,7 +205,7 @@ impl SecureConfig {
             vec![998244353],
             65537,
             2,
-            40,  // Honest about low security
+            40, // Honest about low security
             "test_fast",
         )
     }
@@ -296,33 +282,43 @@ mod tests {
     #[test]
     fn test_secure_128_meets_claims() {
         let config = SecureConfig::secure_128();
-        println!("secure_128: classical={}, hybrid={}, quantum={}",
-                 config.classical_security, config.hybrid_security, config.quantum_security);
+        println!(
+            "secure_128: classical={}, hybrid={}, quantum={}",
+            config.classical_security, config.hybrid_security, config.quantum_security
+        );
 
         // N=4096 with log(Q)~90 bits should give >100 bits security
-        assert!(config.hybrid_security >= 100,
-                "secure_128 should have >= 100 bits hybrid security, got {}",
-                config.hybrid_security);
+        assert!(
+            config.hybrid_security >= 100,
+            "secure_128 should have >= 100 bits hybrid security, got {}",
+            config.hybrid_security
+        );
         assert!(config.is_production_safe());
     }
 
     #[test]
     fn test_secure_192_meets_claims() {
         let config = SecureConfig::secure_192();
-        println!("secure_192: classical={}, hybrid={}, quantum={}",
-                 config.classical_security, config.hybrid_security, config.quantum_security);
+        println!(
+            "secure_192: classical={}, hybrid={}, quantum={}",
+            config.classical_security, config.hybrid_security, config.quantum_security
+        );
 
         // N=8192 with log(Q)~150 bits should give >150 bits security
-        assert!(config.hybrid_security >= 150,
-                "secure_192 should have >= 150 bits hybrid security, got {}",
-                config.hybrid_security);
+        assert!(
+            config.hybrid_security >= 150,
+            "secure_192 should have >= 150 bits hybrid security, got {}",
+            config.hybrid_security
+        );
     }
 
     #[test]
     fn test_test_configs_not_production_safe() {
         let config = SecureConfig::test_fast();
-        assert!(!config.is_production_safe(),
-                "test_fast should NOT be production safe");
+        assert!(
+            !config.is_production_safe(),
+            "test_fast should NOT be production safe"
+        );
     }
 
     #[test]
@@ -340,7 +336,9 @@ mod tests {
                 assert!(
                     is_ntt_compatible(p, config.n),
                     "Prime {} is not NTT-compatible for N={} in config {}",
-                    p, config.n, config.name
+                    p,
+                    config.n,
+                    config.name
                 );
             }
         }
@@ -357,21 +355,28 @@ mod tests {
             ("secure_192", SecureConfig::secure_192()),
         ];
 
-        println!("{:<15} {:>6} {:>10} {:>10} {:>10} {:>10}",
-                 "Config", "N", "log(Q)", "Classical", "Hybrid", "Quantum");
+        println!(
+            "{:<15} {:>6} {:>10} {:>10} {:>10} {:>10}",
+            "Config", "N", "log(Q)", "Classical", "Hybrid", "Quantum"
+        );
         println!("{}", "-".repeat(70));
 
         for (name, config) in configs {
-            let log_q: u32 = config.config.primes.iter()
+            let log_q: u32 = config
+                .config
+                .primes
+                .iter()
                 .map(|&p| 64 - p.leading_zeros())
                 .sum();
-            println!("{:<15} {:>6} {:>10} {:>10} {:>10} {:>10}",
-                     name,
-                     config.config.n,
-                     log_q,
-                     config.classical_security,
-                     config.hybrid_security,
-                     config.quantum_security);
+            println!(
+                "{:<15} {:>6} {:>10} {:>10} {:>10} {:>10}",
+                name,
+                config.config.n,
+                log_q,
+                config.classical_security,
+                config.hybrid_security,
+                config.quantum_security
+            );
         }
     }
 }

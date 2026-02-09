@@ -91,9 +91,7 @@ mod wasm_impl {
         ) -> Result<Vec<u8>, JsValue> {
             let encryptor =
                 BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
-            let ct = encryptor
-                .try_encrypt_seeded(value, seed)
-                .map_err(map_err)?;
+            let ct = encryptor.try_encrypt_seeded(value, seed).map_err(map_err)?;
             serialize(&ct)
         }
 

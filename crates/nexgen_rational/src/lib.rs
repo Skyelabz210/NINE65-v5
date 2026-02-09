@@ -12,6 +12,6 @@
 
 #![forbid(unsafe_code)]
 
-pub mod exact_coeff;
 pub mod binary_gcd;
+pub mod exact_coeff;
 pub mod rat_ng;

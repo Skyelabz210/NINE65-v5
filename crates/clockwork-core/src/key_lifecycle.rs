@@ -304,11 +304,7 @@ mod tests {
             let r_reshare = next_rng(&mut rng) % TEST_Q;
 
             let shares = KeySharePair::split(s, r0, TEST_Q);
-            assert_eq!(
-                shares.reconstruct(),
-                s,
-                "T11 initial: s₁+s₂ must equal s"
-            );
+            assert_eq!(shares.reconstruct(), s, "T11 initial: s₁+s₂ must equal s");
 
             let reshared = shares.reshare(r_reshare);
             assert_eq!(
@@ -344,7 +340,10 @@ mod tests {
         let mut shares = KeySharePair::split(42, 1000, TEST_Q);
 
         // Before zeroing, shares are nonzero
-        assert!(shares.share_a() != 0 || shares.share_b() != 0, "At least one share should be nonzero");
+        assert!(
+            shares.share_a() != 0 || shares.share_b() != 0,
+            "At least one share should be nonzero"
+        );
 
         shares.zero();
 

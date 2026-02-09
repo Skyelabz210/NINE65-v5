@@ -16,8 +16,8 @@
 //! All frequencies are rational (integer phase increments) — no
 //! floating point. See Clockwork Axiom A3.
 
-use clockwork_core::GroGate;
 use clockwork_core::gro::{GroParams, Window};
+use clockwork_core::GroGate;
 
 /// Timing gate for NINE65 key operations.
 ///

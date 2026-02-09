@@ -19,7 +19,9 @@ pub struct DeterministicRng {
 impl DeterministicRng {
     /// Create a deterministic RNG from a 32-byte seed.
     pub fn from_seed(seed: [u8; 32]) -> Self {
-        Self { rng: ChaCha20Rng::from_seed(seed) }
+        Self {
+            rng: ChaCha20Rng::from_seed(seed),
+        }
     }
 
     /// Create a deterministic RNG from a u64 seed.

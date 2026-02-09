@@ -173,11 +173,7 @@ impl GroGate {
     pub fn phase_diff(&self, t: u64) -> u64 {
         let a = self.phase_a(t);
         let b = self.phase_b(t);
-        let raw_diff = if a >= b {
-            a - b
-        } else {
-            b - a
-        };
+        let raw_diff = if a >= b { a - b } else { b - a };
 
         let half = (self.acc_mask + 1) / 2;
         if raw_diff > half {

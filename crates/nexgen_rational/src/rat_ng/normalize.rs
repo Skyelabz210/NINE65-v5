@@ -18,10 +18,10 @@
 //! - EMA: millisecond fractions (α_milli / 1000) — integer division
 //! - Zero floating-point anywhere
 
+use super::error::ArithmeticError;
 use super::types::NexGenRat;
 use crate::binary_gcd::binary_gcd;
 use crate::exact_coeff::ExactCoeff;
-use super::error::ArithmeticError;
 
 // ============================================================================
 // Part 1: Static Threshold Function (I3 Immediate Fix)
@@ -129,9 +129,9 @@ pub struct NormalizationScheduler {
 impl Default for NormalizationScheduler {
     fn default() -> Self {
         Self {
-            alpha_milli: 100,           // α = 0.1
-            bit_velocity_milli: 0,      // Initial velocity = 0
-            threshold_milli: 800,       // Threshold = 80%
+            alpha_milli: 100,      // α = 0.1
+            bit_velocity_milli: 0, // Initial velocity = 0
+            threshold_milli: 800,  // Threshold = 80%
             total_ops: 0,
             total_normalizations: 0,
         }
@@ -157,9 +157,8 @@ impl NormalizationScheduler {
     pub fn observe(&mut self, bit_growth: u32) {
         let alpha = self.alpha_milli as u64;
         let one_minus = 1000 - alpha;
-        self.bit_velocity_milli = (alpha * bit_growth as u64
-            + one_minus * self.bit_velocity_milli)
-            / 1000;
+        self.bit_velocity_milli =
+            (alpha * bit_growth as u64 + one_minus * self.bit_velocity_milli) / 1000;
         self.total_ops += 1;
     }
 
@@ -309,8 +308,8 @@ mod tests {
 
         // Small numerator, large denominator
         let asym2 = NexGenRat::new(
-            ExactCoeff(3),             // 2 bits
-            ExactCoeff(1i128 << 110),  // 111 bits
+            ExactCoeff(3),            // 2 bits
+            ExactCoeff(1i128 << 110), // 111 bits
         );
         assert!(
             should_normalize(&asym2),
@@ -457,7 +456,10 @@ mod tests {
         let mut r = NexGenRat::new(ExactCoeff(12), ExactCoeff(8));
         let original = NexGenRat::new(ExactCoeff(12), ExactCoeff(8));
         normalize(&mut r).unwrap();
-        assert_eq!(r, original, "Normalized value must equal original (cross-multiply)");
+        assert_eq!(
+            r, original,
+            "Normalized value must equal original (cross-multiply)"
+        );
     }
 
     #[test]
@@ -468,8 +470,14 @@ mod tests {
         let after_first = r.clone();
 
         normalize(&mut r).unwrap();
-        assert_eq!(r.num, after_first.num, "Second normalization must be no-op (num)");
-        assert_eq!(r.den, after_first.den, "Second normalization must be no-op (den)");
+        assert_eq!(
+            r.num, after_first.num,
+            "Second normalization must be no-op (num)"
+        );
+        assert_eq!(
+            r.den, after_first.den,
+            "Second normalization must be no-op (den)"
+        );
     }
 
     #[test]

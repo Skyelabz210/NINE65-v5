@@ -57,7 +57,9 @@ impl PyFHEConfig {
     #[cfg(any(test, feature = "allow_insecure"))]
     #[staticmethod]
     fn light() -> Self {
-        Self { inner: FHEConfig::light() }
+        Self {
+            inner: FHEConfig::light(),
+        }
     }
 
     fn name(&self) -> &str {
@@ -223,10 +225,7 @@ pub struct PyCiphertext {
 #[pymethods]
 impl PyCiphertext {
     fn __repr__(&self) -> String {
-        format!(
-            "Ciphertext(n={})",
-            self.inner.c0.coeffs.len()
-        )
+        format!("Ciphertext(n={})", self.inner.c0.coeffs.len())
     }
 
     fn to_bytes<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
@@ -339,15 +338,20 @@ impl PyFHEContext {
     }
 
     fn encrypt(&self, value: u64, public_key: &PyPublicKey) -> PyResult<PyCiphertext> {
-        let encryptor = BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
-        let ct = encryptor
-            .try_encrypt_secure(value)
-            .map_err(nine65_err)?;
+        let encryptor =
+            BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
+        let ct = encryptor.try_encrypt_secure(value).map_err(nine65_err)?;
         Ok(PyCiphertext { inner: ct })
     }
 
-    fn encrypt_seeded(&self, value: u64, public_key: &PyPublicKey, seed: u64) -> PyResult<PyCiphertext> {
-        let encryptor = BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
+    fn encrypt_seeded(
+        &self,
+        value: u64,
+        public_key: &PyPublicKey,
+        seed: u64,
+    ) -> PyResult<PyCiphertext> {
+        let encryptor =
+            BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
         let ct = encryptor
             .try_encrypt_seeded(value, seed)
             .map_err(nine65_err)?;
@@ -386,7 +390,12 @@ impl PyFHEContext {
     }
 
     #[allow(deprecated)]
-    fn mul(&self, ct1: &PyCiphertext, ct2: &PyCiphertext, eval_key: &PyEvaluationKey) -> PyCiphertext {
+    fn mul(
+        &self,
+        ct1: &PyCiphertext,
+        ct2: &PyCiphertext,
+        eval_key: &PyEvaluationKey,
+    ) -> PyCiphertext {
         let evaluator = BFVEvaluator::new(&self.ntt, &self.encoder, Some(&eval_key.inner));
         PyCiphertext {
             inner: evaluator.mul(&ct1.inner, &ct2.inner),
@@ -399,13 +408,16 @@ impl PyFHEContext {
         public_key: &PyPublicKey,
     ) -> PyResult<Vec<PyCiphertext>> {
         let values: Vec<u64> = values.extract()?;
-        let encryptor = BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
+        let encryptor =
+            BFVEncryptor::new(&public_key.inner, &self.encoder, &self.ntt, self.config.eta);
         let mut harvester = ShadowHarvester::with_seed(42);
 
         values
             .into_iter()
             .map(|value| {
-                let ct = encryptor.try_encrypt(value, &mut harvester).map_err(nine65_err)?;
+                let ct = encryptor
+                    .try_encrypt(value, &mut harvester)
+                    .map_err(nine65_err)?;
                 Ok(PyCiphertext { inner: ct })
             })
             .collect()

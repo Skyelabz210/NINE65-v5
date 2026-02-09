@@ -7,4 +7,4 @@ pub mod polynomial;
 pub mod pool;
 
 pub use polynomial::RingPolynomial;
-pub use pool::{PolynomialPool, PooledPolynomial, PoolGuard};
+pub use pool::{PolynomialPool, PoolGuard, PooledPolynomial};

@@ -31,19 +31,24 @@ impl MontgomeryContext {
     pub fn new(q: u64) -> Self {
         // R = 2^64
         let r: u128 = 1u128 << 64;
-        
+
         // Compute R mod q
         let _r_mod_q = (r % (q as u128)) as u64;
-        
+
         // Compute R^2 mod q
         let r2 = Self::compute_r2(q);
-        
+
         // Compute -q^(-1) mod 2^64 using extended Euclidean algorithm
         let q_inv_neg = Self::compute_q_inv_neg(q);
-        
-        Self { q, r, r2, q_inv_neg }
+
+        Self {
+            q,
+            r,
+            r2,
+            q_inv_neg,
+        }
     }
-    
+
     /// Compute R^2 mod q
     fn compute_r2(q: u64) -> u64 {
         // R^2 = 2^128 mod q
@@ -51,7 +56,7 @@ impl MontgomeryContext {
         let r_mod_q = ((1u128 << 64) % (q as u128)) as u64;
         ((r_mod_q as u128 * r_mod_q as u128) % (q as u128)) as u64
     }
-    
+
     /// Compute -q^(-1) mod 2^64 using Newton's method
     fn compute_q_inv_neg(q: u64) -> u64 {
         // Newton iteration: x_{n+1} = x_n * (2 - q * x_n) mod 2^64
@@ -63,26 +68,26 @@ impl MontgomeryContext {
         // Return -q^(-1) mod 2^64
         x.wrapping_neg()
     }
-    
+
     /// Convert to Montgomery form: a -> aR mod q
     #[inline(always)]
     pub fn to_montgomery(&self, a: u64) -> u64 {
         self.montgomery_mul(a, self.r2)
     }
-    
+
     /// Convert from Montgomery form: aR -> a mod q
     #[inline(always)]
     pub fn from_montgomery(&self, a_mont: u64) -> u64 {
         self.montgomery_reduce(a_mont as u128)
     }
-    
+
     /// Montgomery multiplication: (aR * bR) / R mod q = abR mod q
     #[inline(always)]
     pub fn montgomery_mul(&self, a: u64, b: u64) -> u64 {
         let t = (a as u128) * (b as u128);
         self.montgomery_reduce(t)
     }
-    
+
     /// Montgomery reduction: t / R mod q
     /// REDC algorithm - no division, only multiplication and shifts
     ///
@@ -110,16 +115,16 @@ impl MontgomeryContext {
         // We want: if borrow { result } else { diff }
         // mask = borrow as 0 or u64::MAX
         let mask = (borrow as u64).wrapping_neg(); // 0 if no borrow, u64::MAX if borrow
-        // result = (result & mask) | (diff & !mask)
+                                                   // result = (result & mask) | (diff & !mask)
         (result & mask) | (diff & !mask)
     }
-    
+
     /// Montgomery squaring (slightly optimized)
     #[inline(always)]
     pub fn montgomery_square(&self, a: u64) -> u64 {
         self.montgomery_mul(a, a)
     }
-    
+
     /// Montgomery exponentiation: a^e mod q (in Montgomery form)
     ///
     /// # Security
@@ -200,7 +205,7 @@ impl MontgomeryContext {
 
         result
     }
-    
+
     /// Add two Montgomery form numbers (constant-time)
     ///
     /// # Security
@@ -247,91 +252,95 @@ impl MontgomeryContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     const TEST_PRIME: u64 = 998244353;
-    
+
     #[test]
     fn test_montgomery_roundtrip() {
         let ctx = MontgomeryContext::new(TEST_PRIME);
-        
+
         for a in [0, 1, 2, 100, 12345, TEST_PRIME - 1] {
             let mont = ctx.to_montgomery(a);
             let back = ctx.from_montgomery(mont);
             assert_eq!(back, a, "Roundtrip failed for {}", a);
         }
     }
-    
+
     #[test]
     fn test_montgomery_mul() {
         let ctx = MontgomeryContext::new(TEST_PRIME);
-        
+
         let a = 12345u64;
         let b = 67890u64;
         let expected = ((a as u128 * b as u128) % TEST_PRIME as u128) as u64;
-        
+
         let a_mont = ctx.to_montgomery(a);
         let b_mont = ctx.to_montgomery(b);
         let result_mont = ctx.montgomery_mul(a_mont, b_mont);
         let result = ctx.from_montgomery(result_mont);
-        
+
         assert_eq!(result, expected);
     }
-    
+
     #[test]
     fn test_montgomery_pow() {
         let ctx = MontgomeryContext::new(TEST_PRIME);
-        
+
         let base = 3u64;
         let exp = 100u64;
-        
+
         // Compute expected result the slow way
         let mut expected = 1u64;
         for _ in 0..exp {
             expected = ((expected as u128 * base as u128) % TEST_PRIME as u128) as u64;
         }
-        
+
         let base_mont = ctx.to_montgomery(base);
         let result_mont = ctx.montgomery_pow(base_mont, exp);
         let result = ctx.from_montgomery(result_mont);
-        
+
         assert_eq!(result, expected);
     }
-    
+
     #[test]
     fn test_montgomery_add_sub() {
         let ctx = MontgomeryContext::new(TEST_PRIME);
-        
+
         let a = 12345u64;
         let b = 67890u64;
-        
+
         let a_mont = ctx.to_montgomery(a);
         let b_mont = ctx.to_montgomery(b);
-        
+
         // Test add
         let sum_mont = ctx.montgomery_add(a_mont, b_mont);
         let sum = ctx.from_montgomery(sum_mont);
         assert_eq!(sum, (a + b) % TEST_PRIME);
-        
+
         // Test sub
         let diff_mont = ctx.montgomery_sub(b_mont, a_mont);
         let diff = ctx.from_montgomery(diff_mont);
         assert_eq!(diff, (b - a) % TEST_PRIME);
     }
-    
+
     #[test]
     fn test_montgomery_benchmark() {
         let ctx = MontgomeryContext::new(TEST_PRIME);
         let a = ctx.to_montgomery(12345);
         let b = ctx.to_montgomery(67890);
-        
+
         let start = std::time::Instant::now();
         let mut result = a;
         for _ in 0..100_000 {
             result = ctx.montgomery_mul(result, b);
         }
         let elapsed = start.elapsed();
-        
-        println!("Montgomery 100k muls: {:?} (result={})", elapsed, ctx.from_montgomery(result));
+
+        println!(
+            "Montgomery 100k muls: {:?} (result={})",
+            elapsed,
+            ctx.from_montgomery(result)
+        );
         // Should be < 5ms for 100k operations
     }
 }

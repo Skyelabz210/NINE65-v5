@@ -41,13 +41,21 @@ impl QbitState {
         // All weights = 1 means uniform distribution
         let weights = vec![1; n];
         let norm_sq = n as u128;
-        Self { weights, norm_sq, prime }
+        Self {
+            weights,
+            norm_sq,
+            prime,
+        }
     }
 
     /// Create from explicit weights
     pub fn from_weights(weights: Vec<u64>, prime: u64) -> Self {
         let norm_sq: u128 = weights.iter().map(|&w| (w as u128) * (w as u128)).sum();
-        Self { weights, norm_sq, prime }
+        Self {
+            weights,
+            norm_sq,
+            prime,
+        }
     }
 
     /// Number of states
@@ -200,9 +208,9 @@ pub struct GsoParams {
 impl Default for GsoParams {
     fn default() -> Self {
         Self {
-            luciferin_decay_permille: 400,    // 0.4 as 400/1000
-            luciferin_enhance_permille: 600,  // 0.6 as 600/1000
-            range_decay_permille: 20,         // 0.02 as 20/1000
+            luciferin_decay_permille: 400,   // 0.4 as 400/1000
+            luciferin_enhance_permille: 600, // 0.6 as 600/1000
+            range_decay_permille: 20,        // 0.02 as 20/1000
             step_size: 3,
             rotation_strength: 1,
         }
@@ -272,8 +280,7 @@ impl GsoSwarm {
             // Rotate qbit toward best neighbor's state
             if let Some(&best_neighbor) = brighter.iter().max_by_key(|&&i| luciferins[i]) {
                 // Collapse neighbor's qbit to get target state (use pre-collected state)
-                let target_state = qbit_states[best_neighbor]
-                    .measure(idx as u64 ^ self.iteration);
+                let target_state = qbit_states[best_neighbor].measure(idx as u64 ^ self.iteration);
                 agent
                     .qbit
                     .rotate_toward(target_state, self.params.rotation_strength);
@@ -294,7 +301,12 @@ impl GsoSwarm {
     /// Get swarm statistics
     pub fn stats(&self) -> SwarmStats {
         let total_luciferin: u64 = self.agents.iter().map(|a| a.luciferin).sum();
-        let best_fitness = self.agents.iter().map(|a| a.best_fitness).max().unwrap_or(0);
+        let best_fitness = self
+            .agents
+            .iter()
+            .map(|a| a.best_fitness)
+            .max()
+            .unwrap_or(0);
         let avg_luciferin = total_luciferin / self.agents.len().max(1) as u64;
 
         SwarmStats {

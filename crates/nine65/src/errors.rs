@@ -21,7 +21,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // K-ELIMINATION ERRORS (KElimination.v)
     // ═══════════════════════════════════════════════════
-
     /// Coprimality violation: gcd(M, A) ≠ 1
     ///
     /// # Theorem Reference
@@ -60,7 +59,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // GSO-FHE ERRORS (GSOFHE.v)
     // ═══════════════════════════════════════════════════
-
     /// Noise overflow: exceeded collapse threshold
     ///
     /// # Theorem Reference
@@ -78,7 +76,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // ORDER FINDING ERRORS (OrderFinding.v)
     // ═══════════════════════════════════════════════════
-
     /// Order not found within bound
     ///
     /// # Theorem Reference
@@ -96,7 +93,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // ARITHMETIC ERRORS
     // ═══════════════════════════════════════════════════
-
     /// Integer overflow during computation
     ///
     /// # Note
@@ -112,7 +108,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // CRYPTOGRAPHIC ERRORS
     // ═══════════════════════════════════════════════════
-
     /// Decryption failed (noise too high)
     #[error("decryption failed: noise exceeded budget")]
     DecryptionFailed,
@@ -128,7 +123,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // ENCODING/ENCRYPTION ERRORS
     // ═══════════════════════════════════════════════════
-
     /// Message out of plaintext space bounds
     ///
     /// # Theorem Reference
@@ -155,7 +149,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // BATCHING ERRORS
     // ═══════════════════════════════════════════════════
-
     /// Batching not supported for given parameters
     ///
     /// # Requirement
@@ -174,7 +167,6 @@ pub enum Nine65Error {
     // ═══════════════════════════════════════════════════
     // SERIALIZATION ERRORS
     // ═══════════════════════════════════════════════════
-
     /// Deserialization failed
     ///
     /// # Security
@@ -190,53 +182,52 @@ pub type Nine65Result<T> = Result<T, Nine65Error>;
 impl Nine65Error {
     /// Check if error is recoverable
     pub fn is_recoverable(&self) -> bool {
-        matches!(self,
-            Nine65Error::NoiseOverflow { .. } |
-            Nine65Error::DepthExceeded { .. }
+        matches!(
+            self,
+            Nine65Error::NoiseOverflow { .. } | Nine65Error::DepthExceeded { .. }
         )
     }
 
     /// Check if error is batching-related
     pub fn is_batching_error(&self) -> bool {
-        matches!(self,
-            Nine65Error::BatchingNotSupported { .. } |
-            Nine65Error::TooManySlotValues { .. } |
-            Nine65Error::NoModularInverse { .. }
+        matches!(
+            self,
+            Nine65Error::BatchingNotSupported { .. }
+                | Nine65Error::TooManySlotValues { .. }
+                | Nine65Error::NoModularInverse { .. }
         )
     }
 
     /// Get error category for logging
     pub fn category(&self) -> &'static str {
         match self {
-            Nine65Error::NotCoprime { .. } |
-            Nine65Error::RangeOverflow { .. } |
-            Nine65Error::ModulusZero |
-            Nine65Error::AnchorZero |
-            Nine65Error::InexactDivision { .. } => "K-Elimination",
+            Nine65Error::NotCoprime { .. }
+            | Nine65Error::RangeOverflow { .. }
+            | Nine65Error::ModulusZero
+            | Nine65Error::AnchorZero
+            | Nine65Error::InexactDivision { .. } => "K-Elimination",
 
-            Nine65Error::NoiseOverflow { .. } |
-            Nine65Error::DepthExceeded { .. } => "GSO-FHE",
+            Nine65Error::NoiseOverflow { .. } | Nine65Error::DepthExceeded { .. } => "GSO-FHE",
 
-            Nine65Error::OrderNotFound { .. } |
-            Nine65Error::NotCoprimeToModulus { .. } => "Order Finding",
+            Nine65Error::OrderNotFound { .. } | Nine65Error::NotCoprimeToModulus { .. } => {
+                "Order Finding"
+            }
 
-            Nine65Error::Overflow { .. } |
-            Nine65Error::InvalidParameter { .. } => "Arithmetic",
+            Nine65Error::Overflow { .. } | Nine65Error::InvalidParameter { .. } => "Arithmetic",
 
-            Nine65Error::DecryptionFailed |
-            Nine65Error::KeyGenFailed { .. } |
-            Nine65Error::SecurityLevelNotMet { .. } => "Cryptographic",
+            Nine65Error::DecryptionFailed
+            | Nine65Error::KeyGenFailed { .. }
+            | Nine65Error::SecurityLevelNotMet { .. } => "Cryptographic",
 
-            Nine65Error::MessageOutOfBounds { .. } |
-            Nine65Error::InvalidPolynomialDegree { .. } |
-            Nine65Error::KeyRegimeMismatch { .. } => "Encoding",
+            Nine65Error::MessageOutOfBounds { .. }
+            | Nine65Error::InvalidPolynomialDegree { .. }
+            | Nine65Error::KeyRegimeMismatch { .. } => "Encoding",
 
-            Nine65Error::NTTConfigError { .. } |
-            Nine65Error::ConfigError { .. } => "Configuration",
+            Nine65Error::NTTConfigError { .. } | Nine65Error::ConfigError { .. } => "Configuration",
 
-            Nine65Error::BatchingNotSupported { .. } |
-            Nine65Error::TooManySlotValues { .. } |
-            Nine65Error::NoModularInverse { .. } => "Batching",
+            Nine65Error::BatchingNotSupported { .. }
+            | Nine65Error::TooManySlotValues { .. }
+            | Nine65Error::NoModularInverse { .. } => "Batching",
 
             Nine65Error::DeserializationError { .. } => "Serialization",
         }
@@ -249,14 +240,21 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = Nine65Error::NotCoprime { m: 10, a: 15, gcd: 5 };
+        let err = Nine65Error::NotCoprime {
+            m: 10,
+            a: 15,
+            gcd: 5,
+        };
         assert!(err.to_string().contains("coprimality violation"));
         assert_eq!(err.category(), "K-Elimination");
     }
 
     #[test]
     fn test_error_recoverable() {
-        let recoverable = Nine65Error::NoiseOverflow { level: 100, threshold: 50 };
+        let recoverable = Nine65Error::NoiseOverflow {
+            level: 100,
+            threshold: 50,
+        };
         let not_recoverable = Nine65Error::ModulusZero;
 
         assert!(recoverable.is_recoverable());

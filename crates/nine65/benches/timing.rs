@@ -1,10 +1,10 @@
-use criterion::{black_box, BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
-use nine65::arithmetic::{BarrettContext, KElimination, KElimConfig, NTTEngine};
 use nine65::arithmetic::k_elimination::{bench_mul_mod_u128_ct, bench_sub_mod_u128_ct};
+use nine65::arithmetic::{BarrettContext, KElimConfig, KElimination, NTTEngine};
+use nine65::entropy::ShadowHarvester;
 use nine65::ops::RNSFHEContext;
 use nine65::params::FHEConfig;
-use nine65::entropy::ShadowHarvester;
 
 #[cfg(feature = "ntt_fft")]
 use nine65::arithmetic::NTTEngineFFT;
@@ -80,20 +80,44 @@ fn bench_k_elimination_ct(c: &mut Criterion) {
 
     let m = 4_611_686_018_427_387_847u128; // 62-bit prime
     group.bench_function(BenchmarkId::new("mul_mod_u128_ct", "small"), |b| {
-        b.iter(|| black_box(bench_mul_mod_u128_ct(black_box(1u128), black_box(1u128), black_box(m))));
+        b.iter(|| {
+            black_box(bench_mul_mod_u128_ct(
+                black_box(1u128),
+                black_box(1u128),
+                black_box(m),
+            ))
+        });
     });
     group.bench_function(BenchmarkId::new("mul_mod_u128_ct", "large"), |b| {
         let a = m - 1;
         let bval = m - 1;
-        b.iter(|| black_box(bench_mul_mod_u128_ct(black_box(a), black_box(bval), black_box(m))));
+        b.iter(|| {
+            black_box(bench_mul_mod_u128_ct(
+                black_box(a),
+                black_box(bval),
+                black_box(m),
+            ))
+        });
     });
 
     let m_small = 667u128;
     group.bench_function(BenchmarkId::new("sub_mod_u128_ct", "no_borrow"), |b| {
-        b.iter(|| black_box(bench_sub_mod_u128_ct(black_box(500u128), black_box(100u128), black_box(m_small))));
+        b.iter(|| {
+            black_box(bench_sub_mod_u128_ct(
+                black_box(500u128),
+                black_box(100u128),
+                black_box(m_small),
+            ))
+        });
     });
     group.bench_function(BenchmarkId::new("sub_mod_u128_ct", "borrow"), |b| {
-        b.iter(|| black_box(bench_sub_mod_u128_ct(black_box(100u128), black_box(500u128), black_box(m_small))));
+        b.iter(|| {
+            black_box(bench_sub_mod_u128_ct(
+                black_box(100u128),
+                black_box(500u128),
+                black_box(m_small),
+            ))
+        });
     });
 
     group.finish();

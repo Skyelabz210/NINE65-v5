@@ -13,8 +13,8 @@
 //! Lane 2 [prime=23]: [1, 2, 0, 5, ...]  <- No carry between lanes
 //! ```
 
-use std::sync::Arc;
 use crate::lane::{Lane, LaneOps};
+use std::sync::Arc;
 
 /// Multi-lane CRT representation
 /// Uses Arc<Vec<u64>> for primes to avoid cloning on every operation

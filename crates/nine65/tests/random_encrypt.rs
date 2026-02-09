@@ -1,5 +1,5 @@
-use proptest::prelude::*;
 use nine65::prelude::*;
+use proptest::prelude::*;
 
 // Property-based test: encryption then decryption returns the original message.
 proptest! {

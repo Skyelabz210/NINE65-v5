@@ -307,14 +307,13 @@ impl ValuationTracker {
             (Unfactored::Zero, _) | (_, Unfactored::Zero) => Unfactored::Zero,
             (Unfactored::Unknown, _) | (_, Unfactored::Unknown) => Unfactored::Unknown,
             (Unfactored::None, Unfactored::None) => Unfactored::None,
-            (Unfactored::Value(a), Unfactored::None)
-            | (Unfactored::None, Unfactored::Value(a)) => Unfactored::Value(a),
-            (Unfactored::Value(a), Unfactored::Value(b)) => {
-                match a.checked_mul(b) {
-                    Some(prod) => Unfactored::Value(prod),
-                    None => Unfactored::Unknown,
-                }
+            (Unfactored::Value(a), Unfactored::None) | (Unfactored::None, Unfactored::Value(a)) => {
+                Unfactored::Value(a)
             }
+            (Unfactored::Value(a), Unfactored::Value(b)) => match a.checked_mul(b) {
+                Some(prod) => Unfactored::Value(prod),
+                None => Unfactored::Unknown,
+            },
         };
 
         Self {
@@ -694,10 +693,7 @@ mod tests {
         assert_eq!(divided.to_integer(), Some(252));
 
         // Invalid division
-        assert_eq!(
-            tracker.checked_div(64),
-            Err(DivisionError::NotExact)
-        );
+        assert_eq!(tracker.checked_div(64), Err(DivisionError::NotExact));
     }
 
     #[test]
@@ -831,10 +827,7 @@ mod tests {
         let large = ValuationTracker::from_integer(10_000_000_019);
         let product = large.mul(&large);
         assert!(matches!(product.unfactored, Unfactored::Unknown));
-        assert_eq!(
-            product.divisibility(10_000_000_019),
-            Divisibility::Unknown
-        );
+        assert_eq!(product.divisibility(10_000_000_019), Divisibility::Unknown);
     }
 
     #[test]
@@ -842,11 +835,7 @@ mod tests {
         use fhe_integration::*;
 
         // Simulate FHE modulus chain: 2^60 × 3^10 × 5^5 (for demonstration)
-        let tracker = ValuationTracker::from_factorization(&[
-            (2, 60),
-            (3, 10),
-            (5, 5),
-        ]);
+        let tracker = ValuationTracker::from_factorization(&[(2, 60), (3, 10), (5, 5)]);
 
         // Can we rescale by 2^20?
         assert!(tracker.divisibility(1 << 20).is_definitely_divisible());
