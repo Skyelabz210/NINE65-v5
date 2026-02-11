@@ -1,0 +1,26 @@
+YOLO mode is enabled. All tool calls will be automatically approved.
+Loaded cached credentials.
+YOLO mode is enabled. All tool calls will be automatically approved.
+Session cleanup disabled: Either maxAge or maxCount must be specified
+Hook registry initialized with 0 hook entries
+Error when talking to Gemini API Full report available at: /tmp/gemini-client-error-Turn.run-sendMessageStream-2026-02-11T03-51-23-031Z.json ModelNotFoundError: Requested entity was not found.
+    at classifyGoogleError (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/googleQuotaErrors.js:145:16)
+    at retryWithBackoff (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/utils/retry.js:131:37)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async GeminiChat.makeApiCallAndProcessStream (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:421:32)
+    at async GeminiChat.streamWithRetries (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/geminiChat.js:253:40)
+    at async Turn.run (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/turn.js:66:30)
+    at async GeminiClient.processTurn (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:459:26)
+    at async GeminiClient.sendMessageStream (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/core/client.js:558:20)
+    at async file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/dist/src/nonInteractiveCli.js:189:34
+    at async main (file:///home/acid/.npm-global/lib/node_modules/@google/gemini-cli/dist/src/gemini.js:488:9) {
+  code: 404
+}
+{
+  "session_id": "41e1816c-de93-42a4-a33d-17d8c5ec8033",
+  "error": {
+    "type": "Error",
+    "message": "[object Object]",
+    "code": 1
+  }
+}
