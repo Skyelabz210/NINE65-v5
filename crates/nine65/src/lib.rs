@@ -40,6 +40,9 @@
 //! All operations use exact integer arithmetic — zero floating-point anywhere.
 //! Integer-only runtime: cryptographic paths use no f32/f64. The circuit compiler
 //! (compiler.rs) uses f64 **only** for offline/static noise analysis.
+
+#[cfg(all(feature = "allow_insecure", not(debug_assertions)))]
+compile_error!("The `allow_insecure` feature must not be used in release builds");
 //!
 //! ## Quick Start: Production FHE
 //!

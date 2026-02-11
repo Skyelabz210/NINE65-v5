@@ -1,0 +1,744 @@
+OpenAI Codex v0.98.0 (research preview)
+--------
+workdir: /home/acid/Projects/NINE65/v5
+model: gpt-5.1-codex-max
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: xhigh
+reasoning summaries: auto
+session id: 019c4ac7-9968-74f2-9101-a4dc44779f17
+--------
+user
+**SYSTEM ROLE:** You are an independent technical consultant conducting an unbiased evaluation of the system or subsystem provided to you. Your deliverable is a structured, actionable analysis report.
+
+**CRITICAL - TEMPORAL FOCUS:** This project has 14+ months of development history with many prior analyses. DO NOT reference historical gap analyses, old execution plans, or previous consultant reports. Focus on the CURRENT plan and provide FRESH analysis.
+
+**PRIMARY CONTEXT:** /home/acid/Projects/NINE65/v5/jobs/v5/CURRENT_CONTEXT_20260210_210140.md
+This file contains the CURRENT execution plan, blueprint, or active task description. This is where we're going NOW. Start your analysis here and focus your recommendations on enhancing THIS specific effort.
+
+**WORKING DIRECTORY:** /home/acid/Projects/NINE65/v5
+
+**YOUR TASK:** Review and analyze the current plan. Identify:
+- Gaps in the current approach
+- Points of enhancement or refinement
+- Opportunities for improvement
+- Potential risks or precautions
+Provide forward-looking, actionable insights aligned with where we're going NOW.
+
+**SUPPORTING REFERENCE FILES** (if needed for project context):
+   - /home/acid/Projects/NINE65/v5/README.md
+   - /home/acid/Projects/NINE65/v5/CLAUDE.md
+
+**ANALYSIS MANDATE:**
+Ground your evaluation in these key traits:
+1. **RIGOR** - Assess internal coherence, correctness, logical soundness. Verify assumptions and evaluate implementation fidelity relative to stated goals.
+2. **FUNCTIONALITY** - Determine whether the system performs its intended tasks reliably under expected constraints. Identify incomplete or unstable components.
+3. **SCALABILITY** - Evaluate capacity to expand in load, complexity, or modularity without degrading performance or maintainability.
+4. **CORRECTNESS** - Detect violations of design intent, logical or type errors, and inconsistent interface behaviors.
+5. **UTILITY** - Identify practical effectiveness—how well it serves its use case and whether design choices enhance or obscure purpose.
+
+**DELIVERABLE FORMAT:**
+Produce a structured audit report at:
+/home/acid/Projects/NINE65/v5/jobs/v5/consult_codex_gpt-5.1-codex-max_20260210_213840.md
+
+**Report Header** (identifies consultant and model):
+```markdown
+# CONSULTANT AUDIT
+
+**Consultant**: Codex
+**Model**: gpt-5.1-codex-max
+**Timestamp**: 2026-02-10T21:38:40.049557
+**Project**: v5
+```
+
+## EXECUTIVE SUMMARY
+Key findings at a glance (2-3 sentences).
+
+## SYSTEM OVERVIEW
+Your interpretation of the system's intended purpose and architecture based on PRIMARY CONTEXT.
+
+## RIGOR & CORRECTNESS REVIEW
+Direct findings on logical, architectural, or conceptual accuracy. Ground insights in observable artifacts.
+
+## FUNCTIONAL & SCALABILITY ANALYSIS
+Evidence-based discussion of strengths, bottlenecks, and limitations. Identify trade-offs.
+
+## UTILITY & DESIGN INTEGRITY
+Analysis of clarity, user affordances, and maintainability. Avoid generalities.
+
+## PRIORITIZED RECOMMENDATIONS
+Ordered set of targeted actions for improving rigor, performance, or clarity across layers.
+
+## RAW OBSERVATIONS
+(Optional) Detailed notes, edge cases, or technical minutiae.
+
+**STYLE REQUIREMENTS:**
+- Write as a professional technical consultant reporting to project leadership
+- Use precise technical language, concise paragraphs, clear markdown headings
+- Ground insights in observable artifacts or metrics where possible
+- Identify and articulate trade-offs rather than simplistic judgments
+- This evaluation applies to systems ranging from simple scripts to highly complex, rigorously verified mathematical constructs—maintain analytical rigor appropriate to scope.
+
+**SESSION PROTOCOL:**
+- This is a one-shot consultation. Your analysis should be as thorough and deep as the subject demands.
+- Do NOT launch servers, daemons, file watchers, or background processes. Do NOT modify, create, or delete any files.
+- Your sole deliverable is the report written to stdout. Read whatever you need, analyze as deeply as necessary, then output your report and exit.
+
+mcp: codex_apps starting
+2026-02-11T03:38:41.584867Z ERROR codex_core::rollout::list: state db missing rollout path for thread 019c4a90-aa79-7cd1-b208-90add4c9b71c
+mcp: codex_apps ready
+mcp startup: ready: codex_apps
+
+thinking
+**Confirming read-only constraints**
+
+The environment is read-only, so I can't write files despite instructions to produce a report at a given path; I'll output the final structured analysis to stdout instead while noting this limitation. Next, I'll read the primary context file to begin the analysis.
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && ls' in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+AGENTS.md
+CLAUDE.md
+CONTRIBUTING.md
+Cargo.lock
+Cargo.toml
+Dockerfile
+K_Elimination_Technical_Paper.pdf
+LICENSE
+Prime-Indexed Coordinate System.docx
+README.md
+SECURITY.md
+Test NINE65 FHE.pdf
+apps
+archive
+avatar.rs
+comprehensive_audit_test.rs
+comprehensive_benchmark.rs
+crates
+cretbigintgearstack.zip
+deny.toml
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && cat jobs/v5/CURRENT_CONTEXT_20260210_210140.md' in /home/acid/Projects/NINE65/v5 succeeded in 50ms:
+# Plan: FHE Microservice — Isolate Python Bindings
+
+## Context
+
+`nine65-python` (pyo3 0.28 cdylib) has 81+ compilation errors that break `cargo check --workspace`. Rather than chasing pyo3 API churn, we restructure the Python integration as a microservice: the Rust FHE engine runs as an HTTP service, and Python talks to it via a thin SDK client. This isolates external binding dependencies from the core workspace permanently.
+
+## Architecture
+
+```
+Core Workspace (always green)          External Clients
+┌──────────────────────────────┐       ┌─────────────────┐
+│ nine65, clockwork-core,      │       │ sdks/python/     │
+│ nexgen_rational, mana, unhal │       │   nine65_sdk/    │
+│ exact_transcendentals        │       │   (pure HTTP)    │
+│ fhe-service (HTTP boundary)  │◄──────┤                  │
+└──────────────────────────────┘       └─────────────────┘
+
+Excluded (standalone builds):
+  crates/nine65-python/  (pyo3)
+  crates/nine65-wasm/    (wasm-bindgen)
+
+thinking
+**Reviewing README for context**
+
+I'm briefly checking the README to confirm the high-level system overview and ensure accurate interpretation of the primary context.
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && head -n 200 README.md' in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+# NINE65 - Bootstrap-Free Fully Homomorphic Encryption
+
+**High-performance FHE achieving depth-50 without bootstrapping. Auto mod-switch for deeper public-mode circuits.**
+
+[![Tests](https://img.shields.io/badge/tests-640%20passing-brightgreen)]()
+[![Proofs](https://img.shields.io/badge/formal%20proofs-Coq%20%2B%20Lean4-blue)]()
+[![Security](https://img.shields.io/badge/security-128--256%20bit-green)]()
+
+---
+
+## Executive Summary
+
+| Metric | NINE65 | Traditional FHE |
+|--------|--------|-----------------|
+| **Max Depth** | 50 levels verified (symmetric) | 10-15 levels |
+| **Bootstrap Required** | Never (0 collapses verified) | Every ~10 muls |
+| **Depth-50 Circuit** | 6.12s / 9.79s (secure_128 / secure_192) | 2,000-5,000ms |
+| **Memory** | ~200MB | 1-3GB |
+| **Hardware** | CPU only | GPU recommended |
+| **Post-Quantum** | LWE-based (lattice estimator verified) | Varies |
+
+thinking
+**Evaluating plan against current codebase**
+
+I'm opening the main service file to compare the plan's microservice approach with the existing monolithic structure, aiming to spot gaps or inconsistencies that affect rigor, functionality, scalability, correctness, and utility.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' crates/fhe-service/src/main.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+//! FHE Microservice — HTTP boundary for the nine65 FHE engine.
+//!
+//! Provides a REST API for session-based FHE operations. Key material
+//! never leaves the server; only ciphertexts travel over the wire.
+
+mod handlers;
+mod http;
+mod session;
+mod wire;
+
+use http::{error_response, write_http_response};
+use session::{SessionStore, DEFAULT_MAX_SESSIONS};
+
+use std::env;
+use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+
+const SERVICE_NAME: &str = "fhe-service";
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '260,520p' crates/fhe-service/src/main.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+        let metrics = make_metrics();
+        let resp = handlers::route(
+            &make_request("GET", "/v1/sessions/sess_nonexistent", &[]),
+            &store,
+            &metrics,
+        );
+        assert_eq!(resp.status, 404);
+    }
+
+    // --- Max sessions enforcement ---
+
+    #[test]
+    fn max_sessions_enforced() {
+        let store = SessionStore::new(2); // tiny limit
+        let metrics = make_metrics();
+
+        let body = serde_json::to_vec(&json!({"config": "secure_128"})).unwrap();
+
+        // First two succeed
+        let r1 = handlers::route(
+
+thinking
+**Inspecting existing HTTP module**
+
+I'm checking the current HTTP module to understand which claim-related features are already implemented and how much restructuring is still needed.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' crates/fhe-service/src/http.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+//! HTTP request/response parsing
+//!
+//! Extracted from the original monolithic main.rs with body size limits (HVT-4).
+
+use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use thiserror::Error;
+
+/// Maximum request body size (10 MB) — prevents trivial DoS.
+pub const MAX_BODY_BYTES: usize = 10 * 1024 * 1024;
+
+/// Maximum header section size (64 KB).
+const MAX_HEADER_BYTES: usize = 64 * 1024;
+
+#[derive(Debug, Error)]
+pub enum RequestParseError {
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("request headers are not valid utf-8")]
+
+thinking
+**Checking session handling details**
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' crates/fhe-service/src/session.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+//! Session management — FHE key material and state per client session.
+
+// nine65 re-exports the correct NTTEngine via its own feature gate.
+// With default features (ntt_fft), this is NTTEngineFFT.
+use nine65::arithmetic::NTTEngine;
+
+#[cfg(test)]
+use nine65::entropy::ShadowHarvester;
+use nine65::keys::{EvaluationKey, KeySet, PublicKey, SecretKey};
+use nine65::noise::budget::NoiseBudget;
+use nine65::ops::encrypt::{BFVEncoder, Ciphertext};
+use nine65::params::secure_configs::SecureConfig;
+use nine65::params::FHEConfig;
+
+use std::collections::HashMap;
+use std::sync::RwLock;
+
+use crate::wire::SessionParams;
+
+/// Maximum sessions before rejecting new ones (configurable via FHE_MAX_SESSIONS env).
+
+thinking
+**Locating handler definitions**
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' crates/fhe-service/src/handlers.rs" in /home/acid/Projects/NINE65/v5 succeeded in 50ms:
+//! Request handlers — endpoint logic for FHE operations.
+//!
+//! All FHE computation happens here. Ciphertexts are deserialized, validated,
+//! operated on via TrackedEvaluator (HVT-1), and serialized back.
+
+use crate::http::{error_response, json_response, HttpRequest, HttpResponse};
+use crate::session::SessionStore;
+use crate::wire::{
+    CreateSessionRequest, CreateSessionResponse, DecryptRequest, DecryptResponse, EncryptRequest,
+    EncryptResponse, EvaluateRequest, EvaluateResponse, SessionInfoResponse,
+};
+
+use nine65::noise::budget::{NoiseBudget, NoiseOpType};
+use nine65::ops::encrypt::{BFVDecryptor, BFVEncryptor};
+use nine65::ops::homomorphic::BFVEvaluator;
+
+use serde_json::json;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+pub struct AppMetrics {
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '260,520p' crates/fhe-service/src/handlers.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+
+        Ok(DecryptResponse {
+            values,
+            noise_budget_millibits: session.noise_budget.remaining_millibits(),
+        })
+    }) {
+        Some(Ok(resp)) => json_response(200, serde_json::to_value(&resp).unwrap()),
+        Some(Err(msg)) => error_response(400, "DECRYPT_FAILED", &msg),
+        None => error_response(404, "SESSION_NOT_FOUND", "session does not exist"),
+    }
+}
+
+fn handle_evaluate(request: &HttpRequest, session_id: &str, store: &SessionStore) -> HttpResponse {
+    let req: EvaluateRequest = match serde_json::from_slice(&request.body) {
+        Ok(r) => r,
+        Err(_) => return error_response(400, "INVALID_PAYLOAD", "malformed JSON"),
+    };
+
+    if let Err(msg) = req.validate() {
+        return error_response(400, "INVALID_PAYLOAD", msg);
+
+thinking
+**Noting partial plan implementation**
+
+The evaluation currently uses BFVEvaluator without GSO multiplication or TrackedEvaluator, with manual noise budget consumption instead of automatic tracking. Next, I'll examine wire.rs for request validation.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' crates/fhe-service/src/wire.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+//! Wire types — serde request/response types for the JSON API.
+
+use serde::{Deserialize, Serialize};
+
+/// Maximum length of any single string field in a request (non-ciphertext).
+const MAX_STRING_FIELD_LEN: usize = 1024;
+
+/// Maximum length of a single ciphertext field.
+/// N=16384 (secure_256) with 2 polynomials × 16384 × 8 bytes × 4/3 base64 ≈ 350 KB.
+const MAX_CIPHERTEXT_FIELD_LEN: usize = 512 * 1024;
+
+// ============================================================================
+// Session requests / responses
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct CreateSessionRequest {
+    /// Config name: "secure_128", "secure_192", "secure_256"
+    pub config: String,
+}
+
+thinking
+**Reviewing security and noise tracking**
+
+The service has partial HVT implementation with some security measures like body size and connection limits and field validation. Noise tracking exists but isn't fully automated or consumed; a plan to isolate the Python binding microservice and confirm Cargo workspace excludes is in progress.
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && rg "exclude" -n Cargo.toml' in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+3:exclude = ["fuzz", "crates/nine65-python", "crates/nine65-wasm"]
+
+thinking
+**Reviewing dependencies in Cargo for service**
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && cat crates/fhe-service/Cargo.toml' in /home/acid/Projects/NINE65/v5 succeeded in 50ms:
+[package]
+name = "fhe-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+nine65 = { path = "../nine65", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = { workspace = true }
+base64 = "0.22"
+bincode = "1.3"
+getrandom = { workspace = true }
+
+[dev-dependencies]
+nine65 = { path = "../nine65", features = ["serde", "allow_insecure"] }
+
+thinking
+**Checking for Python SDK presence**
+
+I'm verifying if the Python SDK exists under the expected path `sdks/python` to confirm its availability.
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && ls sdks' in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+python
+
+thinking
+**Reviewing Python SDK content**
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && find sdks/python -maxdepth 3 -type f' in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+sdks/python/pyproject.toml
+sdks/python/.pytest_cache/CACHEDIR.TAG
+sdks/python/.pytest_cache/README.md
+sdks/python/.pytest_cache/.gitignore
+sdks/python/tests/test_roundtrip.py
+sdks/python/tests/__pycache__/test_roundtrip.cpython-313-pytest-8.3.5.pyc
+sdks/python/tests/__pycache__/__init__.cpython-313.pyc
+sdks/python/tests/__init__.py
+sdks/python/nine65_sdk/session.py
+sdks/python/nine65_sdk/client.py
+sdks/python/nine65_sdk/errors.py
+sdks/python/nine65_sdk/__pycache__/client.cpython-313.pyc
+sdks/python/nine65_sdk/__pycache__/errors.cpython-313.pyc
+sdks/python/nine65_sdk/__pycache__/__init__.cpython-313.pyc
+sdks/python/nine65_sdk/__pycache__/session.cpython-313.pyc
+sdks/python/nine65_sdk/__pycache__/ciphertext.cpython-313.pyc
+sdks/python/nine65_sdk/ciphertext.py
+sdks/python/nine65_sdk/__init__.py
+
+thinking
+**Examining test_roundtrip behavior**
+
+I'm focusing on the test_roundtrip function next to verify how it operates and ensure the plan works as intended.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,200p' sdks/python/tests/test_roundtrip.py" in /home/acid/Projects/NINE65/v5 succeeded in 50ms:
+"""Integration tests for the NINE65 FHE SDK.
+
+These tests require a running NINE65 FHE microservice at localhost:8080.
+Run with::
+
+    pytest tests/test_roundtrip.py -v -m integration
+
+All arithmetic is integer-only. No floating-point anywhere.
+"""
+
+import pytest
+
+from nine65_sdk import FHEClient, SessionNotFoundError
+
+# All tests in this module require the live FHE service.
+pytestmark = pytest.mark.integration
+
+SERVICE_URL = "http://localhost:8080"
+
+
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '200,400p' sdks/python/tests/test_roundtrip.py" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+
+
+thinking
+**Reviewing SDK client code**
+
+I'm opening the SDK client file to understand available features and confirm the implementation plan.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' sdks/python/nine65_sdk/client.py" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+"""FHE client for the NINE65 microservice."""
+
+import requests
+
+from .errors import (
+    Nine65SDKError,
+    NoiseBudgetExhaustedError,
+    ServiceUnavailableError,
+    SessionNotFoundError,
+)
+from .session import Session
+
+
+class FHEClient:
+    """HTTP client for the NINE65 FHE microservice.
+
+    Usage::
+
+        client = FHEClient("http://localhost:8080")
+        with client.create_session("secure_128") as session:
+
+thinking
+**Reviewing session and concurrency gaps**
+
+Confirmed that noise budget tracking is manual, not automatic as planned, but possibly sufficient; GSO handling and request ID header interplay are missing. Concurrency limits use atomic counters correctly with subtract-on-reject to avoid off-by-one errors, though write timeouts and cancellation are not fully addressed.
+
+thinking
+**Summarizing encryption audit findings**
+
+The analysis reveals missing gso_mul implementation despite plans, manual noise tracking without TrackedEvaluator risking divergence, and potential config leaks from verbose error messages exposing modulus values. Decrypt does not reduce noise budget, no x-request-id logging exists, and cross-config checks for operation coefficients or negative decrypt results are lacking, raising correctness concerns.
+
+thinking
+**Checking decrypt return type**
+
+I'm verifying the decrypt method's return type to confirm if it outputs a u64 or i64, ensuring Python tests correctly reflect the service behavior. Next, I'll inspect the decrypt function definition in the encryption module.
+exec
+/bin/bash -lc 'cd /home/acid/Projects/NINE65/v5 && rg "struct BFVDecryptor" -n crates/nine65/src/ops/encrypt.rs' in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+481:pub struct BFVDecryptor<'a> {
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '460,540p' crates/nine65/src/ops/encrypt.rs" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+        let e2 = RingPolynomial::random_cbd_rng(n, q, self.eta, rng);
+
+        // c0 = pk0 * u + e1 + plaintext
+        let pk0_u = self.pk.pk0.mul(&u, self.ntt);
+        let c0 = pk0_u.add(&e1, self.ntt).add(plaintext, self.ntt);
+
+        // c1 = pk1 * u + e2
+        let pk1_u = self.pk.pk1.mul(&u, self.ntt);
+        let c1 = pk1_u.add(&e2, self.ntt);
+
+        Ciphertext { c0, c1 }
+    }
+
+    /// Encrypt a polynomial with cryptographically secure randomness
+    pub fn encrypt_poly_secure(&self, plaintext: &RingPolynomial) -> Ciphertext {
+        let mut rng = SecureRng::new();
+        self.encrypt_poly_with_rng(plaintext, &mut rng)
+    }
+}
+
+
+thinking
+**Confirming decrypt return type mismatch**
+
+Decrypt returns an unsigned 64-bit integer but Python tests expect signed results like -42 after negation, suggesting Python's decrypt may convert modulus results to signed integers; next step is to check session.py for this handling.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '1,260p' sdks/python/nine65_sdk/session.py" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+"""FHE session bound to server-side key material."""
+
+from .ciphertext import Ciphertext
+
+
+class Session:
+    """FHE session bound to server-side key material.
+
+    A session holds server-side encryption keys and tracks the remaining
+    noise budget.  Use it as a context manager so that server resources
+    are freed when the session is no longer needed::
+
+        with client.create_session() as s:
+            ct_a, ct_b = s.encrypt(42, 17)
+            ct_sum = s.add(ct_a, ct_b)
+            result = s.decrypt(ct_sum)
+            assert result == [59]
+
+    All integer values passed to and from this class are plain Python
+    ``int`` objects.  No floating-point is used anywhere.
+
+thinking
+**Identifying Python client scalar handling bug**
+
+The Python client incorrectly passes scalar as a base64 ciphertext input string instead of using the scalar field, causing base64 decoding errors and mismatch with server expectations. This represents a critical correctness issue not caught by tests and needs highlighting in analysis.
+
+thinking
+**Planning to verify decoding behavior**
+
+I need to check the BFVEncoder decoding method to understand how it handles large unsigned integers and whether it produces signed (possibly negative) values as Python expects.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && rg \"fn decode\\(\" -n crates/nine65/src/ops/encrypt.rs" in /home/acid/Projects/NINE65/v5 succeeded in 50ms:
+75:    pub fn decode(&self, poly: &RingPolynomial) -> u64 {
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && sed -n '60,110p' crates/nine65/src/ops/encrypt.rs" in /home/acid/Projects/NINE65/v5 succeeded in 50ms:
+    pub fn try_encode(&self, m: u64) -> Nine65Result<RingPolynomial> {
+        if m >= self.t {
+            return Err(Nine65Error::MessageOutOfBounds {
+                message: m,
+                modulus: self.t,
+            });
+        }
+
+        let mut coeffs = vec![0u64; self.n];
+        coeffs[0] = ((self.delta as u128 * m as u128) % self.q as u128) as u64;
+
+        Ok(RingPolynomial::from_coeffs(coeffs, self.q))
+    }
+
+    /// Decode polynomial to scalar message
+    pub fn decode(&self, poly: &RingPolynomial) -> u64 {
+        // m = round(t * c / q) mod t
+        // Using integer formula: floor((2*t*c + q) / (2*q)) mod t
+        let c = poly.coeffs[0];
+
+
+thinking
+**Identifying mismatch in negative integer handling**
+
+Negative plaintext values aren't supported by the decode logic, causing tests expecting negatives like -42 to fail because returned values remain positive modulo t. The client lacks balanced decoding to map values > t/2 into negative range, exposing a contract gap between server output and client test expectations.
+
+thinking
+**Analyzing noise budget and operation chaining risks**
+
+The operations are processed sequentially and independently per request without reusing intermediate results, so noise budget checks per operation seem consistent but may miss composed operation effects. The HTTP parsing is manual and basic, lacking support for chunked bodies and standard compliance, posing risks but acceptable for the isolated microservice scope. The plan should highlight these limitations, concurrency considerations, and focus on isolating the Python binding with prioritized recommendations without writing files or referencing prior analyses.
+
+thinking
+**Summarizing key code and security observations**
+
+The review notes important mismatches like unsupported GSO operations causing Python client test failures, missing scalar checks risking overflow in plaintext mods, and incomplete use of BFVEvaluator versus TrackedEvaluator. It highlights limited security validations such as partial field checks, potential connection limit leaks, and absent metrics. Other concerns include possible thread blocking due to no backpressure, manual noise budget handling, unverified large operation payloads, and some config reuse slowing tests. These insights guide targeted improvements in validation, resource management, and feature integration.
+
+thinking
+**Planning detailed code analysis with file line refs**
+
+I'm gathering precise line numbers in key files to reference spots like unchecked scalar uses, aiming to include clear file:line details for rigor and clarity in the final prioritized recommendations. Next, I'll draft structured sections with bullet points citing those locations.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && nl -ba crates/fhe-service/src/handlers.rs | sed -n '120,240p'" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+   120	    let failed = metrics.requests_failed.load(Ordering::Relaxed);
+   121	    let sessions = store.count();
+   122	
+   123	    let body = format!(
+   124	        "# HELP fhe_requests_total Total requests\n\
+   125	         # TYPE fhe_requests_total counter\n\
+   126	         fhe_requests_total {total}\n\
+   127	         # HELP fhe_requests_failed_total Failed requests\n\
+   128	         # TYPE fhe_requests_failed_total counter\n\
+   129	         fhe_requests_failed_total {failed}\n\
+   130	         # HELP fhe_active_sessions Active FHE sessions\n\
+   131	         # TYPE fhe_active_sessions gauge\n\
+   132	         fhe_active_sessions {sessions}\n\
+   133	         # HELP fhe_uptime_seconds Service uptime\n\
+   134	         # TYPE fhe_uptime_seconds gauge\n\
+   135	         fhe_uptime_seconds {uptime}\n",
+   136	    );
+   137	
+   138	    HttpResponse {
+   139	        status: 200,
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && nl -ba crates/fhe-service/src/handlers.rs | sed -n '240,520p'" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+   240	    let req: DecryptRequest = match serde_json::from_slice(&request.body) {
+   241	        Ok(r) => r,
+   242	        Err(_) => return error_response(400, "INVALID_PAYLOAD", "malformed JSON"),
+   243	    };
+   244	
+   245	    if let Err(msg) = req.validate() {
+   246	        return error_response(400, "INVALID_PAYLOAD", msg);
+   247	    }
+   248	
+   249	    match store.with_session_mut(session_id, |session| -> Result<DecryptResponse, String> {
+   250	        let decryptor = BFVDecryptor::new(&session.secret_key, &session.encoder, &session.ntt);
+   251	
+   252	        let mut values = Vec::with_capacity(req.ciphertexts.len());
+   253	        for ct_b64 in &req.ciphertexts {
+   254	            let ct = session.ct_from_b64(ct_b64)?;
+   255	            let v = decryptor.decrypt(&ct);
+   256	            values.push(v);
+   257	        }
+   258	
+   259	        session.operation_count += req.ciphertexts.len() as u64;
+
+thinking
+**Noting line number handling and eval path**
+
+I identified that line numbers don't need explicit validation but can be referenced, and confirmed the Python session evaluation should use the plain evaluation path with line numbers.
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && nl -ba sdks/python/nine65_sdk/session.py | sed -n '60,180p'" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+    60	        return "/v1/sessions/%s%s" % (self._session_id, suffix)
+    61	
+    62	    def _update_budget(self, body):
+    63	        """Update the local noise budget cache from a response body."""
+    64	        if isinstance(body, dict) and "noise_budget_millibits" in body:
+    65	            self._noise_budget_millibits = int(body["noise_budget_millibits"])
+    66	
+    67	    def _evaluate(self, operations):
+    68	        """Send an evaluate request and return the parsed response body."""
+    69	        body = self._client._request(
+    70	            "POST",
+    71	            self._path("/evaluate"),
+    72	            {"operations": operations},
+    73	        )
+    74	        self._update_budget(body)
+    75	        return body
+    76	
+    77	    # ------------------------------------------------------------------
+    78	    # Encrypt / Decrypt
+    79	    # ------------------------------------------------------------------
+exec
+/bin/bash -lc "cd /home/acid/Projects/NINE65/v5 && nl -ba sdks/python/nine65_sdk/session.py | sed -n '180,320p'" in /home/acid/Projects/NINE65/v5 succeeded in 51ms:
+   180	        """
+   181	        return self._eval_unary("negate", ct)
+   182	
+   183	    def add_plain(self, ct, scalar):
+   184	        """Add an integer plaintext to a ciphertext.
+   185	
+   186	        Args:
+   187	            ct: Ciphertext operand.
+   188	            scalar: Integer plaintext addend.
+   189	
+   190	        Returns:
+   191	            Ciphertext encrypting (plaintext + scalar).
+   192	        """
+   193	        return self._eval_plain("add_plain", ct, scalar)
+   194	
+   195	    def mul_plain(self, ct, scalar):
+   196	        """Multiply a ciphertext by an integer plaintext.
+   197	
+   198	        Args:
+   199	            ct: Ciphertext operand.
+
+thinking
+**Summarizing key evaluation findings**
+
+Identified a wire protocol mismatch causing plaintext operation failures in Python SDK tests, a semantic gap in negative plaintext decoding, and a missing high-value GSO-FHE operation path in evaluation; plans include fixing message formats, clarifying signed decoding, and implementing the GSO multiply path to unlock unique features.
+
+thinking
+**Summarizing final security and implementation concerns**
+
+This analysis identifies several critical gaps including missing tracked evaluation causing noise budget tracking issues, leakage of config details in error responses, lack of scalar validation potentially allowing wraparound, and concurrency risks due to thread-per-connection architecture without fine-grained per-request limits. Session management lacks automatic expiry, metrics omit important noise and latency tracking, and Python SDK tests falter due to scalar validation flaws. Paths and line references for key bugs and partial hardening steps are prepared for prioritized reporting.
+
+thinking
+**Crafting detailed report structure**
+
+I'm preparing a structured report covering executive summary, system overview, detailed review sections, prioritized recommendations, and raw observations with precise file path references, formatted as plain text with bullet points per the developer instructions.
+codex
+# CONSULTANT AUDIT
+
+**Consultant**: Codex  
+**Model**: gpt-5.1-codex-max  
+**Timestamp**: 2026-02-10T21:38:40.049557  
+**Project**: v5
+
+## EXECUTIVE SUMMARY
+- The microservice split is largely in place (workspace excludes, service modularized, Python SDK added), but two contract-level correctness bugs make plaintext ops unusable from Python and negate semantics inconsistent with the service.  
+- High-value differentiators (GSO depth-50, TrackedEvaluator-based noise accounting) are still absent from the live handler path, so the new boundary currently delivers only baseline BFV.  
+- Security hardening is partial: size limits and connection caps exist, yet error leakage, missing request IDs, and unchecked plaintext scalars leave obvious attack and telemetry gaps.
+
+## SYSTEM OVERVIEW
+- Current plan: keep Rust FHE core green by isolating Python via an HTTP microservice; Python SDK becomes a pure HTTP client.  
+- Service layout implemented (`main.rs`, `http.rs`, `session.rs`, `wire.rs`, `handlers.rs`) with body-size and connection limits; sessions hold keys and noise budget; evaluate endpoint supports add/sub/negate/add_plain/mul_plain/mul.  
+- Python SDK (`sdks/python/nine65_sdk`) wraps the HTTP API with integration tests marked `@integration`.
+
+## RIGOR & CORRECTNESS REVIEW
+- Python plaintext ops are miswired: `Session._eval_plain` sends the scalar as a second ciphertext input instead of the `scalar` field expected by the server; requests will fail base64 validation (`sdks/python/nine65_sdk/session.py:121-135` vs `crates/fhe-service/src/handlers.rs:331-359`).  
+- Signed decoding is undefined: server decrypt returns `u64` in `[0,t)` (`handlers.rs:249-264`), but SDK tests expect negative results for `negate` (e.g., `-42`); no centered-lift is performed, so tests will fail and client semantics are unclear.  
+- HVT-2 (GSO depth-50) not integrated: evaluate handler lacks `gso_mul` and sessions never enter `GSOFHEContext`, so the advertised differentiator is unavailable (`handlers.rs:299-387`).  
+- HVT-1 only partially realized: noise budget is manually decremented with fixed costs; `TrackedEvaluator` is not used, so budget does not reflect actual op noise and can drift (same section).  
+- Scalars for `add_plain`/`mul_plain` are not range-checked against `t`; overflow or hostile scalars can silently wrap and desynchronize noise tracking (`handlers.rs:331-359`).  
+- Tests use production `secure_128` parameters; fast/seeded configs from HVT-3 are unused, making the suite slower and less deterministic.
+
+## FUNCTIONAL & SCALABILITY ANALYSIS
+- Thread-per-connection server with only a 5s read timeout; heavy mul chains can hold threads indefinitely. Per-request op count is capped (256) but each mul is O(n log n); no execution timeout or queueing (`main.rs:34-83`, `handlers.rs:272-417`).  
+- Connection limiter works, yet relies on bespoke HTTP parser; no keep-alive or pipelining, so throughput under load will be limited; MAX_BODY_BYTES enforcement depends on `Content-Length`, not chunked decoding (`http.rs:12-91`).  
+- SessionStore caps count but has no TTL/reaper; long-lived idle sessions hold keys and memory until manual DELETE (`session.rs:68-137`).  
+- Prometheus metrics exist but omit latency, noise exhaustion counts, and rejection reasons, limiting observability (`handlers.rs:120-143`).  
+- Python SDK uses a shared `requests.Session` but lacks retries/backoff; any transient 503 causes immediate failure (`client.py:21-71`).
+
+## UTILITY & DESIGN INTEGRITY
+- API contract drift between server and SDK (plaintext ops, signed decoding) undermines developer trust; docs/examples need to match actual wire format.  
+- Error responses leak internal details such as plaintext modulus (`handlers.rs:214-218`) contrary to the plan’s “generic errors” requirement; no `x-request-id` propagation for correlation.  
+- Security lint (`#![deny(clippy::float_arithmetic)]`) called out in the plan is not enabled in the crate root; risk of future float regressions.  
+- Ciphertext validation is strong (`ct_from_b64` with `from_bytes_validated`), and MAX_CIPHERTEXT_FIELD_LEN guards are in place (`wire.rs:9-66`), aligning with stated body-size defenses.
+
+## PRIORITIZED RECOMMENDATIONS
+1) **Fix SDK ↔ API contract**: Send scalars via the `scalar` field and keep only one ciphertext input; add server-side scalar `< t` check and centered-lift decoding (or adjust SDK/tests) to resolve negate/sign semantics.  
+2) **Ship HVTs as planned**: Add `gso_mul` path and GSO context wrapping; replace manual budget debits with `TrackedEvaluator` to align budget with actual operations.  
+3) **Harden request handling**: Clamp plaintext scalars, mask modulus/error details, add request-id echo, and enforce `#![deny(clippy::float_arithmetic)]` in `fhe-service`.  
+4) **Operational limits**: Add per-request execution timeout or bounded thread pool; consider work queue for mul-heavy requests to prevent connection exhaustion despite limits.  
+5) **Test posture**: Switch service tests to `allow_insecure`/`test_fast` configs for speed and determinism; expand integration tests to cover gso_mul and noise exhaustion cases once implemented.  
+6) **Observability**: Extend metrics with latency buckets, noise-budget-exhausted counters, and rejection reasons; log request-id with errors for correlation.
+
+## RAW OBSERVATIONS
+- Body/header size limits implemented (10MB / 64KB) match plan; connection limit defaults to 256 via env override.  
+- Ciphertext serialization path (`ct_to_b64`/`ct_from_b64`) already centralizes validation, reducing accidental cross-config misuse.  
+- Integration tests are marked `@integration` and require a running service; current contract bugs will cause `add_plain`/`mul_plain` cases to fail immediately.  
+- Phase-2 roadmap items (rotations, packing, TTL) remain deferred; none of their hooks appear in the current codebase.
+tokens used
+205,969

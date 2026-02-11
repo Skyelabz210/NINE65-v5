@@ -214,6 +214,11 @@ fn handle_encrypt(request: &HttpRequest, session_id: &str, store: &SessionStore)
             if v >= session.config.t {
                 return Err("value exceeds plaintext modulus".to_owned());
             }
+            // Consume noise budget for encryption
+            session
+                .noise_budget
+                .consume(NoiseOpType::Encrypt, NoiseBudget::encrypt_cost(&session.config))
+                .map_err(|e| format!("noise exhausted: {}", e))?;
             // Use secure encryption for production
             let ct = encryptor.encrypt_secure(v);
             let b64 = session.ct_to_b64(&ct)?;
