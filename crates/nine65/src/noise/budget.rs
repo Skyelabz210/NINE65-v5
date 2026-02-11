@@ -3,7 +3,7 @@
 //! Integer-based noise budget tracking for FHE operations.
 //! Uses millibits (1000 millibits = 1 bit) for precision without floats.
 //!
-//! # QMNF Innovation: Integer Noise Tracking
+//! # Integer Noise Tracking
 //!
 //! Standard FHE libraries use floating-point for noise estimation:
 //! ```ignore

@@ -1,6 +1,6 @@
 //! RNS - Residue Number System with Adaptive Multi-Prime Support
 //!
-//! QMNF Innovation: CRTBigInt parallel coefficient operations enable
+//! CRTBigInt parallel coefficient operations enable
 //! exact arithmetic on integers larger than any single prime modulus.
 
 // Allow explicit indexing in RNS computations - loop indices are used

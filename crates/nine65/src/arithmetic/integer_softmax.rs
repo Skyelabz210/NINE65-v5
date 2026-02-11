@@ -1,6 +1,6 @@
 //! Integer Softmax with Exact Sum Guarantee
 //!
-//! INNOVATION: Softmax using Padé [4/4] for exp() and K-Elimination for division.
+//! Softmax using Padé [4/4] for exp() and K-Elimination for division.
 //! Guarantees sum(output) == SCALE exactly (mathematical certainty).
 //!
 //! Standard softmax: softmax_i = exp(x_i) / sum(exp(x_j))
@@ -129,7 +129,7 @@ impl IntegerSoftmax {
         result
     }
 
-    /// Adjust array to sum exactly to output_scale (THE KEY INNOVATION)
+    /// Adjust array to sum exactly to output_scale (THE KEY COMPONENT)
     fn adjust_sum_exact(&self, values: &mut [u128]) {
         let current_sum: u128 = values.iter().sum();
         if current_sum == self.output_scale {

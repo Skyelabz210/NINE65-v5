@@ -87,10 +87,9 @@ Summary (pre-mod-switch baseline):
 
 ---
 
-## Key Innovations
+## Key Components
 
 ### 1. K-Elimination (Exact Division in RNS)
-Traditional RNS cannot divide. K-Elimination solves the 70-year-old problem:
 - **Dual-track architecture**: Main moduli + anchor moduli
 - **Exact rescaling**: No floating-point, no approximation errors
 - **O(k) complexity**: Linear in number of RNS lanes
@@ -349,12 +348,12 @@ assert_eq!(result, 6);
 
 ## Formal Verification
 
-NINE65 innovations are backed by machine-checked proofs in Coq and Lean4.
+NINE65 components are backed by machine-checked proofs in Coq and Lean4.
 Proof-to-code mappings are tracked in `docs/FORMALIZATION_INDEX.md`.
 
 ### Coq Proofs (`proofs/coq/`)
 
-| File | Innovation | Status |
+| File | Component | Status |
 |------|------------|--------|
 | `KElimination.v` | K-Elimination exact division | Verified |
 | `K_Elimination.v` | Core k-value theorems | Verified |

@@ -1,6 +1,6 @@
 //! Continued Fraction Expansions
 //!
-//! INNOVATION: Every irrational number has a unique continued fraction expansion.
+//! Every irrational number has a unique continued fraction expansion.
 //! The convergents p_n/q_n give the BEST rational approximation for any
 //! denominator ≤ q_n. This is mathematically optimal approximation!
 //!

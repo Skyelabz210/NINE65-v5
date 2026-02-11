@@ -1,6 +1,6 @@
 //! MobiusInt: Signed Integer Arithmetic via Polarity Separation
 //!
-//! INNOVATION: Separate magnitude from sign. Solves the "naive M/2 threshold
+//! Separate magnitude from sign. Avoids the "naive M/2 threshold
 //! breaks under chained operations" problem in RNS signed arithmetic.
 //!
 //! Traditional approach: if residue > M/2, treat as negative

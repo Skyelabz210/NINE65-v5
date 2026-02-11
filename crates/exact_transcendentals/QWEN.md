@@ -8,7 +8,7 @@ The QMNF Exact Transcendentals Engine is a Rust crate that provides exact intege
 
 - **Exact Integer Arithmetic**: No floating-point operations anywhere in the computation
 - **Multiple Algorithm Implementations**: CORDIC, Integer Newton-Raphson, AGM, Binary Splitting, Continued Fractions
-- **QMNF Integration**: Implements QMNF innovations like K-Elimination for exact division
+- **QMNF Integration**: Implements QMNF components like K-Elimination for exact division
 - **High Performance**: Optimized algorithms with documented complexity characteristics
 - **Comprehensive Testing**: 47/47 tests passing with cross-validation and identity verification
 
@@ -132,7 +132,7 @@ cargo bench
 
 ## QMNF Integration Points
 
-| QMNF Innovation | Integration Status |
+| QMNF Component | Integration Status |
 |-----------------|-------------------|
 | K-Elimination | ✅ Ready for exact division |
 | CRTBigInt | ✅ Interface defined |

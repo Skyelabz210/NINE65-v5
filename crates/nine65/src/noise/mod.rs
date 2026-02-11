@@ -3,7 +3,7 @@
 //! Based on CDHS (Comprehensive Diagnostic Health System) v2.0
 //! Adapted for BFV ciphertext noise budget monitoring.
 //!
-//! KEY INNOVATION: All noise tracking uses integer-only arithmetic.
+//! All noise tracking uses integer-only arithmetic.
 //! No floating point = perfect determinism across platforms.
 //!
 //! Noise in BFV:

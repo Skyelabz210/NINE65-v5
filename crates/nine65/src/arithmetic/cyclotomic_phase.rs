@@ -1,6 +1,6 @@
 //! Cyclotomic Phase Operations - Native Trigonometry in FHE Ring
 //!
-//! INNOVATION: The ring R_q[X]/(X^N + 1) already contains trigonometry!
+//! The ring R_q[X]/(X^N + 1) contains trigonometric properties.
 //! X^N ≡ -1 means X^k is a phase rotation by k×(π/N).
 //! "Sine" = odd coefficients, "Cosine" = even coefficients.
 //!

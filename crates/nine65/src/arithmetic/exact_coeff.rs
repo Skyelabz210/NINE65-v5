@@ -1,6 +1,6 @@
 //! ExactCoeff - Dual-Track Coefficient Representation
 //!
-//! QMNF Innovation: Each coefficient carries both fast RNS residues
+//! Each coefficient carries both fast RNS residues
 //! for NTT/Montgomery operations AND anchor track residues for exact
 //! integer reconstruction via K-Elimination.
 //!

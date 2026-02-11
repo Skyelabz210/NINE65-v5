@@ -1,6 +1,6 @@
 //! Arithmetic-Geometric Mean (AGM) Algorithms
 //!
-//! INNOVATION: Quadratically convergent algorithms using only exact integer arithmetic.
+//! Quadratically convergent algorithms using only exact integer arithmetic.
 //! Each iteration DOUBLES the number of correct digits!
 //!
 //! ## What AGM Computes:

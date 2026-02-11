@@ -354,7 +354,7 @@ Add to Key Paths section:
 
 In `crates/exact_transcendentals/BLUEPRINT.md`, update the QMNF Integration Points table:
 
-| QMNF Innovation | Integration Status |
+| QMNF Component | Integration Status |
 |-----------------|-------------------|
 | K-Elimination | Integrated via rational_bridge |
 | CRTBigInt | Integrated (crt.rs, 580 lines) |

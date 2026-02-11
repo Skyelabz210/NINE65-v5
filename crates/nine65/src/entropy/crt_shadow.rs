@@ -1,6 +1,6 @@
 //! CRT Shadow - Entropy Harvesting from RNS Operations
 //!
-//! QMNF Innovation: Zero-cost entropy generation from computational byproducts.
+//! Zero-cost entropy generation from computational byproducts.
 //!
 //! # Theorem Reference
 //! - Proof File: `CRTShadowEntropy.v`
@@ -644,7 +644,7 @@ impl std::fmt::Display for ShadowStats {
 
 /// Quotient Signature - Magnitude tracking via captured quotients
 ///
-/// QMNF Innovation: CRT reconstruction computes k = (X - r_m) / M
+/// CRT reconstruction computes k = (X - r_m) / M
 /// This k value encodes magnitude information. By tracking k values
 /// across operations, we can compare magnitudes in O(1) without
 /// full CRT reconstruction.

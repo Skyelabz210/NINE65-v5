@@ -1,6 +1,6 @@
 //! Padé Approximant Engine for Integer-Only Transcendental Functions
 //!
-//! INNOVATION: Replace floating-point exp/sin/cos/log with rational functions
+//! Replace floating-point exp/sin/cos/log with rational functions
 //! having integer coefficients. Combined with K-Elimination for exact division.
 //!
 //! Performance: ~200ns per evaluation, zero drift, 100% reproducible

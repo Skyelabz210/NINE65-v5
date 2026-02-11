@@ -1,6 +1,6 @@
 //! V2 Integration Tests
 //!
-//! Tests for NINE65 V2 innovations:
+//! Tests for NINE65 V2 components:
 //! - NTT FFT (O(N log N))
 //! - WASSAN Holographic Noise Field (requires shadow-entropy feature)
 //!

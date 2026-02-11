@@ -7,7 +7,7 @@
 
 ## What is NINE65?
 
-**NINE65** is a bootstrap-free Fully Homomorphic Encryption (FHE) system achieving **depth-50+ circuits** without ever bootstrapping. It is built on the QMNF integer-only architecture with formally verified innovations.
+**NINE65** is a bootstrap-free Fully Homomorphic Encryption (FHE) system achieving **depth-50+ circuits** without ever bootstrapping. It is built on the QMNF integer-only architecture with formally verified components.
 
 ---
 
@@ -24,10 +24,10 @@
 
 ---
 
-## Core Innovations
+## Core Components
 
 ### 1. K-Elimination (Exact Division in RNS)
-- **Problem**: RNS cannot natively divide (70-year-old limitation)
+- **Problem**: RNS cannot natively divide
 - **Solution**: Dual-track architecture with anchor moduli
 - **Result**: Exact rescaling without approximation errors
 - **Complexity**: O(k) linear in RNS lanes
@@ -63,7 +63,7 @@
 ## Formal Proofs Included
 
 ### Coq Proofs (.v)
-| Innovation | File | Status |
+| Component | File | Status |
 |------------|------|--------|
 | K-Elimination | `KElimination.v` | Verified |
 | GSO-FHE | `GSOFHE.v` | Verified |

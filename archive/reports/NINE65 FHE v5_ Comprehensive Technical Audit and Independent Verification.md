@@ -7,7 +7,7 @@
 
 This report presents a comprehensive technical audit and independent verification of the NINE65 FHE v5 system, a bootstrap-free Fully Homomorphic Encryption (FHE) library. The audit was conducted at the request of the system's creator, Anthony Diaz, and included a thorough analysis of the source code, extensive testing, performance benchmarking, and a review of the promotional website, hackfate.us. Our findings indicate that NINE65 FHE v5 is a robust, high-performance FHE implementation with a strong foundation in novel, integer-only arithmetic. The system successfully passed all 465 of its functional tests, demonstrating perfect correctness in its core homomorphic operations. The performance benchmarks revealed excellent parallelization efficiency, with a nearly 5x speedup in parallel encryption, and sub-millisecond operation times that validate its claim of being real-time capable for many use cases.
 
-The core innovations of NINE65, particularly **K-Elimination** for exact RNS division and a bootstrap-free architecture, are present, functional, and deliver on their performance promises. The hackfate.us website accurately represents the system's capabilities and technical strengths. However, our audit also identified several areas requiring attention. A significant number of floating-point violations (216 critical) were detected in the codebase, which, while not affecting the correctness of the core cryptographic operations in our tests, contradicts the project's core principle of "truth cannot be approximated." Additionally, the `fhe_demo` binary exhibited a minor subtraction bug, and the most ambitious performance claims, such as the 400x speedup over traditional FHE stacks, require further independent, comparative benchmarking to be fully substantiated. This report provides a detailed analysis of these findings and offers actionable recommendations to further harden the system for production deployment.
+The core components of NINE65, particularly **K-Elimination** for exact RNS division and a bootstrap-free architecture, are present, functional, and deliver on their performance promises. The hackfate.us website accurately represents the system's capabilities and technical strengths. However, our audit also identified several areas requiring attention. A significant number of floating-point violations (216 critical) were detected in the codebase, which, while not affecting the correctness of the core cryptographic operations in our tests, contradicts the project's core principle of "truth cannot be approximated." Additionally, the `fhe_demo` binary exhibited a minor subtraction bug, and the most ambitious performance claims, such as the 400x speedup over traditional FHE stacks, require further independent, comparative benchmarking to be fully substantiated. This report provides a detailed analysis of these findings and offers actionable recommendations to further harden the system for production deployment.
 
 ## 2. Introduction
 
@@ -17,7 +17,7 @@ The NINE65 FHE v5 system is a cutting-edge implementation of Fully Homomorphic E
 -   Execution and analysis of the complete test suite.
 -   Performance benchmarking of core operations.
 -   A comprehensive float violation scan using the FHE Auditor skill.
--   An audit of the system's compliance with its stated innovations.
+-   An audit of the system's compliance with its stated components.
 -   A review of the hackfate.us website and verification of its claims.
 
 This report is intended to provide a comprehensive, evidence-based assessment of the NINE65 FHE v5 system's current state, its strengths, and areas for improvement.
@@ -68,9 +68,9 @@ A core design principle of NINE65 is its reliance on integer-only arithmetic. We
 
 > While the core cryptographic operations passed all correctness tests, the presence of 216 critical float violations in the surrounding components is a significant concern. These violations are concentrated in `rns_fhe.rs`, `noise/mod.rs`, and `gso_fhe.rs`. This indicates that while the core data path may be integer-only, the modeling and parameterization of the system still rely on floating-point arithmetic, which could introduce subtle inaccuracies.
 
-### 3.4. Innovation Compliance Audit
+### 3.4. Component Compliance Audit
 
-We audited the codebase for the 16 innovations associated with the QMNF architecture. The system shows strong compliance with the core and advanced innovations.
+We audited the codebase for the 16 components associated with the QMNF architecture. The system shows strong compliance with the core and advanced components.
 
 | Category | Implemented | Total | Coverage |
 | :--- | :--- | :--- | :--- |
@@ -79,7 +79,7 @@ We audited the codebase for the 16 innovations associated with the QMNF architec
 | Advanced | 3 | 3 | 100% |
 | **Total** | **11** | **16** | **68.75%** |
 
-The full implementation of the eight Core FHE innovations, including K-Elimination and Persistent Montgomery, is a major achievement. However, the absence of the five Tier 6 innovations indicates that there is still significant room for the system to evolve and improve its performance and security characteristics.
+The full implementation of the eight Core FHE components, including K-Elimination and Persistent Montgomery, is a major achievement. However, the absence of the five Tier 6 components indicates that there is still significant room for the system to evolve and improve its performance and security characteristics.
 
 ## 4. hackfate.us Website Review
 
@@ -110,7 +110,7 @@ Based on our findings, we offer the following recommendations to further strengt
 
 3.  **Address the `fhe_demo` Bug**: The subtraction bug in the `fhe_demo` binary should be investigated and fixed to ensure that all public-facing components of the project are as robust as the core library.
 
-4.  **Clarify Tier 6 Innovation Status**: The project roadmap should be updated to clarify the status of the five missing Tier 6 Shadow Entropy FHE innovations. This will provide a clearer picture of the system's future development trajectory.
+4.  **Clarify Tier 6 Component Status**: The project roadmap should be updated to clarify the status of the five missing Tier 6 Shadow Entropy FHE components. This will provide a clearer picture of the system's future development trajectory.
 
 5.  **Pursue Third-Party Audit of Formal Proofs**: To fully substantiate the formal verification claims, we recommend engaging a reputable third party to audit the Coq and Lean4 proofs.
 

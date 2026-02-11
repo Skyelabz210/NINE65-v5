@@ -1,7 +1,6 @@
 //! Montgomery Arithmetic - Gen 2 Division-Free Modular Multiplication
 //!
-//! QMNF Innovation: Persistent Montgomery representation eliminates
-//! the 70-year boundary conversion overhead by staying in residue space.
+//! Montgomery representation eliminates conversion overhead by staying in residue space.
 //!
 //! # Security
 //!

@@ -35,7 +35,7 @@ Claude (Anthropic)\\
 \maketitle
 
 \begin{abstract}
-We present the K-Elimination Theorem, a mathematical result that solves the 60-year-old problem of exact division in Residue Number Systems (RNS). Since Szab\'{o} and Tanaka's foundational work in 1967, RNS division has required explicit tracking of overflow counts with inherent approximation errors. The best prior approaches achieved 99.9998\% accuracy. We prove that the overflow count $k$ can be computed \emph{exactly} from an independent anchor residue system using the formula $k = (v_A - v_M) \cdot M^{-1} \mod A$. This result is formally verified in Lean 4 with 27 machine-checked theorems and 0 unproven statements (\texttt{sorry}). The verification is cross-validated with 10 additional theorems in Coq. We provide complete proofs, complexity analysis, and discuss applications to Fully Homomorphic Encryption where this result enables bootstrap-free operations.
+We present the K-Elimination Theorem, a mathematical result that enables exact division in Residue Number Systems (RNS). We prove that the overflow count $k$ can be computed \emph{exactly} from an independent anchor residue system using the formula $k = (v_A - v_M) \cdot M^{-1} \mod A$. This result is formally verified in Lean 4 with 27 machine-checked theorems and 0 unproven statements (\texttt{sorry}). The verification is cross-validated with 10 additional theorems in Coq. We provide complete proofs, complexity analysis, and discuss applications to Fully Homomorphic Encryption where this result enables bootstrap-free operations.
 \end{abstract}
 
 \section{Introduction}
@@ -276,7 +276,7 @@ Beyond cryptography, K-Elimination benefits any application using RNS:
 
 \section{Conclusion}
 
-We have presented the K-Elimination Theorem, which proves that the overflow count $k$ in RNS arithmetic can be computed exactly from an independent anchor residue system. This result solves a 60-year-old problem in computer arithmetic, enabling exact division in RNS without explicit $k$-tracking or floating-point approximation.
+We have presented the K-Elimination Theorem, which proves that the overflow count $k$ in RNS arithmetic can be computed exactly from an independent anchor residue system. This enables exact division in RNS without explicit $k$-tracking or floating-point approximation.
 
 The theorem has been formally verified with 27 machine-checked proofs in Lean 4 and cross-validated with 10 proofs in Coq. The verification is complete with 0 unproven statements, providing the highest level of mathematical assurance.
 

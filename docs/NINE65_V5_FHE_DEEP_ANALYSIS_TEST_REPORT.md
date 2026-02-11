@@ -8,7 +8,7 @@ Profile: release
 Overall Assessment: PRE-PRODUCTION (deployment not recommended yet)
 
 NINE65 v5 is a bootstrap-free FHE implementation with strong test coverage and formal proof artifacts
-for core innovations. The release test suite passes in full for core/support crates, including depth benchmarks and
+for core components. The release test suite passes in full for core/support crates, including depth benchmarks and
 security integration tests. Deployment is not recommended until timing side-channel mitigations
 and documentation baselines are fully reconciled; minimum evaluation config is secure_192.
 
@@ -46,7 +46,7 @@ Notes:
 - Doc-tests remain mostly ignored by design (Rust doc examples are informational).
 
 ---
-## 2. Core Innovation Verification
+## 2. Core Component Verification
 
 ### 2.1 K-Elimination (Exact RNS Division)
 Evidence:

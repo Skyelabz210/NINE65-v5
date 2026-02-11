@@ -1,6 +1,6 @@
 //! Binary Splitting Algorithm
 //!
-//! INNOVATION: Hypergeometric series computed in O(M(n) log n) time
+//! Hypergeometric series computed in O(M(n) log n) time
 //! where M(n) is n-bit multiplication time. This is optimal!
 //!
 //! ## The Binary Splitting Method:

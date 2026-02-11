@@ -1,6 +1,6 @@
 //! Integer Square Root - Exact Arithmetic
 //!
-//! INNOVATION: Square root computed using ONLY integer operations.
+//! Square root computed using ONLY integer operations.
 //! No floating point anywhere - critical for QMNF's "truth cannot be approximated" philosophy.
 //!
 //! ## Algorithms:

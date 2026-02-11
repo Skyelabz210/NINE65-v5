@@ -2,7 +2,7 @@
 //!
 //! ZERO floating point. ALL computations exact.
 //!
-//! Innovations:
+//! Core Components:
 //! - **Persistent Montgomery**: Never leave Montgomery form (50-100× speedup)
 //! - **NTT Gen 3**: Negacyclic convolution with ψ-twist
 //! - **RNS/CRT**: Parallel computation across coprime moduli
@@ -23,7 +23,7 @@ pub mod exact_coeff; // DUAL-TRACK COEFFICIENTS
 pub mod exact_divider; // K-ELIMINATION PRIMITIVE
 pub mod integer_math;
 pub mod integer_softmax; // EXACT SUM SOFTMAX
-pub mod k_elimination; // THE 60-YEAR SOLUTION
+pub mod k_elimination; // EXACT DIVISION
 pub mod mobius_int; // SIGNED ARITHMETIC (no M/2 threshold failure)
 pub mod montgomery;
 pub mod mq_relu; // O(1) SIGN DETECTION
@@ -31,7 +31,7 @@ pub mod ntt;
 pub mod ntt_fft; // V2: O(N log N) FFT-based NTT (500-2000× faster)
 pub mod order_finding; // NON-CIRCULAR BSGS (Shor's classical reduction)
 pub mod pade_engine; // INTEGER TRANSCENDENTALS (exp/sin/cos/sigmoid)
-pub mod persistent_montgomery; // THE INNOVATION
+pub mod persistent_montgomery; // MONTGOMERY FORM
 pub mod rns;
 pub mod transcendental_backend; // FEATURE-GATED EXACT TRANSCENDENTAL ADAPTER
 pub mod valuation; // INTEGER UTILITIES (log2, sqrt, format, trig LUT)

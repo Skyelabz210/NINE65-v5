@@ -8,7 +8,7 @@
 [![Sorry](https://img.shields.io/badge/Sorry-0-success)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-> **Solving the 60-year RNS division problem identified by Szabó & Tanaka (1967)**
+> **Enabling exact division in RNS arithmetic**
 
 ## The Theorem
 

@@ -1,6 +1,6 @@
 //! ExactDivider - K-Elimination Exact Division Primitive
 //!
-//! QMNF Innovation: Dual-track residue representation enables exact integer
+//! Dual-track residue representation enables exact integer
 //! reconstruction and division without any floating-point operations.
 //!
 //! Given residues mod M and mod A (coprime), we can reconstruct the unique
