@@ -1,6 +1,6 @@
 //! NTT Engine - Gen 3 Number Theoretic Transform
 //!
-//! QMNF Innovation: Negacyclic convolution via ψ-twist for X^N+1 rings.
+//! Negacyclic convolution via ψ-twist for X^N+1 rings.
 //! Uses correct DFT matrix approach for guaranteed correctness.
 //!
 //! # Thread Safety

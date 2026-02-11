@@ -1,6 +1,6 @@
 //! WASSAN Holographic Noise Field
 //!
-//! NINE65 V2 INNOVATION: 144 φ-harmonic bands for O(1) noise retrieval
+//! 144 φ-harmonic bands for O(1) noise retrieval
 //!
 //! This replaces expensive CSPRNG calls with pre-computed holographic reads.
 //!

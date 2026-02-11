@@ -1,6 +1,6 @@
 //! NTT FFT - Cooley-Tukey O(N log N) Implementation
 //!
-//! NINE65 V2 INNOVATION: Drop-in replacement for O(N²) DFT
+//! Drop-in replacement for O(N²) DFT
 //!
 //! This file is ADDITIVE - it doesn't replace ntt.rs
 //! Enable with feature flag: --features ntt_fft

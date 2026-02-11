@@ -1,8 +1,8 @@
 //! FHE Neural Evaluator
 //!
-//! QMNF Innovation: Unified interface for neural network operations on encrypted data.
+//! Unified interface for neural network operations on encrypted data.
 //!
-//! Combines all nonlinearity innovations:
+//! Combines all nonlinearity components:
 //! - Padé [4/4] for exp/sigmoid/tanh (~200ns vs ~50ms polynomial)
 //! - MQ-ReLU for O(1) sign detection (~20ns vs ~2ms comparison circuit)
 //! - Cyclotomic phase for sin/cos (~50ns vs ~3ms Taylor)
@@ -43,7 +43,7 @@ pub enum ActivationType {
 
 /// FHE Neural Evaluator
 ///
-/// Unified interface for neural network operations using QMNF innovations.
+/// Unified interface for neural network operations using QMNF components.
 /// All operations maintain integer exactness - zero floating-point drift.
 #[derive(Clone)]
 pub struct FHENeuralEvaluator {

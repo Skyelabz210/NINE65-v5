@@ -37,7 +37,7 @@ where:
 
 ### Significance
 
-This theorem solves the **60-year RNS division problem** identified by Szabó & Tanaka (1967). Prior art achieved at best 99.9998% accuracy; K-Elimination achieves **100% exactness**.
+This theorem enables **exact RNS division**. Prior approaches had approximation errors; K-Elimination achieves **100% exactness**.
 
 ---
 

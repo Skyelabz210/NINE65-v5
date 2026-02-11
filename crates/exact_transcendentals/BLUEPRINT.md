@@ -79,7 +79,7 @@ All computations use only integer operations: addition, subtraction, multiplicat
 
 ## QMNF Integration Points
 
-| QMNF Innovation | Integration Status |
+| QMNF Component | Integration Status |
 |-----------------|-------------------|
 | K-Elimination | ✅ Ready for exact division |
 | CRTBigInt | ✅ Interface defined |

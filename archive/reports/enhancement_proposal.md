@@ -29,7 +29,7 @@ These contain the complete formalization of shadow entropy security properties, 
   - `AVX512_NTT_RESEARCH.md`
   - `K-Elimination_Theorem_Exact_RNS_Division.pdf`
 
-These provide the foundational mathematical framework that supports the K-Elimination innovation used in NINE65.
+These provide the foundational mathematical framework that supports the K-Elimination component used in NINE65.
 
 ### 3. Performance Benchmark Reports
 - **From**: `/home/acid/Projects/hackfate/reports/`

@@ -132,7 +132,7 @@ This document cross-references claims made on hackfate.us against actual test re
 
 The hackfate.us website makes bold but largely substantiated claims. The core technical claims about bootstrap-free FHE, K-Elimination, and open benchmarks are verified by our testing. The performance claims are plausible and consistent with observed results, though some specific metrics (400x speedup, 419ns CRT cycles) would benefit from independent comparative benchmarking.
 
-The website is professionally designed, technically accurate in its core claims, and appropriately transparent about its innovations. The formal verification claims (Coq/Lean4) are the primary area where independent third-party verification would strengthen credibility.
+The website is professionally designed, technically accurate in its core claims, and appropriately transparent about its components. The formal verification claims (Coq/Lean4) are the primary area where independent third-party verification would strengthen credibility.
 
 **Credibility Rating**: 8.5/10
 - Strong technical foundation

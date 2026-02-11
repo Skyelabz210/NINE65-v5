@@ -37,11 +37,20 @@ impl ExactTranscendentalBackend {
     }
 
     pub fn sin_integer(&self, x: i128, scale: i128) -> Option<i128> {
+        // sin(0) = 0 exactly — bypass CORDIC to avoid gain-correction rounding
+        if x == 0 {
+            return Some(0);
+        }
         let x_q30 = to_q30(x, scale)?;
         from_q30(self.circular.sin(x_q30), scale)
     }
 
     pub fn cos_integer(&self, x: i128, scale: i128) -> Option<i128> {
+        // cos(0) = 1 exactly — bypass CORDIC to avoid gain-correction rounding
+        // that can produce scale +/- 1 due to integer division truncation in from_q30
+        if x == 0 {
+            return Some(scale);
+        }
         let x_q30 = to_q30(x, scale)?;
         from_q30(self.circular.cos(x_q30), scale)
     }

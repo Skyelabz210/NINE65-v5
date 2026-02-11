@@ -1,6 +1,6 @@
 //! MQ-ReLU: Modular Quantized ReLU
 //!
-//! # Innovation #14: MQ-ReLU
+//! # MQ-ReLU
 //!
 //! O(1) sign detection via q/2 threshold.
 //! No comparison circuit needed for FHE - just check if value > q/2.

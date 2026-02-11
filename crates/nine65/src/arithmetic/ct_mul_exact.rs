@@ -1,6 +1,6 @@
 //! Exact Ciphertext Multiplication
 //!
-//! QMNF Innovation: ct×ct multiplication using dual-track exact arithmetic.
+//! Ciphertext multiplication using dual-track exact arithmetic.
 //!
 //! The key insight: coefficient-wise scaling doesn't commute with polynomial
 //! convolution mod q. Instead, we:

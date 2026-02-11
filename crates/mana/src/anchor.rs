@@ -1,6 +1,6 @@
 //! # Anchor - K-Elimination Exact Division
 //!
-//! Solves the 60-year RNS division problem with zero approximation.
+//! Provides exact RNS division with zero approximation.
 //!
 //! ## The K-Elimination Theorem
 //!

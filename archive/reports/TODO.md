@@ -151,7 +151,7 @@
 
 ## Formal Verification Coverage
 
-| Proof File | Innovation | Status |
+| Proof File | Component | Status |
 |------------|------------|--------|
 | KElimination.v | K-Elimination core + 4-Prime CRT | Complete |
 | GSOFHE.v | Bootstrap-free noise | Complete |

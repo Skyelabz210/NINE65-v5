@@ -1,6 +1,6 @@
 //! Shadow Entropy - Gen 4 Deterministic Cryptographic Noise
 //!
-//! QMNF Innovation: Zero-cost entropy harvesting from computational
+//! Zero-cost entropy harvesting from computational
 //! organization. Achieves 5-10x faster than CSPRNGs while passing
 //! NIST SP 800-22 statistical tests.
 //!

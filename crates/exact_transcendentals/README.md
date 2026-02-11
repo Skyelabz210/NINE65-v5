@@ -167,7 +167,7 @@ let (num, den) = SQRT2_HI;    // 577/408 (5 decimal accuracy)
 
 ## QMNF Integration Points
 
-| QMNF Innovation | Integration Status |
+| QMNF Component | Integration Status |
 |-----------------|-------------------|
 | K-Elimination | ✅ Ready for exact division |
 | CRTBigInt | ✅ Interface defined |

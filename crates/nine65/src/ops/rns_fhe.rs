@@ -5,7 +5,7 @@
 //! - Paper2: Persistent Montgomery (values stay in Montgomery form)
 //! - Paper4: Bootstrap-Free FHE architecture
 //!
-//! Key innovations:
+//! Key components:
 //! 1. Dual-RNS Architecture: Main RNS for computation + Anchor RNS for K-Elimination
 //! 2. Ciphertexts in dual-RNS form FROM ENCRYPTION
 //! 3. K-Elimination rescaling for exact division after tensor product
@@ -590,7 +590,7 @@ impl AutoCiphertext {
 /// - K-Elimination for exact rescaling (no floating-point)
 /// - Δ² terms handled correctly via anchor system
 ///
-/// Key innovation from QMNF papers:
+/// Key component from QMNF papers:
 /// - Main RNS: 3 primes for computation (M = q0 × q1 × q2)
 /// - Anchor RNS: 2 primes for K-Elimination (A = a0 × a1)
 /// - After tensor product, K-Elimination enables exact division
@@ -7093,7 +7093,7 @@ mod tests {
     /// - Multiplies ciphertexts using K-Elimination exact rescaling
     /// - Decrypts to verify 5 × 7 = 35
     ///
-    /// K-Elimination solves the 70-year RNS division bottleneck by maintaining
+    /// K-Elimination enables exact division in RNS by maintaining
     /// anchor residues through the entire pipeline, enabling exact reconstruction
     /// without full CRT.
     #[test]
@@ -7122,7 +7122,7 @@ mod tests {
         assert_eq!(dec_7, 7, "Decryption of ct_7 should yield 7");
         println!("  Verified: decrypt(ct_5) = 5, decrypt(ct_7) = 7");
 
-        // K-ELIMINATION MULTIPLICATION: The core innovation
+        // K-ELIMINATION MULTIPLICATION: The core component
         // - Tensor product in BOTH main and anchor systems
         // - K-Elimination exact rescaling: k = ((v_anchor - v_main) × M⁻¹) mod A
         // - No approximation, no bootstrap required

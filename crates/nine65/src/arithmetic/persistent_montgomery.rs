@@ -3,7 +3,7 @@
 //! From: "Persistent Montgomery Representation on Möbius Computational Substrates"
 //! QMNF Research Collective, December 2025
 //!
-//! Key Innovation: Montgomery representation is NOT a temporary optimization
+//! Montgomery representation provides performance benefits
 //! requiring conversion. It IS the natural coordinate system for the Möbius
 //! computational substrate.
 //!

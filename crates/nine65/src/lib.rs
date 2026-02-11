@@ -24,9 +24,9 @@
     clippy::identity_op
 )]
 //!
-//! ## Core Innovations
+//! ## Core Components
 //!
-//! | Innovation | Benefit | Performance |
+//! | Component | Benefit | Performance |
 //! |------------|---------|-------------|
 //! | **Montgomery Gen 2** | Division-free modular multiplication | ~30ns |
 //! | **Barrett Reduction** | One-cycle modular reduction | ~2.4ns |

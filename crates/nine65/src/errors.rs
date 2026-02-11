@@ -14,7 +14,7 @@ use thiserror::Error;
 
 /// NINE65 Error Types
 ///
-/// Comprehensive error taxonomy for all innovations.
+/// Comprehensive error taxonomy for all components.
 /// Each variant maps to a specific Coq precondition violation.
 #[derive(Debug, Clone, Error)]
 pub enum Nine65Error {

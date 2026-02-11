@@ -1,7 +1,7 @@
 // QMNF Bootstrap-Free FHE Compiler
 // Phase 3: Static noise analysis and parameter selection
 //
-// Innovation: Pre-compute modulus chain to support circuit depth WITHOUT bootstrap
+// Pre-compute modulus chain to support circuit depth WITHOUT bootstrap
 // Method: Analyze circuit DAG, calculate max noise, select Q_init accordingly
 
 #![forbid(unsafe_code)]
@@ -602,7 +602,7 @@ mod tests {
         );
 
         println!("\n✓ DEPTH-50 BOOTSTRAP-FREE VERIFIED");
-        println!("  This demonstrates the core NINE65 innovation:");
+        println!("  This demonstrates the core NINE65 component:");
         println!("  K-Elimination enables exact rescaling without noise explosion");
     }
 }

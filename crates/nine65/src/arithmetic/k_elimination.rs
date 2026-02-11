@@ -1,8 +1,8 @@
 //! K-Elimination: Exact Division in RNS
 //!
-//! # Innovation #1: K-Elimination
+//! # K-Elimination
 //!
-//! Solves the 60-year RNS division problem with 100% exactness.
+//! Provides exact division in RNS with 100% exactness.
 //! No floating point, no approximations, no error accumulation.
 //!
 //! # Theorem Reference
@@ -362,7 +362,7 @@ impl KElimination {
 
     /// Exact division: compute V / divisor where divisor | V (CONSTANT-TIME - DEFAULT)
     ///
-    /// This is the KEY innovation for FHE rescaling.
+    /// This enables exact FHE rescaling.
     ///
     /// # Security
     /// Uses constant-time k extraction. The final division is variable-time

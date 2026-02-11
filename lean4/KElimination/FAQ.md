@@ -13,7 +13,7 @@ k = (vₐ - vₘ) · M⁻¹ (mod A)
 
 ### What problem does this solve?
 
-RNS division has been a bottleneck since Szabó & Tanaka identified it in 1967. Traditional approaches:
+RNS division has been a computational challenge. Traditional approaches:
 
 | Method | Complexity | Exactness | Parallelism |
 |--------|------------|-----------|-------------|
@@ -151,7 +151,7 @@ K-Elimination provides exact integer division, eliminating both problems.
 
 ### What is "zero-drift" arithmetic?
 
-In approximate FHE (CKKS), rescaling errors compound over deep circuits. K-Elimination's 100% exactness means no drift accumulation — the 1000th operation is as precise as the first.
+In approximate FHE (CKKS), rescaling errors compound over deep circuits. K-Elimination's exactness avoids drift accumulation.
 
 ### Can this work with existing FHE libraries?
 
@@ -195,34 +195,29 @@ Yes. This work was developed by QMNF Advanced Mathematics in collaboration with 
 
 ### How does QMNF compare to Microsoft SEAL and OpenFHE?
 
-Independent third-party analysis (using 2025 ACM and IACR ePrint benchmarks) shows:
+Performance analysis shows:
 
-| Library | Operation | Latency | vs QMNF |
-|---------|-----------|---------|---------|
-| **QMNF** | Homo Add (Light) | **2.92 μs** | — |
-| Microsoft SEAL | BFV Add | ~40 μs | 13.7× slower |
-| OpenFHE | BFV Add | ~55 μs | 18.8× slower |
-
-QMNF's homomorphic addition is **13-18× faster** than the fastest reported BFV/BGV operations in SEAL and OpenFHE.
+| Library | Operation | Latency |
+|---------|-----------|---------|
+| **QMNF** | Homo Add (Light) | **2.92 μs** |
+| Microsoft SEAL | BFV Add | ~40 μs |
+| OpenFHE | BFV Add | ~55 μs |
 
 ### How does QMNF compare to Zama TFHE-rs?
 
-| Library | Operation | Latency | vs QMNF |
-|---------|-----------|---------|---------|
-| **QMNF** | Homo Add (Light) | **2.92 μs** | — |
-| Zama TFHE-rs | Negation (64-bit) | 83.5 ms | 28,596× slower |
-| Zama TFHE-rs | Add/Sub (64-bit) | 109 ms | 37,329× slower |
+| Library | Operation | Latency |
+|---------|-----------|---------|
+| **QMNF** | Homo Add (Light) | **2.92 μs** |
+| Zama TFHE-rs | Negation (64-bit) | 83.5 ms |
+| Zama TFHE-rs | Add/Sub (64-bit) | 109 ms |
 
-TFHE-rs operations are in tens to hundreds of milliseconds due to Programmable Bootstrapping (PBS). QMNF's light operations are **thousands of times faster**.
+### What are the performance characteristics?
 
-### What market segments does QMNF lead?
-
-| Market Segment | Current Leader | QMNF Placement |
-|----------------|----------------|----------------|
-| General FHE | Microsoft SEAL, OpenFHE | **Performance Leader** (faster core ops, bootstrap-free) |
-| Boolean/Circuit FHE | Zama TFHE-rs | **Performance Superior** (thousands of times faster) |
-| Real-Time/Low-Latency | None (previously theoretical) | **Sole Provider** (enables real-time FHE) |
-| Formal Verification | None (proofs external) | **Highest Assurance** (machine-checked core arithmetic) |
+| Aspect | Characteristic |
+|--------|----------------|
+| General FHE | Fast core operations with bootstrap-free capability |
+| Performance | Efficient operations suitable for real-time applications |
+| Formal Verification | Machine-checked core arithmetic |
 
 ---
 

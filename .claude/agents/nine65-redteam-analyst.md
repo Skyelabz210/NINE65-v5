@@ -74,7 +74,7 @@ All test code and analysis MUST comply with QMNF's integer-only architecture:
 
 ### NINE65 System Context
 - Location: `NINE65/` directory
-- Contains FHE innovations with formal proofs
+- Contains FHE components with formal proofs
 - Built on top of QMNF exact arithmetic
 - Cryptographic systems in `cryptographic_systems/01_BFV_Core_FHE/` through `08_ACC_Cryptosystem/`
 

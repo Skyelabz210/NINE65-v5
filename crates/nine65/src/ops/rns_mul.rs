@@ -12,7 +12,7 @@
 //! 3. K-Elimination rescale: round((v_main + k×M) / Δ) with signed k
 //! 4. Return degree-2 ciphertext
 //!
-//! ## Key Innovation: K-Elimination
+//! ## Key Component: K-Elimination
 //!
 //! Standard CRT reconstruction fails because tensor products give values
 //! larger than the main modulus product M. K-Elimination solves this:

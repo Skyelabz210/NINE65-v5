@@ -1,6 +1,6 @@
 # K‑Elimination — Exact RNS Division (Formally Verified)
 
-## Problem & Breakthrough
+## Problem & Solution
 - RNS division historically: O(k²) via Mixed Radix Conversion, often approximate.
 - K‑Elimination: closed-form overflow recovery
   - k = (vₐ − vₘ) · M⁻¹ (mod A), with gcd(M, A)=1, X ∈ [0, M·A)

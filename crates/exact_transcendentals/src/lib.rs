@@ -1,6 +1,6 @@
 //! QMNF Exact Transcendentals Engine
 //!
-//! INNOVATION: Transcendental functions computed with ZERO floating point operations.
+//! Transcendental functions computed with ZERO floating point operations.
 //! All algorithms use only: add, subtract, multiply, shift, and K-Elimination division.
 //!
 //! ## Algorithms Implemented:

@@ -1,6 +1,6 @@
 //! CORDIC (COordinate Rotation DIgital Computer) Algorithm
 //!
-//! INNOVATION: Transcendental functions using ONLY add, subtract, and bit-shift.
+//! Transcendental functions using ONLY add, subtract, and bit-shift.
 //! No multiplication or division in the main iteration loop!
 //!
 //! ## How CORDIC Works:
