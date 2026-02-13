@@ -41,8 +41,6 @@
 //! Integer-only runtime: cryptographic paths use no f32/f64. The circuit compiler
 //! (compiler.rs) uses f64 **only** for offline/static noise analysis.
 
-#[cfg(all(feature = "allow_insecure", not(debug_assertions)))]
-compile_error!("The `allow_insecure` feature must not be used in release builds");
 //!
 //! ## Quick Start: Production FHE
 //!
@@ -122,6 +120,9 @@ compile_error!("The `allow_insecure` feature must not be used in release builds"
 //! - **HE Standard v1.1**: Compliant parameter sets available
 //! - **NIST SP 800-22**: Shadow Entropy passes statistical tests
 //! - **Memory Safety**: Key zeroization via `zeroize` crate
+
+#[cfg(all(feature = "allow_insecure", not(debug_assertions)))]
+compile_error!("The `allow_insecure` feature must not be used in release builds");
 
 pub mod arithmetic;
 pub mod compiler;
